@@ -1,0 +1,325 @@
+/* Loading States, Skeleton Shimmer, Route Progress & Error Handling */
+
+/* 1. Global Route Progress Bar */
+#rp-route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-gold, #C89B3C), #F6DC9A, #C89B3C);
+  box-shadow: 0 0 10px rgba(200, 155, 60, 0.7);
+  z-index: 10000;
+  pointer-events: none;
+  transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+  opacity: 0;
+}
+
+#rp-route-progress.loading {
+  opacity: 1;
+}
+
+/* 2. Skeleton Loaders with Fluid Shimmer */
+@keyframes rpShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #F5EFE6 25%, #FFFDF9 50%, #F5EFE6 75%);
+  background-size: 200% 100%;
+  animation: rpShimmer 1.6s infinite ease-in-out;
+  border-radius: var(--radius-md, 8px);
+}
+
+.skeleton-text {
+  height: 14px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.skeleton-text.title {
+  height: 22px;
+  width: 75%;
+  margin-bottom: 12px;
+}
+
+.skeleton-text.subtitle {
+  height: 15px;
+  width: 50%;
+  margin-bottom: 14px;
+}
+
+.skeleton-text.para {
+  height: 14px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* Novel Grid Skeleton Card */
+.skeleton-novel-card {
+  background: #FFFFFF;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+}
+
+.skeleton-novel-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+}
+
+.skeleton-novel-body {
+  padding: var(--space-5, 1.25rem);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Chapter Reader Skeleton */
+.skeleton-reader-wrap {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-8, 2rem) var(--space-5, 1.25rem);
+  animation: fadeIn 0.3s ease;
+}
+
+.skeleton-reader-header {
+  text-align: center;
+  margin-bottom: var(--space-10, 2.5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.skeleton-reader-crumb {
+  width: 160px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeleton-reader-title {
+  max-width: 100%;
+  width: min(320px, 90%);
+  height: 32px;
+  border-radius: 6px;
+}
+
+.skeleton-reader-meta {
+  width: 220px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.skeleton-reader-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+/* Member Directory Skeleton Card */
+.skeleton-member-card {
+  background: #FFFFFF;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: var(--radius-lg, 12px);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.skeleton-member-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+}
+
+.skeleton-member-name {
+  width: 140px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.skeleton-member-role {
+  width: 90px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeleton-member-stats {
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+/* 3. Button Loading State */
+.btn-loading {
+  position: relative !important;
+  pointer-events: none !important;
+  color: transparent !important;
+  user-select: none !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  margin-left: -9px;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: rpBtnSpin 0.65s linear infinite;
+  box-sizing: border-box;
+}
+
+.btn-outline.btn-loading::after {
+  border-color: rgba(16, 42, 67, 0.2);
+  border-top-color: var(--color-navy-deep, #0B1F33);
+}
+
+@keyframes rpBtnSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* 4. Comprehensive Error Handling Pages */
+.error-page-container {
+  min-height: 75vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(32px, 5vw, 64px) clamp(16px, 4vw, 32px);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.error-card {
+  background: #FFFFFF;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: var(--radius-xl, 16px);
+  padding: clamp(32px, 6vw, 56px) clamp(24px, 5vw, 48px);
+  max-width: 620px;
+  width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-lg, 0 10px 25px rgba(16, 42, 67, 0.09));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  animation: rpFadeUp 0.35s ease;
+}
+
+@keyframes rpFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-badge-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #FFFDF8;
+  border: 2px solid var(--color-gold, #C89B3C);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  line-height: 1;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 18px rgba(200, 155, 60, 0.2);
+}
+
+.error-code {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--color-gold-warm, #B88635);
+  margin-bottom: 6px;
+}
+
+.error-title {
+  font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(1.75rem, 3.5vw, 2.35rem);
+  font-weight: 700;
+  color: var(--color-navy-deep, #0B1F33);
+  margin-bottom: 12px;
+  line-height: 1.25;
+}
+
+.error-title-tamil {
+  font-family: var(--font-tamil, 'Noto Sans Tamil', sans-serif);
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  font-weight: 600;
+  color: var(--color-brown-literary, #6B4935);
+  margin-top: 4px;
+}
+
+.error-message {
+  font-size: clamp(14px, 1.2vw, 16px);
+  color: var(--color-navy-royal, #17385F);
+  font-weight: 500;
+  line-height: 1.65;
+  max-width: 490px;
+  margin-bottom: 12px;
+}
+
+.error-tip {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-muted, #756B62);
+  line-height: 1.6;
+  max-width: 450px;
+  margin-bottom: 28px;
+}
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.error-actions .btn {
+  min-width: 140px;
+}
+
+/* 5. Mobile Adjustments for Error Cards */
+@media (max-width: 640px) {
+  .error-card {
+    padding: 32px 20px;
+  }
+  .error-actions {
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .error-actions .btn {
+    width: 100%;
+  }
+}

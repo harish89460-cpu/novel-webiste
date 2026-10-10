@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+.last_otp.txt
+
+# Production Build
+dist/
+
+# SQLite Database local state
+*.sqlite
+*.sqlite-journal
+*.db
+database.sqlite
+
+# Build caches & Temporary test directories
+.chrome_temp/
+scratch/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

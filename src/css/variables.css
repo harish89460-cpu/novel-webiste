@@ -1,0 +1,76 @@
+:root {
+  /* Core Colors */
+  --color-bg-primary: #FFFFFF;
+  --color-navy-primary: #102A43;
+  --color-navy-deep: #0B1F33;
+  --color-navy-royal: #17385F;
+  --color-gold: #C89B3C;
+  --color-gold-light: #E4C27A;
+  --color-gold-warm: #B88635;
+  --color-brown-literary: #6B4935;
+  --color-beige-soft: #F7F1E6;
+  --color-parchment: #EFE3C2;
+  --color-card-bg: #FFFCF7;
+  --color-border: #E8DCCB;
+  --color-border-light: #F2E8DC;
+  --color-text-muted: #756B62;
+  --color-text-main: #202020;
+  --color-text-dark: #121820;
+  --color-success: #2E7D32;
+  --color-notification: #D64545;
+
+  /* Fonts */
+  --font-ui: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-tamil: 'Noto Sans Tamil', 'Latha', 'Mukta Malar', sans-serif;
+  --font-serif: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+
+  /* Typography Scale */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+  --text-3xl: 1.875rem;  /* 30px */
+  --text-4xl: 2.25rem;   /* 36px */
+  --text-5xl: 3rem;      /* 48px */
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* Elevation & Shadows */
+  --shadow-sm: 0 1px 3px rgba(16, 42, 67, 0.05);
+  --shadow-md: 0 4px 14px rgba(16, 42, 67, 0.07);
+  --shadow-lg: 0 10px 25px rgba(16, 42, 67, 0.09);
+  --shadow-xl: 0 20px 35px rgba(16, 42, 67, 0.12);
+  --shadow-gold: 0 4px 20px rgba(200, 155, 60, 0.25);
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-fast: 0.18s var(--ease-smooth);
+  --transition-normal: 0.3s var(--ease-smooth);
+  --transition-slow: 0.6s var(--ease-smooth);
+
+  /* Max Widths */
+  --container-max: 1240px;
+  --reader-max: 760px;
+
+}
+
