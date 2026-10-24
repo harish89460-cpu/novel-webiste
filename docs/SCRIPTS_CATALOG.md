@@ -1,7 +1,7 @@
 # Comprehensive Analysis & Catalog: `scripts/` Directory
 ## Rudhra Prarthana Novels — Automation, Verification & Maintenance Suite
 
-This document provides a complete, in-depth architectural and operational analysis of the **54 test, verification, audit, and utility scripts** located in the `scripts/` directory.
+This document provides a complete, in-depth architectural and operational analysis of the active **49 test, verification, audit, and utility scripts** located in the `scripts/` directory.
 
 ---
 
@@ -19,16 +19,16 @@ All scripts interact directly with either the Node.js backend (`backend/`), the 
 
 ## 2. Script Taxonomy & Categorization
 
-The 54 scripts are organized into **10 functional categories**:
+The active 49 scripts are organized into **10 functional categories**:
 
 | Category | Description | Count |
 |---|---|---|
-| **1. Database Backups, Migrations & Schema Audits** | Schema inspection, DDL checks, and point-in-time backups | 9 |
-| **2. Data Cleanup & Sanitization** | Mock/test data purging and genuine author/reader restoration | 6 |
+| **1. Database Backups, Migrations & Schema Audits** | Schema inspection, DDL checks, and point-in-time backups | 6 |
+| **2. Data Cleanup & Sanitization** | Mock/test data purging and genuine author/reader restoration | 5 |
 | **3. Authentication, Security & OTP** | Author authentication, RBAC, session isolation, and SMTP OTP | 4 |
 | **4. Novels, Episodes & Media Management** | Novel CRUD, Tamil auto-slug generation, cover uploads, and asset browser | 6 |
 | **5. Comments, Nested Replies & Rich Editor** | Comment hierarchies, HTML sanitization, toolbar actions, and mentions | 4 |
-| **6. Community Forum & Discussion Workflows** | Forum categories, topic creation, replies, views, and stats queries | 7 |
+| **6. Community Forum & Discussion Workflows** | Forum categories, topic creation, replies, views, and stats queries | 6 |
 | **7. Audio Novels & Streaming** | Audio uploads, duration formatting, and YouTube streaming integration | 1 |
 | **8. Writer Program & Editorial Dashboards** | Writer applications, editorial review, draft submissions, and audits | 4 |
 | **9. User Presence & Notifications** | Heartbeat polling, online status badges, and Web Push / VAPID delivery | 3 |
@@ -61,68 +61,48 @@ The 54 scripts are organized into **10 functional categories**:
 - **Target Tables**: `novels`, `chapters`, `comments`, `forum_topics`, `forum_replies`, `users`.
 - **Execution**: `node scripts/create_audit_backup.js`
 
-#### 1.4 `scripts/analyze_backup_json.js`
-- **Language**: Node.js
-- **Purpose**: Parses existing JSON database backups to cross-reference row IDs, foreign key references, and identify orphaned records.
-- **Execution**: `node scripts/analyze_backup_json.js`
-
-#### 1.5 `scripts/inspect_schema.js`
+#### 1.4 `scripts/inspect_schema.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Queries `information_schema.TABLES` and `information_schema.COLUMNS` to verify primary keys, unique constraints, foreign keys, and indexes across all tables.
 - **Target Tables**: Information schema meta-tables.
 - **Execution**: `node scripts/inspect_schema.js`
 
-#### 1.6 `scripts/audit_database_contents.js`
+#### 1.5 `scripts/audit_database_contents.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Performs a quick health check printing an ASCII table of all 26 tables with their active row counts.
 - **Execution**: `node scripts/audit_database_contents.js`
 
-#### 1.7 `scripts/audit_content_details.js`
+#### 1.6 `scripts/audit_content_details.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Deep content audit scanning novels and episodes. Flags empty chapter bodies, missing Tamil titles (`title_ta`), abnormal word counts, and invalid release dates.
 - **Target Tables**: `novels`, `chapters`.
 - **Execution**: `node scripts/audit_content_details.js`
 
-#### 1.8 `scripts/apply_migration_008.js`
-- **Language**: Node.js (`backend/db.js`)
-- **Purpose**: Targeted runner for migration `008_writer_management.sql`. Verifies idempotent execution and validates the creation of `writer_applications`, `writer_audits`, and `writer_profiles`.
-- **Execution**: `node scripts/apply_migration_008.js`
-
-#### 1.9 `scripts/print_target_tables.js`
-- **Language**: Node.js
-- **Purpose**: Helper utility that lists and formats target table names for batch backup and migration verification routines.
-- **Execution**: `node scripts/print_target_tables.js`
-
 ---
 
 ### Category 2: Data Cleanup & Sanitization
 
-#### 2.1 `scripts/clean_database_fresh.py`
-- **Language**: Python
-- **Purpose**: Automates a fresh database clean-up. Resets tables and prepares the database for clean seed data.
-- **Execution**: `python scripts/clean_database_fresh.py`
-
-#### 2.2 `scripts/inspect_all_data_for_cleanup.js`
+#### 2.1 `scripts/inspect_all_data_for_cleanup.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Analyzes the database for mock, test, dummy, or development data (e.g., "test comment", "asdf", lorem ipsum, mock accounts) before running cleanups.
 - **Execution**: `node scripts/inspect_all_data_for_cleanup.js`
 
-#### 2.3 `scripts/execute_safe_cleanup.js`
+#### 2.2 `scripts/execute_safe_cleanup.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Executes an atomic, safe transaction deleting test entries while protecting real author novels, authentic chapters, genuine user comments, and real forum topics.
 - **Execution**: `node scripts/execute_safe_cleanup.js`
 
-#### 2.4 `scripts/execute_fake_data_cleanup.js`
+#### 2.3 `scripts/execute_fake_data_cleanup.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Purges remaining dummy comments, test reactions, and mock forum replies created during earlier development iterations.
 - **Execution**: `node scripts/execute_fake_data_cleanup.js`
 
-#### 2.5 `scripts/inspect_forum_and_comments.js`
+#### 2.4 `scripts/inspect_forum_and_comments.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Displays a consolidated preview of recent forum discussions and chapter comments to verify that only genuine reader content is active.
 - **Execution**: `node scripts/inspect_forum_and_comments.js`
 
-#### 2.6 `scripts/restore_genuine_data.js`
+#### 2.5 `scripts/restore_genuine_data.js`
 - **Language**: Node.js (`backend/db.js`)
 - **Purpose**: Restores authentic seed data from genuine backups for author Rudhra Prarthana, authentic readers (`harish`), genuine novels, chapters, and comments.
 - **Execution**: `node scripts/restore_genuine_data.js`
@@ -256,11 +236,6 @@ The 54 scripts are organized into **10 functional categories**:
 - **Purpose**: UI regression verification confirming that "Start Discussion" buttons are hidden or replaced with login prompts for unauthenticated guests.
 - **Execution**: `node scripts/verify_remove_start_discussion.js`
 
-#### 6.7 `scripts/test_stats_query.js`
-- **Language**: Node.js (`backend/db.js`)
-- **Purpose**: Benchmark test measuring SQL query execution time for aggregate forum statistics and reader metrics.
-- **Execution**: `node scripts/test_stats_query.js`
-
 ---
 
 ### Category 7: Audio Novels & Streaming
@@ -393,30 +368,17 @@ The 54 scripts are organized into **10 functional categories**:
 
 ---
 
-## 4. Quick-Reference Matrix: How to Run Key Workflows
+## 4. Confirmed Obsolete Artifacts Removed During Audit
 
-| Goal | Recommended Script | Command |
-|---|---|---|
-| **Verify System Integrity & Clean Data** | `verify_cleaned_production_system.js` | `node scripts/verify_cleaned_production_system.js` |
-| **Test Admin Login & Email OTP Delivery** | `test_admin_auth_and_otp.js` | `node scripts/test_admin_auth_and_otp.js` |
-| **Verify Full Application Architecture** | `verify_complete_application_audit.js` | `node scripts/verify_complete_application_audit.js` |
-| **Test Novel Auto-Slug & Transliteration** | `test_auto_slug_generation.js` | `node scripts/test_auto_slug_generation.js` |
-| **Verify Comment Hierarchy & Replies** | `verify_novel_comments_and_replies.js` | `node scripts/verify_novel_comments_and_replies.js` |
-| **Verify Audio Novels Flow & Uploads** | `verify_audio_novels_flow.js` | `node scripts/verify_audio_novels_flow.js` |
-| **Verify Writer Program & Approval Flow** | `verify_writers_flow.js` | `node scripts/verify_writers_flow.js` |
-| **Test User Presence & Heartbeats** | `verify_presence_flow.js` | `node scripts/verify_presence_flow.js` |
-| **Create Database JSON Backup** | `create_full_backup.js` | `node scripts/create_full_backup.js` |
-| **Inspect MySQL Table Counts** | `audit_database_contents.js` | `node scripts/audit_database_contents.js` |
-| **Check MySQL Connection & Charset** | `verify_mysql_connection.py` | `python scripts/verify_mysql_connection.py` |
-
----
-
-## 5. Maintenance & Execution Best Practices
-
-1. **Working Directory**: All scripts should be executed from the **project root directory** (`d:\novel website development`), which ensures `.env` paths and relative asset locations resolve consistently.
-2. **Backend Server Dependency**:
-   - Database and unit-level scripts (`verify_cleaned_production_system.js`, `test_admin_auth_and_otp.js`, `create_full_backup.js`) query MySQL directly via `backend/db.js` and do not require the HTTP server to be running.
-   - API and browser E2E scripts (`verify_forum_live_e2e.js`, `test_auth_access_control.py`, `capture_admin_screens.py`) require the backend server (`http://localhost:3000`) and/or frontend dev server (`http://localhost:5173`) to be active.
-3. **Data Safety**:
-   - Verification scripts (`verify_*.js`) are read-only or perform reversible test actions (such as restoring original passwords upon completion).
-   - Cleanup scripts (`clean_database_fresh.py`, `execute_safe_cleanup.js`) make permanent modifications to the database; always create an audit backup first using `node scripts/create_audit_backup.js`.
+| File Path | Original Purpose | Reason for Safe Removal | Evidence |
+|---|---|---|---|
+| `scripts/print_target_tables.js` | Print historical backup tables | Hardcodes reading `db_backup_pre_cleanup_1792760935247.json`; obsolete | Standalone debug script, 0 imports, unreferenced |
+| `scripts/analyze_backup_json.js` | Inspect historical backup tables | Hardcodes reading `db_backup_pre_cleanup_1792760935247.json`; obsolete | Standalone debug script, 0 imports, unreferenced |
+| `scripts/apply_migration_008.js` | One-off runner for migration 008 | Migration 008 is permanently integrated in `backend/migrations/` and run via `npm run migrate` | Redundant patch script, 0 imports |
+| `scripts/test_stats_query.js` | Raw SQL query snippet | 15-line scratch snippet; fully superseded by `verify_forum_stats_api.js` | Redundant scratch script, 0 imports |
+| `scripts/clean_database_fresh.py` | Truncate database content | Dangerous script with hardcoded password `root`; superseded by transactional `execute_safe_cleanup.js` | Destructive one-off script, 0 imports |
+| `frontend/src/css/admin-demo.css` & `src/css/admin-demo.css` | Placeholder stylesheet | Empty 68-byte file with comment `/* Obsolete Admin Demo Styles */` | 0 CSS rules, unreferenced across project |
+| `.chrome_temp/` | Automated Chrome cache | Browser profile directory created by automated Chrome test sessions | Build/test cache, in `.gitignore` |
+| `scratch/` | Temporary diagnostic profiles | Temporary Chrome profiles (`chrome_*`, `diag1-10`) and scratch files | Test cache, in `.gitignore` |
+| `.last_otp.txt` | Temporary OTP output | Local test suite output artifact | In `.gitignore`, generated by test runners |
+| Root `dist/` | Legacy build directory | Generated before restructuring; active build is in `frontend/dist/` | Obsolete build artifact |

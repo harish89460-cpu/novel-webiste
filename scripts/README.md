@@ -1,6 +1,6 @@
 # Rudhra Prarthana Novels — Scripts Directory Catalog & Guide
 
-This directory contains **54 automation, verification, testing, and maintenance scripts** for the platform.
+This directory contains **49 active automation, verification, testing, and maintenance scripts** for the platform.
 
 For the full detailed breakdown and technical specifications, refer to [docs/SCRIPTS_CATALOG.md](../docs/SCRIPTS_CATALOG.md).
 
@@ -24,14 +24,14 @@ For the full detailed breakdown and technical specifications, refer to [docs/SCR
 
 ---
 
-## 2. Categories Overview
+## 2. Categories Overview (49 Active Scripts)
 
-- **Database Backups, Migrations & Schema Audits** (9 scripts): `backup_db.py`, `create_full_backup.js`, `create_audit_backup.js`, `analyze_backup_json.js`, `inspect_schema.js`, `audit_database_contents.js`, `audit_content_details.js`, `apply_migration_008.js`, `print_target_tables.js`.
-- **Data Cleanup & Sanitization** (6 scripts): `clean_database_fresh.py`, `inspect_all_data_for_cleanup.js`, `execute_safe_cleanup.js`, `execute_fake_data_cleanup.js`, `inspect_forum_and_comments.js`, `restore_genuine_data.js`.
+- **Database Backups, Migrations & Schema Audits** (6 scripts): `backup_db.py`, `create_full_backup.js`, `create_audit_backup.js`, `inspect_schema.js`, `audit_database_contents.js`, `audit_content_details.js`.
+- **Data Cleanup & Sanitization** (5 scripts): `inspect_all_data_for_cleanup.js`, `execute_safe_cleanup.js`, `execute_fake_data_cleanup.js`, `inspect_forum_and_comments.js`, `restore_genuine_data.js`.
 - **Authentication, Security & OTP** (4 scripts): `test_admin_auth_and_otp.js`, `test_auth_access_control.py`, `update_author_credentials.js`, `verify_admin_security_flow.js`.
 - **Novels, Episodes & Media Management** (6 scripts): `test_novel_creation_flow.js`, `test_auto_slug_generation.js`, `test_direct_cover_upload.js`, `test_image_browser_flow.js`, `verify_cover_fill_comprehensive.js`, `verify_browser_novel_navigation.js`.
 - **Comments, Nested Replies & Rich Editor** (4 scripts): `verify_comment_toolbar_and_data.js`, `verify_latest_comments_first.js`, `verify_novel_comments_and_replies.js`, `verify_novel_reply_rich_editor.js`.
-- **Community Forum & Discussion Workflows** (7 scripts): `verify_forum_comments_flow.js`, `verify_forum_e2e_browser.js`, `verify_forum_live_e2e.js`, `verify_forum_stats_api.js`, `verify_forum_stats_and_audio.js`, `verify_remove_start_discussion.js`, `test_stats_query.js`.
+- **Community Forum & Discussion Workflows** (6 scripts): `verify_forum_comments_flow.js`, `verify_forum_e2e_browser.js`, `verify_forum_live_e2e.js`, `verify_forum_stats_api.js`, `verify_forum_stats_and_audio.js`, `verify_remove_start_discussion.js`.
 - **Audio Novels & Streaming** (1 script): `verify_audio_novels_flow.js`.
 - **Writer Program & Editorial Dashboards** (4 scripts): `check_writers.js`, `test_writer_redesign_e2e.js`, `verify_writers_flow.js`, `verify_writer_redesign_browser.js`.
 - **User Presence & Notifications** (3 scripts): `verify_presence_flow.js`, `verify_presence_responsive.js`, `verify_realtime_notifications_flow.js`.
