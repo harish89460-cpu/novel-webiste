@@ -1,0 +1,16 @@
+{
+  "name": "rudhra-prarthana-novels-backend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Rudhra Prarthana Novels — Node.js Backend API Server",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "migrate": "node migrate.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.0.16",
+    "web-push": "^3.6.7"
+  }
+}

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rudhra Prarthana Novels — Premium Literary Novel Community</title>
+  <meta name="description" content="Explore captivating novels by author Rudhra Prarthana, enjoy comfortable distraction-free reading, audio novels, and join our vibrant reader community.">
+  <link rel="icon" type="image/png" href="/images/logo.png">
+
+  <!-- OpenGraph / Social Meta -->
+  <meta property="og:title" content="Rudhra Prarthana Novels — Literary Community">
+  <meta property="og:description" content="Read, Discover, Discuss, Connect. Premium novels and discussions.">
+  <meta property="og:image" content="/images/logo.png">
+  <meta property="og:type" content="website">
+
+  <!-- Google Fonts: Inter, Plus Jakarta Sans, Noto Sans Tamil, Cormorant Garamond -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Noto+Sans+Tamil:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Schema.org Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Rudhra Prarthana Novels",
+    "alternateName": "RP Novels",
+    "url": "https://rudhraprarthananovels.com",
+    "description": "Premium Tamil Literary Novel Community",
+    "publisher": {
+      "@type": "Person",
+      "name": "Rudhra Prarthana"
+    }
+  }
+  </script>
+
+  <!-- Critical Initial Loading Screen CSS (Renders immediately before resources load) -->
+  <style id="rp-early-loader-css">
+    #rp-initial-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #FFFDF8;
+      background: radial-gradient(circle at center, #FFFFFF 0%, #FAF5EC 100%);
+      z-index: 9999999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.45s ease;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-sizing: border-box;
+      padding: 24px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #rp-initial-loader.loaded {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .rp-loader-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .rp-loader-logo-ring {
+      position: relative;
+      width: 86px;
+      height: 86px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .rp-loader-logo-ring::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px dashed #C89B3C;
+      animation: rpSpinLogo 12s linear infinite;
+    }
+    .rp-loader-logo-ring::after {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 1px solid rgba(200, 155, 60, 0.25);
+    }
+    .rp-loader-logo {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 4px 20px rgba(16, 42, 67, 0.15);
+      border: 2px solid #C89B3C;
+      animation: rpPulseLogo 2.5s ease-in-out infinite;
+    }
+    .rp-loader-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 27px;
+      font-weight: 700;
+      color: #0B1F33;
+      margin-top: 18px;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    .rp-loader-tagline {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #B88635;
+      margin-top: 4px;
+    }
+    .rp-loader-bar-wrap {
+      width: 190px;
+      height: 4px;
+      background: #EEDFC3;
+      border-radius: 9999px;
+      overflow: hidden;
+      position: relative;
+      margin-top: 16px;
+    }
+    .rp-loader-bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 40%;
+      background: linear-gradient(90deg, #C89B3C, #F3D99A, #B88635);
+      border-radius: 9999px;
+      animation: rpLoaderBar 1.6s ease-in-out infinite;
+    }
+    .rp-loader-text {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #17385F;
+      margin-top: 14px;
+      letter-spacing: 0.2px;
+    }
+    @keyframes rpSpinLogo {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes rpPulseLogo {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    @keyframes rpLoaderBar {
+      0% { left: -45%; width: 30%; }
+      50% { width: 60%; }
+      100% { left: 110%; width: 30%; }
+    }
+  </style>
+
+  <script>
+    // Global initial loader dismissal with fallback
+    window.dismissInitialLoader = function() {
+      var loader = document.getElementById('rp-initial-loader');
+      if (loader && !loader.classList.contains('loaded')) {
+        loader.classList.add('loaded');
+        setTimeout(function() {
+          if (loader && loader.parentNode) {
+            loader.parentNode.removeChild(loader);
+          }
+        }, 500);
+      }
+    };
+    // Failsafe timeout to guarantee users never encounter an infinite loader
+    setTimeout(window.dismissInitialLoader, 4500);
+  </script>
+</head>
+<body>
+
+  <!-- Top Global Route Progress Bar -->
+  <div id="rp-route-progress"></div>
+
+  <!-- Initial Full-Screen Loading Screen -->
+  <div id="rp-initial-loader" aria-label="Loading Rudhra Prarthana Novels">
+    <div class="rp-loader-brand">
+      <div class="rp-loader-logo-ring">
+        <img src="/images/logo.png" alt="Rudhra Prarthana Novels" class="rp-loader-logo">
+      </div>
+      <div class="rp-loader-title">Rudhra Prarthana</div>
+      <div class="rp-loader-tagline">Novels & Community</div>
+    </div>
+    <div class="rp-loader-bar-wrap">
+      <div class="rp-loader-bar-fill"></div>
+    </div>
+    <div class="rp-loader-text" id="rp-loader-status-text">Preparing your reading experience…</div>
+  </div>
+
+
+  <!-- Primary Site Header -->
+  <header class="site-header">
+    <div class="header-inner">
+      <!-- 1. Mobile Hamburger (Visible on Mobile Left, Hidden on Desktop) -->
+      <button class="hamburger-btn" onclick="toggleMobileDrawer()" aria-label="Open Menu">
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+      </button>
+
+      <!-- 2. Logo Branding (Center/Left on Mobile, Left on Desktop) -->
+      <a href="#home" class="brand-link" id="rp-brand-link" title="Rudhra Prarthana Novels Home">
+        <span class="brand-logo-wrap">
+          <img src="/images/logo.png" alt="Rudhra Prarthana Novels Logo" class="brand-logo custom-logo" width="44" height="44">
+        </span>
+        <div class="brand-titles">
+          <span class="brand-name">Rudhra Prarthana</span>
+          <span class="brand-tagline">Novels & Community</span>
+        </div>
+      </a>
+
+      <!-- 3. Desktop Navigation (Hidden on Mobile) -->
+      <nav class="nav-desktop" aria-label="Main Navigation">
+        <a href="#home" class="nav-link">Home</a>
+        <a href="#forum" class="nav-link active">
+          Forum <span class="nav-link-badge">New</span>
+        </a>
+        <a href="#audio" class="nav-link">Audio Novels</a>
+        <a href="#novels?category=Ongoing" class="nav-link">What's New</a>
+        <a href="#members" class="nav-link">Members</a>
+        <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="nav-link">Pratilipi</a>
+        <a href="#contact" class="nav-link">Contact</a>
+        <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="nav-link" style="color:#C89B3C;">
+          YouTube
+        </a>
+      </nav>
+
+      <!-- 4. Header Actions (Right side: Search, Notification, Desktop Login) -->
+      <div class="header-actions">
+
+        <!-- Global Search -->
+        <button class="action-btn" onclick="openSearchModal()" title="Search (ESC)" aria-label="Search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+
+        <!-- Notification Bell -->
+        <div style="position:relative;">
+          <button class="action-btn" id="notification-bell-btn" onclick="toggleNotificationsDropdown(event)" title="Notifications" aria-label="Notifications">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="action-badge" id="notification-badge" style="display:none;"></span>
+          </button>
+
+          <!-- Notifications Dropdown -->
+          <div class="notifications-dropdown" id="notifications-dropdown">
+            <div class="notif-header">
+              <span>Notifications</span>
+              <button onclick="markAllNotificationsRead()" class="btn-outline btn-sm" id="mark-all-read-btn" style="font-size:10px; padding:2px 8px;">Mark all as read</button>
+            </div>
+            <div class="notif-list" id="notifications-list-container"></div>
+          </div>
+        </div>
+
+        <!-- Dynamic Desktop User Auth / Profile Area (Hidden on Mobile) -->
+        <div id="header-auth-container" style="display:flex; align-items:center; gap:8px;"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Slide-in Drawer -->
+  <div class="mobile-drawer" id="mobile-drawer" onclick="if(event.target === this) closeMobileDrawer();">
+    <div class="mobile-drawer-content">
+      <div class="drawer-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <img src="/images/logo.png" style="width:36px; height:36px; border-radius:50%;" alt="RP">
+          <span style="font-family:var(--font-serif); font-size:1.15rem; font-weight:700; color:var(--color-navy-deep);">RP Novels</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="drawer-close" onclick="closeMobileDrawer()">✕</button>
+        </div>
+      </div>
+
+      <nav class="drawer-nav">
+        <a href="#home" class="drawer-nav-item" onclick="closeMobileDrawer()">Home</a>
+        <a href="#audio" class="drawer-nav-item" onclick="closeMobileDrawer()">Audio Novels</a>
+        <a href="#novels" class="drawer-nav-item" onclick="closeMobileDrawer()">Novel Library</a>
+        <a href="#forum" class="drawer-nav-item active" onclick="closeMobileDrawer()">Forum</a>
+        <a href="#members" class="drawer-nav-item" onclick="closeMobileDrawer()">Members</a>
+        <a href="#contact" class="drawer-nav-item" onclick="closeMobileDrawer()">Contact</a>
+        <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="drawer-nav-item" onclick="closeMobileDrawer()">Pratilipi</a>
+        <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="drawer-nav-item" style="color:#C89B3C;" onclick="closeMobileDrawer()">▶ YouTube Channel</a>
+      </nav>
+
+      <!-- Drawer Auth / Guest Welcome Box -->
+      <div class="drawer-footer" id="drawer-auth-container"></div>
+    </div>
+  </div>
+
+  <!-- Main View Container (Dynamically rendered by Router) -->
+  <main id="main-content" class="main-content"></main>
+
+  <!-- Site Footer (Premium Navy) -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <!-- Brand Info -->
+        <div class="footer-brand">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <img src="/images/logo.png" class="brand-logo" alt="Logo">
+            <span class="brand-name">Rudhra Prarthana Novels</span>
+          </div>
+          <p class="footer-desc">
+            Heart-touching family dramas, captivating romance, and a warm community for passionate Tamil novel readers.
+          </p>
+          <div class="footer-socials">
+            <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="social-icon-btn" title="Rudhra Prarthana Audio Novels YouTube Channel">▶</a>
+            <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="social-icon-btn" title="Rudhra Prarthana Pratilipi Profile">📖</a>
+            <a href="https://facebook.com" target="_blank" class="social-icon-btn" title="Facebook">f</a>
+            <a href="https://instagram.com" target="_blank" class="social-icon-btn" title="Instagram">📸</a>
+          </div>
+        </div>
+
+
+        <!-- Legal Links -->
+        <div>
+          <h4 class="footer-title">Legal & Policies</h4>
+          <div class="footer-links">
+            <a href="#contact" class="footer-link">Privacy Policy</a>
+            <a href="#contact" class="footer-link">Terms of Service</a>
+            <a href="#contact" class="footer-link">Copyright Notice</a>
+            <a href="#contact" class="footer-link">Disclaimer</a>
+          </div>
+        </div>
+
+        <!-- Community Summary -->
+        <div>
+          <h4 class="footer-title">Community</h4>
+          <p class="footer-community-desc" style="font-size:13px; color:var(--color-parchment); line-height:1.6; margin-bottom:14px;">
+            Join our reader forum to share reviews, chapter predictions, and converse directly with author Rudhra Prarthana.
+          </p>
+          <button class="btn btn-gold btn-sm footer-join-btn" onclick="openAuthModal('register')">Join Free Today</button>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>© 2026 Rudhra Prarthana Novels. All Rights Reserved.</div>
+        <div style="font-size:11px; color:rgba(255,255,255,0.5);">Designed with literary elegance for novel lovers.</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Private Messaging Drawer (Better Messages) -->
+  <div class="messages-backdrop" id="messages-backdrop" onclick="closeMessagesDrawer()"></div>
+  <div class="messages-drawer" id="messages-drawer">
+    <div class="messages-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span>✉️</span>
+        <h3>Messages</h3>
+      </div>
+      <button onclick="closeMessagesDrawer()" style="color:#FFFFFF; font-size:18px; cursor:pointer;">✕</button>
+    </div>
+    <div class="messages-body" id="messages-body-container"></div>
+  </div>
+
+  <!-- Global Search Modal -->
+  <div class="modal-overlay" id="search-modal" onclick="if(event.target === this) closeSearchModal();">
+    <div class="modal-card search-modal-card">
+      <div class="search-input-wrap">
+        <span style="font-size:20px; color:var(--color-gold-warm);">🔍</span>
+        <input type="text" id="search-input" class="search-input-field" 
+               placeholder="Search novels, chapters, discussions, or members...">
+        <button class="modal-close-btn" onclick="closeSearchModal()">✕</button>
+      </div>
+
+      <div class="search-filter-pills">
+        <button class="search-pill active" data-filter="all" onclick="setSearchFilter('all')">All</button>
+        <button class="search-pill" data-filter="novels" onclick="setSearchFilter('novels')">Novels</button>
+        <button class="search-pill" data-filter="topics" onclick="setSearchFilter('topics')">Discussions</button>
+        <button class="search-pill" data-filter="members" onclick="setSearchFilter('members')">Members</button>
+      </div>
+
+      <div class="search-results-list" id="search-results-container"></div>
+    </div>
+  </div>
+
+  <!-- Authentication Modal (Login / Register / Forgot) -->
+  <div class="modal-overlay" id="auth-modal" onclick="if(event.target === this) closeAuthModal();">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="auth-modal-title">Member Login</h3>
+        <button class="modal-close-btn" onclick="closeAuthModal()">✕</button>
+      </div>
+      <div class="modal-body" id="auth-form-container"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

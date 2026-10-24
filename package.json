@@ -5,12 +5,13 @@
   "description": "Rudhra Prarthana Novels — Novels & Community",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "migrate": "node server/migrate.js",
-    "start": "node server/server.js",
-    "server": "node server/server.js"
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "server": "node backend/server.js",
+    "start": "node backend/server.js",
+    "migrate": "node backend/migrate.js",
+    "install:all": "npm install && npm --prefix frontend install && npm --prefix backend install"
   },
   "devDependencies": {
     "vite": "^6.0.0"

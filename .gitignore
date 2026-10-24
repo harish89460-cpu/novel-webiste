@@ -1,14 +1,20 @@
 # Dependencies
 node_modules/
+frontend/node_modules/
+backend/node_modules/
 
 # Environment Variables & Secrets
 .env
 .env.local
 .env.*.local
+frontend/.env
+backend/.env
 .last_otp.txt
+backend/.last_otp.txt
 
 # Production Build
 dist/
+frontend/dist/
 
 # SQLite Database local state
 *.sqlite

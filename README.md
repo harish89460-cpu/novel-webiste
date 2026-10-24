@@ -2,7 +2,7 @@
 
 A premium, elegant Tamil literary novel community and digital reading platform dedicated to author **Rudhra Prarthana**. Features distraction-free chapter reading, audio novels, an active reader forum, member directory, interactive comments, and emoji reactions.
 
-![Rudhra Prarthana Novels](logo.png)
+![Rudhra Prarthana Novels](frontend/public/images/logo.png)
 
 ---
 
@@ -13,9 +13,6 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 - **Fluid Typography Engine:** Real-time font size scaling (A−, Reset, A+) with persistent local preferences and Tamil typography optimization (`Noto Sans Tamil`, `Plus Jakarta Sans`, and `Cormorant Garamond`).
 - **Reading Progress & Protection:** Top viewport reading progress bar and right-click / selection content protection.
 
-### 💬 Reader Engagement & Emoji Reactions
-- **Dynamic Comments:** Registered users can post and edit comments on novels and individual chapters; guests can browse freely.
-- **Interactive Emoji Reactions:** Real-time reactions (❤️, 👍, 😂, 😢, 😍, 🔥) with personal reaction toggling and duplicate prevention.
 ### 💬 Reader Engagement & Emoji Reactions
 - **Dynamic Comments:** Registered users can post and edit comments on novels and individual chapters; guests can browse freely.
 - **Interactive Emoji Reactions:** Real-time reactions (❤️, 👍, 😂, 😢, 😍, 🔥) with personal reaction toggling and duplicate prevention.
@@ -30,9 +27,9 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 - **User Profiles:** Custom avatars, biography editing, and activity tracking.
 
 ### 🔐 Secure Authentication & Password Recovery
-- Session token authentication with scrypt/crypto password hashing.
+- Session token authentication with cryptographic password hashing.
 - Parameterized SQL queries preventing SQL injection across all endpoints.
-- Role-based authorization for administrative and editorial functions.
+- Role-based authorization (`admin`, `author`, `writer`, `reader`, `guest`).
 - Password recovery via automated 6-digit OTP email verification with resend cooldowns and countdown timers.
 
 ### 📱 Responsive Design & Visual Excellence
@@ -44,18 +41,72 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 
 ## 🛠️ Technology Stack
 
-- **Frontend:** Vanilla JavaScript (ES Modules), Modern CSS3 (Variables, Flexbox, CSS Grid), HTML5
-- **Bundler & Dev Server:** Vite 6
-- **Backend Application Server:** Consolidated Node.js server with Connect / HTTP API middleware
+- **Frontend:** Vanilla JavaScript (ES Modules), Modern CSS3 (Variables, Flexbox, CSS Grid), HTML5, Vite 6
+- **Backend Application Server:** Node.js standalone HTTP server with modular REST API routing
 - **Database Backend:** Relational MySQL 8.0+ (`mysql2/promise`) with versioned migrations
 - **Email Service:** Nodemailer SMTP Integration for OTP Password Reset
+- **Audio Service:** Direct audio uploads and streaming player
+
+---
+
+## 📂 Project Architecture
+
+The codebase is organized into three decoupled folders:
+
+```text
+rudhra-prarthana-novels/
+├── frontend/                 # Vite + Vanilla JS Client Application
+│   ├── index.html            # SPA Entry Point
+│   ├── vite.config.js        # Vite config with backend proxy and auto-start
+│   ├── package.json          # Frontend build tooling
+│   ├── public/               # Static assets (images, sw.js)
+│   └── src/
+│       ├── main.js           # Frontend entry bootstrap
+│       ├── js/               # ES Modules (app, auth, reader, comments, forum, etc.)
+│       └── css/              # Modular Vanilla CSS Design System
+│
+├── backend/                  # Node.js REST API Server
+│   ├── server.js             # HTTP server & static upload server
+│   ├── api.js                # Consolidated REST API router
+│   ├── db.js                 # MySQL2 connection pooling & queries
+│   ├── auth.js               # Cryptographic auth, sessions & password hashing
+│   ├── novels.js             # Novel CRUD, views, and catalog
+│   ├── episodes.js           # Episode scheduling & publishing engine
+│   ├── comments.js           # Nested comments & replies engine
+│   ├── audio.js              # Audio novels upload & YouTube player
+│   ├── writers.js            # Writer application & review workflows
+│   ├── admin.js              # Author & administrator dashboards
+│   ├── presence.js           # Real-time user heartbeat & online tracking
+│   ├── notifications.js      # In-app notifications & Web Push engine
+│   ├── email.js              # Nodemailer SMTP & OTP delivery
+│   ├── migrate.js            # Database migration runner
+│   ├── migrations/           # 12 Versioned SQL migrations
+│   ├── uploads/              # Uploaded user avatars, audio files, and media
+│   └── package.json          # Node server dependencies
+│
+├── db/                       # Database Reference & Documentation
+│   ├── schema/
+│   │   └── full_schema.sql   # Complete current MySQL schema DDL
+│   ├── migrations/           # Reference copies of schema migrations
+│   └── README.md             # Comprehensive schema and tables documentation
+│
+├── docs/                     # Architecture & Operations Documentation
+│   ├── ARCHITECTURE.md       # High-level architecture and data lifecycle
+│   ├── API_DOCUMENTATION.md  # Complete REST API reference
+│   └── DEPLOYMENT.md         # Production deployment guide
+│
+├── scripts/                  # Automated test & verification scripts
+├── .env                      # Global environment credentials (DB, SMTP, VAPID)
+├── .env.example              # Environment template
+└── package.json              # Root orchestrator scripts
+```
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v20 or higher)
+- Node.js (v18 or higher)
 - MySQL Server 8.0+
 - npm
 
@@ -67,13 +118,13 @@ A premium, elegant Tamil literary novel community and digital reading platform d
    cd novel-webiste
    ```
 
-2. **Install dependencies:**
+2. **Install all dependencies:**
    ```bash
-   npm install
+   npm run install:all
    ```
 
 3. **Configure Environment Variables:**
-   Copy the `.env.example` file to `.env`:
+   Copy `.env.example` to `.env`:
    ```bash
    cp .env.example .env
    ```
@@ -91,77 +142,20 @@ A premium, elegant Tamil literary novel community and digital reading platform d
    npm run migrate
    ```
 
-5. **Start the Development Server:**
+5. **Start Development Environment:**
    ```bash
    npm run dev
    ```
-   Open `http://localhost:3000` in your browser.
+   Open `http://localhost:5173` in your browser. (The backend server on port 3000 will be auto-started and proxied automatically).
 
-6. **Build for Production:**
+6. **Production Build & Execution:**
    ```bash
+   # Build frontend bundle
    npm run build
-   ```
 
-7. **Run Standalone Production Server:**
-   ```bash
+   # Start standalone backend server (serves built frontend and API)
    npm start
    ```
-
----
-
-## 📂 Project Structure
-
-```
-├── index.html                   # Single-Page Application entry with early loader
-├── logo.png                     # Official Rudhra Prarthana brand crest
-├── profile.png                  # Default member avatar
-├── desktopview.png              # Desktop hero artwork background
-├── mobileview.png               # Mobile hero artwork background
-├── package.json                 # Project dependencies and npm scripts
-├── vite.config.js               # Vite configuration and API proxy
-├── .env.example                 # Environment variables template
-├── .gitignore                   # Excluded dependencies, builds, and secrets
-├── server/                      # Consolidated Node.js backend API & MySQL database layer
-│   ├── api.js                   # REST API routing & RBAC middleware
-│   ├── auth.js                  # Authentication, sessions, profiles, and OTP reset
-│   ├── comments.js              # Comments & emoji reaction controller
-│   ├── content.js               # Chapter reading evaluation & content security
-│   ├── db.js                    # MySQL connection pool, query helpers, and data access
-│   ├── email.js                 # Nodemailer SMTP OTP service
-│   ├── migrate.js               # Database migration runner with tracking
-│   ├── migrations/              # Versioned SQL migrations (schema & genuine seed)
-│   │   ├── 001_initial_schema.sql
-│   │   └── 002_seed_genuine_data.sql
-│   ├── novels.js                # MySQL CRUD for novels, chapters, and homepage sections
-│   └── server.js                # Consolidated standalone Node server
-├── src/                         # Frontend application source
-│   ├── main.js                  # App bootstrap and global error boundaries
-│   ├── css/                     # Centralized design system & modular stylesheets
-│   │   ├── variables.css        # Colors, typography, spacing tokens
-│   │   ├── reset.css            # Base resets and typography wrapping
-│   │   ├── layout.css           # Header, mobile drawer, footer, containers
-│   │   ├── hero.css             # Hero section and statistics strip
-│   │   ├── reader.css           # Novel reading page & isolated themes
-│   │   ├── novel-cards.css      # Book cards, grids, and detail views
-│   │   ├── forum.css            # Community categories, topics, and replies
-│   │   ├── members.css          # Member directory, profiles, activity status
-│   │   ├── comments.css         # Novel comments and emoji reactions
-│   │   ├── modals.css           # Auth, OTP, search, and notification modals
-│   │   └── loading-errors.css   # Skeleton shimmers, route bar, error pages
-│   └── js/                      # Modular application controllers
-│       ├── app.js               # Main application router and view renderers
-│       ├── auth.js              # Authentication, user state, and OTP
-│       ├── comments.js          # Comment posting, reaction toggling, and UI
-│       ├── content-service.js   # Dynamic SQL API client service
-│       ├── data.js              # Static fallback and author metadata
-│       ├── errors.js            # Error boundaries, skeletons, and network alerts
-│       ├── forum.js             # Forum interaction controller
-│       ├── i18n.js              # English/Tamil translation dictionary & switcher
-│       ├── messaging.js         # Direct reader messaging drawer
-│       ├── notifications.js     # User notifications controller
-│       ├── reader.js            # Chapter reader engine (themes, font sizes)
-│       └── search.js            # Live global modal search
-```
 
 ---
 
