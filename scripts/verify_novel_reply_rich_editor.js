@@ -1,5 +1,5 @@
-import { query, queryOne } from '../server/db.js';
-import { sanitizeCommentHtml, addComment, getComments } from '../server/comments.js';
+import { query, queryOne } from '../backend/db.js';
+import { sanitizeCommentHtml, addComment, getComments } from '../backend/comments.js';
 import fs from 'fs';
 import path from 'path';
 

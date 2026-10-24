@@ -1,5 +1,5 @@
-import { query, queryOne } from '../server/db.js';
-import { createSession } from '../server/auth.js';
+import { query, queryOne } from '../backend/db.js';
+import { createSession } from '../backend/auth.js';
 
 async function verify() {
   try {

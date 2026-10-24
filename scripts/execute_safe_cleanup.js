@@ -1,4 +1,4 @@
-import { query, queryOne } from '../server/db.js';
+import { query, queryOne } from '../backend/db.js';
 import fs from 'fs';
 import path from 'path';
 

@@ -1,9 +1,9 @@
 // Comprehensive Application Audit & End-to-End Integration Verification Script
 // Tests all workflows: Novels, Episodes, Comments, Forum, Duplicate Prevention, and Access Control
-import { query, queryOne, getDb } from '../server/db.js';
-import { createSession } from '../server/auth.js';
-import { createNovel, updateNovel, getNovelById } from '../server/novels.js';
-import { checkAndPublishDueEpisodes } from '../server/episodes.js';
+import { query, queryOne, getDb } from '../backend/db.js';
+import { createSession } from '../backend/auth.js';
+import { createNovel, updateNovel, getNovelById } from '../backend/novels.js';
+import { checkAndPublishDueEpisodes } from '../backend/episodes.js';
 
 const API_BASE = 'http://localhost:3000';
 

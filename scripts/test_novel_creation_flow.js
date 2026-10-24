@@ -1,7 +1,7 @@
 // End-to-end verification of Novel Creation Workflow, Author Authorization, and MySQL Persistence
 import http from 'node:http';
-import { query, queryOne } from '../server/db.js';
-import { createSession } from '../server/auth.js';
+import { query, queryOne } from '../backend/db.js';
+import { createSession } from '../backend/auth.js';
 
 const PORT = 3000;
 

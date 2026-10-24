@@ -1,4 +1,4 @@
-import { query, queryOne } from '../server/db.js';
+import { query, queryOne } from '../backend/db.js';
 
 async function inspect() {
   const userCols = await query('DESC users;');

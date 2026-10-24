@@ -1,4 +1,4 @@
-import { getDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
 
 async function restore() {
   const db = getDb();

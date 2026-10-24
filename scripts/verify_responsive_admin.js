@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createSession } from '../server/auth.js';
+import { createSession } from '../backend/auth.js';
 
 const VIEWPORTS = [
   { name: 'Ultra Compact Mobile', width: 320, height: 568, isMobile: true },

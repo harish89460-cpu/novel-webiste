@@ -1,5 +1,5 @@
 // Detailed audit of database records using SELECT *
-import { getDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
 
 async function audit() {
   const pool = getDb();

@@ -1,4 +1,4 @@
-import { query } from '../server/db.js';
+import { query } from '../backend/db.js';
 
 async function run() {
   console.log('Applying Migration 008...');

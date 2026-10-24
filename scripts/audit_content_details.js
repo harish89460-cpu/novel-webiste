@@ -1,5 +1,5 @@
 // Audit content records in detail
-import { getDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
 
 async function auditContent() {
   const pool = getDb();

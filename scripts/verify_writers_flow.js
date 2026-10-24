@@ -312,7 +312,7 @@ async function runTests() {
     assert(deleteRes.data?.reassignedNovelsCount === 1, 'Writer novel preserved and reassigned to primary author');
 
     // Verify novel still exists in MySQL under author_id = 2
-    const db = await import('../server/db.js');
+    const db = await import('../backend/db.js');
     const preservedNovel = await db.queryOne('SELECT id, author_id FROM novels WHERE id = ?;', [writerNovelId]);
     assert(preservedNovel && preservedNovel.author_id === 2, 'Preserved novel now owned by primary author (author_id = 2)');
 

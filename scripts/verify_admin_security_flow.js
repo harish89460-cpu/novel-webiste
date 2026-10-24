@@ -2,8 +2,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { query, queryOne } from '../server/db.js';
-import { createSession } from '../server/auth.js';
+import { query, queryOne } from '../backend/db.js';
+import { createSession } from '../backend/auth.js';
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEBUG_PORT = 9227;

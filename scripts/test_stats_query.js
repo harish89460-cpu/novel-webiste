@@ -1,4 +1,4 @@
-import { queryOne } from '../server/db.js';
+import { queryOne } from '../backend/db.js';
 
 async function test() {
   const membersRow = await queryOne("SELECT COUNT(*) as count FROM users WHERE status = 'active';");

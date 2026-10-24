@@ -1,5 +1,5 @@
-import { query, queryOne } from '../server/db.js';
-import { getComments, addComment } from '../server/comments.js';
+import { query, queryOne } from '../backend/db.js';
+import { getComments, addComment } from '../backend/comments.js';
 
 async function verifyLatestCommentsFirst() {
   console.log('=== Step 1: Testing getComments sorting order (created_at DESC) ===');

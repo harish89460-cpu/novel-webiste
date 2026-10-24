@@ -2,8 +2,8 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createSession } from '../server/auth.js';
-import { queryOne, query } from '../server/db.js';
+import { createSession } from '../backend/auth.js';
+import { queryOne, query } from '../backend/db.js';
 
 const ARTIFACT_DIR = 'C:\\Users\\Harish V\\.gemini\\antigravity-ide\\brain\\0865d7e5-7332-46f5-9deb-0d1a852fc1c1';
 const DEBUG_PORT = 9225;

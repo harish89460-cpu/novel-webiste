@@ -1,5 +1,5 @@
-import { query, queryOne, hashPassword } from '../server/db.js';
-import { createWriterAccount } from '../server/writers.js';
+import { query, queryOne, hashPassword } from '../backend/db.js';
+import { createWriterAccount } from '../backend/writers.js';
 
 async function main() {
   const writers = await query("SELECT id, username, email, role, status FROM users WHERE role = 'writer'");

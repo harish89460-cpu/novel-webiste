@@ -1,6 +1,6 @@
-import { getDb } from '../server/db.js';
-import { getComments, addComment, toggleCommentLike, sanitizeCommentHtml } from '../server/comments.js';
-import { getSidebarPostsFromDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
+import { getComments, addComment, toggleCommentLike, sanitizeCommentHtml } from '../backend/comments.js';
+import { getSidebarPostsFromDb } from '../backend/db.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

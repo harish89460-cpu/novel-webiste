@@ -1,5 +1,5 @@
 // Transactional script to remove confirmed test records and re-sync counts
-import { getDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
 
 async function cleanup() {
   const pool = getDb();

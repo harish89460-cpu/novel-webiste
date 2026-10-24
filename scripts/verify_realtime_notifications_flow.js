@@ -2,10 +2,10 @@
 // Rudhra Prarthana Novels — MySQL Persistence, Events, SSE, and Push Subscriptions
 
 import http from 'node:http';
-import { query, queryOne, loadEnv } from '../server/db.js';
-import { createSession } from '../server/auth.js';
-import { addComment, toggleReaction } from '../server/comments.js';
-import { addForumReplyToDb, createForumTopicInDb, toggleLikeInDb } from '../server/db.js';
+import { query, queryOne, loadEnv } from '../backend/db.js';
+import { createSession } from '../backend/auth.js';
+import { addComment, toggleReaction } from '../backend/comments.js';
+import { addForumReplyToDb, createForumTopicInDb, toggleLikeInDb } from '../backend/db.js';
 import {
   createNotification,
   getUserNotifications,
@@ -18,7 +18,7 @@ import {
   removePushSubscription,
   getVapidPublicKey,
   sendWebPushNotification
-} from '../server/notifications.js';
+} from '../backend/notifications.js';
 
 loadEnv();
 

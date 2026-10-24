@@ -1,5 +1,5 @@
 // Live End-to-End Forum Backend & MySQL Verification Script
-import { getDb } from '../server/db.js';
+import { getDb } from '../backend/db.js';
 
 async function testForumBackend() {
   console.log('--- 1. Testing MySQL Database Connection ---');

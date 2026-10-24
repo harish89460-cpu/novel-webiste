@@ -1,4 +1,4 @@
-import { getDb, loadEnv, hashPassword } from '../server/db.js';
+import { getDb, loadEnv, hashPassword } from '../backend/db.js';
 
 loadEnv();
 const pool = getDb();

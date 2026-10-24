@@ -1,8 +1,8 @@
 // Automated Test Suite for Admin Author Login, Security Access Control,
 // SMTP OTP Email Delivery, OTP Verification, and Password Reset Workflow
 
-import { getDb, loadEnv, hashPassword, verifyPassword } from '../server/db.js';
-import { loginAuthor, requestPasswordResetOtp, verifyPasswordResetOtp, completePasswordReset, registerUser } from '../server/auth.js';
+import { getDb, loadEnv, hashPassword, verifyPassword } from '../backend/db.js';
+import { loginAuthor, requestPasswordResetOtp, verifyPasswordResetOtp, completePasswordReset, registerUser } from '../backend/auth.js';
 import fs from 'node:fs';
 
 loadEnv();

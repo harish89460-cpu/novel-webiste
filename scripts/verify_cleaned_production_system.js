@@ -1,5 +1,5 @@
-import { query, queryOne } from '../server/db.js';
-import { getComments } from '../server/comments.js';
+import { query, queryOne } from '../backend/db.js';
+import { getComments } from '../backend/comments.js';
 
 async function verifyCleanedSystem() {
   console.log('=== VERIFYING CLEANED PRODUCTION SYSTEM ===\n');

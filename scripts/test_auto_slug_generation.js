@@ -5,9 +5,9 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { query, queryOne } from '../server/db.js';
-import { generateNovelSlug, transliterateTamil } from '../server/novels.js';
-import { createSession } from '../server/auth.js';
+import { query, queryOne } from '../backend/db.js';
+import { generateNovelSlug, transliterateTamil } from '../backend/novels.js';
+import { createSession } from '../backend/auth.js';
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEBUG_PORT = 9223; // use isolated port

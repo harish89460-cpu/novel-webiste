@@ -151,7 +151,7 @@ async function runTests() {
 
     // 10. Database Cleanup
     console.log('\n[TEST 10] Cleanup test presence records');
-    const db = await import('../server/db.js');
+    const db = await import('../backend/db.js');
     await db.query('DELETE FROM user_presence WHERE session_key IN (?, ?)', [
       `guest_${testGuestId1}`,
       `guest_${testGuestId2}`
