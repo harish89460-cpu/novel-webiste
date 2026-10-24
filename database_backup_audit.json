@@ -1,0 +1,1658 @@
+{
+  "activity_status": [
+    {
+      "user_id": 2,
+      "is_enabled": 1,
+      "is_online": 1,
+      "last_seen": "2026-10-21 22:58:43"
+    },
+    {
+      "user_id": 8,
+      "is_enabled": 1,
+      "is_online": 1,
+      "last_seen": "2026-10-21 22:13:55"
+    },
+    {
+      "user_id": 28,
+      "is_enabled": 0,
+      "is_online": 1,
+      "last_seen": "2026-10-21 23:05:55"
+    }
+  ],
+  "chapters": [
+    {
+      "id": 3,
+      "novel_id": "nenjam-marappadhillai",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Chapter 01 — Beginning of Dawn",
+      "title_ta": "Chapter 01 — Beginning of Dawn",
+      "content": "The morning mist drifted lazily across the veranda as Varshini held her porcelain cup, listening to the quiet rhythm of the dawn. Though countless memories echoed within, her expression remained calm and poised.\n\nLittle did she know that today would mark the beginning of a decisive chapter in her journey. The distant hum of the morning express train seemed to announce a destiny already unfolding.\n\n\"Varshini, are you ready?\" Her mother's warm voice drew her back into the present. With a soft smile, she nodded. The next chapter of life was finally about to begin.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,450 words",
+      "read_time": "7 mins",
+      "release_date": "12 Oct 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 4,
+      "novel_id": "nenjam-marappadhillai",
+      "parent_id": null,
+      "chapter_num": "2",
+      "episode_number": null,
+      "title": "Chapter 02 — Waves of Memory",
+      "title_ta": "Chapter 02 — Waves of Memory",
+      "content": "The bustling train station was bathed in amber morning light. As the train rolled in with a metallic roar, Varshini stepped onto the platform, luggage in hand.\n\nMemories of her childhood summers rushed back—the endless green fields, the ancestral home, and the promises made under the grand banyan tree. But the face she remembered most vividly was the one she had tried so hard to forget.\n\n\"Could he still be here?\" she whispered quietly to herself, tightening her grip on her shawl as a sudden gust of wind swept through the platform.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,600 words",
+      "read_time": "8 mins",
+      "release_date": "19 Oct 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 5,
+      "novel_id": "nenjam-marappadhillai",
+      "parent_id": null,
+      "chapter_num": "3",
+      "episode_number": null,
+      "title": "Chapter 03 — Unexpected Meeting",
+      "title_ta": "Chapter 03 — Unexpected Meeting",
+      "content": "The village courtyard was alive with familiar laughter. Family members greeted her with warm embraces and traditional sweets. Yet across the courtyard, near the carved wooden doorway, stood a tall figure with sharp, thoughtful eyes.\n\nTheir eyes met across the crowded hall. Time seemed to pause for a breathless second. It was him—Devan. He had matured, but that intense gaze remained unchanged.\n\nHe offered a slow, courteous nod, acknowledging her return with an unspoken depth that made her pulse quicken.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,820 words",
+      "read_time": "8 mins",
+      "release_date": "26 Oct 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 6,
+      "novel_id": "nenjam-marappadhillai",
+      "parent_id": null,
+      "chapter_num": "24",
+      "episode_number": null,
+      "title": "Chapter 24 — Truth in the Heart",
+      "title_ta": "Chapter 24 — Truth in the Heart",
+      "content": "The rain poured down steadily outside the study window, drumming against the glass like a long-kept secret finally demanding release.\n\nVarshini placed the old journal onto the table. \"You knew all along, didn't you, Devan?\"\n\nDevan turned, the dim desk lamp illuminating his resolute face. \"Some truths are withheld not to deceive, Varshini, but to protect what matters most.\"\n\nFor the first time in ten years, the wall between them crumbled. In the silence that followed, both understood that life had given them a second chance.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "3,120 words",
+      "read_time": "10 mins",
+      "release_date": "08 Oct 2026",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 7,
+      "novel_id": "kaadhal-konden-kanave",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Chapter 01 — Dream Journey",
+      "title_ta": "Chapter 01 — Dream Journey",
+      "content": "In the quiet glow of twilight, dreams often weave paths that reality hesitates to tread. Ananya sketched the riverbank in her notebook, watching the twilight colors blend into indigo.\n\nShe had always believed in the power of destiny. When an unfamiliar shadow crossed the pathway, she looked up, surprised to find someone admiring her artwork.\n\n\"You capture the light remarkably well,\" a voice murmured. That single sentence would change everything.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,200 words",
+      "read_time": "6 mins",
+      "release_date": "15 Jan 2026",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 8,
+      "novel_id": "kaadhal-konden-kanave",
+      "parent_id": null,
+      "chapter_num": "18",
+      "episode_number": null,
+      "title": "Chapter 18 — Soft Touch",
+      "title_ta": "Chapter 18 — Soft Touch",
+      "content": "Standing atop the hilltop temple stairs, the city lights spread beneath them like an ocean of fallen stars.\n\n\"Do you still doubt what we have?\" Siddharth asked softly, reaching out to hold her hand in the cool night air.\n\nAnanya looked into his eyes and felt the doubts of months evaporate into the night breeze. With a gentle nod, she knew they were ready to face whatever family challenges lay ahead.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,900 words",
+      "read_time": "9 mins",
+      "release_date": "07 Oct 2026",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 9,
+      "novel_id": "uyire-unakkaga",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Chapter 01 — Motherhood Lullaby",
+      "title_ta": "Chapter 01 — Motherhood Lullaby",
+      "content": "The aroma of freshly ground spices filled the small kitchen where Meenakshi Amma worked tirelessly before the break of dawn.\n\nHer three children slept soundly in the next room, oblivious to the financial burdens she bore alone since her husband's untimely passing. Every sacrifice, every silent tear, was dedicated to ensuring their dignity and future.\n\n\"As long as I draw breath, my children will hold their heads high,\" she whispered as the morning sun crowned the horizon.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "3,100 words",
+      "read_time": "9 mins",
+      "release_date": "01 Mar 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 10,
+      "novel_id": "uyire-unakkaga",
+      "parent_id": null,
+      "chapter_num": "45",
+      "episode_number": null,
+      "title": "Chapter 45 — Blissful Conclusion",
+      "title_ta": "Chapter 45 — Blissful Conclusion",
+      "content": "The grand university auditorium was filled with thunderous applause as her son stepped forward to receive his doctorate, bowing low to touch Meenakshi's feet.\n\nTears of profound joy rolled down her weathered cheeks. Her children had reached heights greater than she had ever dared to dream. The sacrifices of a lifetime had borne the sweetest fruit.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "4,000 words",
+      "read_time": "12 mins",
+      "release_date": "15 Dec 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 11,
+      "novel_id": "vizhigalil-vizhundha-kavithai",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Chapter 01 — Silence of the Eyes",
+      "title_ta": "Chapter 01 — Silence of the Eyes",
+      "content": "Words are easy to utter, but silence holds the truest poetry of love. In the university library between rows of classical literature, their silent companionship had quietly grown over three years.\n\nA single exchange of glances conveyed what entire volumes could not express.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "2,500 words",
+      "read_time": "8 mins",
+      "release_date": "10 Jun 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 12,
+      "novel_id": "poongaatru-punnagaikka",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Story 01 — Rainy Drizzle People",
+      "title_ta": "Story 01 — Rainy Drizzle People",
+      "content": "Underneath the green tin awning of the roadside tea stall, seven strangers huddled together to escape a sudden torrential downpour.\n\nAs hot ginger tea was passed around in glass tumblers, stories began to flow. In those forty-five minutes of shared warmth, seven lives touched and enriched one another before the rain stopped and they went their separate ways.",
+      "is_guest_allowed": 1,
+      "is_audio": 0,
+      "word_count": "1,800 words",
+      "read_time": "5 mins",
+      "release_date": "14 Jul 2025",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 13,
+      "novel_id": "maaya-nadhi-theeram",
+      "parent_id": null,
+      "chapter_num": "1",
+      "episode_number": null,
+      "title": "Part 01 — Riverbank Shadows (Audio)",
+      "title_ta": "Part 01 — Riverbank Shadows (Audio)",
+      "content": "The Kaveri riverbank was shrouded in thick river fog as midnight approached. Inspector Raghavan shone his flashlight across the abandoned boathouse, discovering an antique brass lock newly broken.\n\nThis audio episode is produced with ambient music and narration by author Rudhra Prarthana. Log in as a member to listen to the full episode.",
+      "is_guest_allowed": 0,
+      "is_audio": 1,
+      "word_count": "Audio 22 mins",
+      "read_time": "22 mins",
+      "release_date": "01 Sep 2026",
+      "status": "published",
+      "scheduled_at": null,
+      "timezone": "Asia/Kolkata",
+      "published_at": null,
+      "sort_order": "1.0000",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    }
+  ],
+  "comments": [
+    {
+      "id": 6,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "24",
+      "user_id": 8,
+      "content": "What an incredible chapter! The emotional confrontation between Devan and Varshini was written with such mastery.",
+      "created_at": "2026-10-14 10:30:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 7,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "24",
+      "user_id": 2,
+      "content": "Thank you so much Harish! More exciting moments are in store for the upcoming chapters.",
+      "created_at": "2026-10-14 10:40:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 8,
+      "novel_id": "kaadhal-konden-kanave",
+      "chapter_num": "18",
+      "user_id": 8,
+      "content": "Siddharth and Ananya have stolen our hearts. Wonderful story progression!",
+      "created_at": "2026-10-13 19:00:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 9,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "1",
+      "user_id": 8,
+      "content": "Re-reading chapter 1 brings back all the nostalgic charm of how this wonderful story began.",
+      "created_at": "2026-10-15 12:00:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 10,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "0",
+      "user_id": 28,
+      "content": "Fabulous story! ❤️ Testing existing novel comment box with emojis 👍 &amp; reactions 😍 [E2E-1792601245903]",
+      "created_at": "2026-10-21 22:17:25",
+      "updated_at": "2026-10-21 22:17:25"
+    },
+    {
+      "id": 11,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "0",
+      "user_id": 28,
+      "content": "Testing direct comment submission",
+      "created_at": "2026-10-21 22:17:42",
+      "updated_at": "2026-10-21 22:17:42"
+    },
+    {
+      "id": 12,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "0",
+      "user_id": 28,
+      "content": "Fabulous story! ❤️ Testing existing novel comment box with emojis 👍 &amp; reactions 😍 [E2E-1792601306585]",
+      "created_at": "2026-10-21 22:18:26",
+      "updated_at": "2026-10-21 22:18:26"
+    },
+    {
+      "id": 13,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "0",
+      "user_id": 28,
+      "content": "Fabulous story! ❤️ Testing existing novel comment box with emojis 👍 &amp; reactions 😍 [E2E-1792601351374]",
+      "created_at": "2026-10-21 22:19:11",
+      "updated_at": "2026-10-21 22:19:11"
+    }
+  ],
+  "forum_categories": [
+    {
+      "id": "general",
+      "title": "General Discussions",
+      "description": "General announcements, welcome area, and platform updates.",
+      "icon": "💬",
+      "sort_order": 5,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "ongoing-novels",
+      "title": "Ongoing Novels Discussion",
+      "description": "Episode updates, reader theories, character analysis, and lively discussions on current serials.",
+      "icon": "📖",
+      "sort_order": 1,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "review-junction",
+      "title": "Review Junction",
+      "description": "Detailed reader reviews, ratings, and critical literary perspectives on Rudhra Prarthana novels.",
+      "icon": "✍️",
+      "sort_order": 2,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "short-stories",
+      "title": "Short Stories Hub",
+      "description": "Discussions and feedback on standalone short stories, festive specials, and flash fiction.",
+      "icon": "✨",
+      "sort_order": 4,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "tea-time",
+      "title": "Tea Time Chit-Chat",
+      "description": "Casual conversations, daily greetings, life musings, and reader camaraderie.",
+      "icon": "☕",
+      "sort_order": 3,
+      "created_at": "2026-10-18 10:55:10"
+    }
+  ],
+  "forum_posts": [
+    {
+      "id": 1,
+      "topic_id": "topic-discussion-on-story-pacing-3295-3306",
+      "user_id": 28,
+      "content": "I really loved the emotional depth in the latest chapter! The dialogue between the leads was breathtaking.",
+      "created_at": "2026-10-21 21:36:33",
+      "updated_at": "2026-10-21 21:36:33"
+    },
+    {
+      "id": 2,
+      "topic_id": "topic-discussion-on-story-pacing-3295-3306",
+      "user_id": 2,
+      "content": "Thank you for reading! The next episode will dive deeper into their backstory. ❤️",
+      "created_at": "2026-10-21 21:36:33",
+      "updated_at": "2026-10-21 21:36:33"
+    },
+    {
+      "id": 3,
+      "topic_id": "topic-nenjam-24",
+      "user_id": 2,
+      "content": "Welcome, dear readers! Chapter 24 of 'Nenjam Marappadhillai' is now live! Please share your thoughts and predictions right here! ❤️",
+      "created_at": "2026-10-14 09:30:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 4,
+      "topic_id": "topic-nenjam-24",
+      "user_id": 8,
+      "content": "Chapter 24 moved at such an exciting pace! The revelation was breathtaking. Eagerly waiting for the next update!",
+      "created_at": "2026-10-14 10:15:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 5,
+      "topic_id": "topic-kaadhal-kanave-18",
+      "user_id": 2,
+      "content": "How did you feel about the revelation in chapter 18? Drop your feedback below!",
+      "created_at": "2026-10-13 14:20:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 6,
+      "topic_id": "topic-review-style",
+      "user_id": 8,
+      "content": "The nuanced family dynamics in RP's novels make every character feel profoundly real. What stands out to you most?",
+      "created_at": "2026-10-12 11:00:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 7,
+      "topic_id": "topic-review-style",
+      "user_id": 2,
+      "content": "Thank you so much Harish! Realistic emotional depth is the true compass of my writing.",
+      "created_at": "2026-10-14 08:20:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 8,
+      "topic_id": "topic-rain-coffee",
+      "user_id": 8,
+      "content": "Perfect weather to curl up and read novels with a warm cup of coffee!",
+      "created_at": "2026-10-11 16:30:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 9,
+      "topic_id": "topic-short-story",
+      "user_id": 2,
+      "content": "Thank you for all the lovely comments on our rainy-day special short story!",
+      "created_at": "2026-10-10 10:00:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 10,
+      "topic_id": "topic-tamil-kanave",
+      "user_id": 2,
+      "content": "காதல் கொண்டேன் கனவே தொடரின் இந்த வார திருப்பங்கள் உங்களுக்கு பிடித்திருந்ததா? உங்கள் மேலான கருத்துக்களை இங்கே பகிருங்கள்! ❤️",
+      "created_at": "2026-10-14 10:45:00",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 11,
+      "topic_id": "topic-tamil-kanave",
+      "user_id": 8,
+      "content": "கதைக்களம் மிகவும் அருமையாக செல்கிறது! அடுத்த பதிவிற்காக ஆவலுடன் காத்திருக்கிறோம்.",
+      "created_at": "2026-10-14 10:55:00",
+      "updated_at": "2026-10-21 22:13:55"
+    }
+  ],
+  "forum_topics": [
+    {
+      "id": "topic-discussion-on-story-pacing-3295-3306",
+      "category_id": "ongoing-novels",
+      "category_title": "Ongoing Novels Discussion",
+      "title": "Discussion on Story Pacing #3295",
+      "author_id": 28,
+      "views_count": 4,
+      "replies_count": 1,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 2,
+      "last_reply_at": "2026-10-21 21:36:33",
+      "created_at": "2026-10-21 21:36:33",
+      "updated_at": "2026-10-21 22:27:12"
+    },
+    {
+      "id": "topic-kaadhal-kanave-18",
+      "category_id": "ongoing-novels",
+      "category_title": "ONGOING NOVELS",
+      "title": "Kaadhal Konden Kanave — Chapter 18 Emotional Highlights",
+      "author_id": 2,
+      "views_count": 110,
+      "replies_count": 1,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 2,
+      "last_reply_at": "2026-10-13 18:45:00",
+      "created_at": "2026-10-13 14:20:00",
+      "updated_at": "2026-10-13 18:45:00"
+    },
+    {
+      "id": "topic-nenjam-24",
+      "category_id": "ongoing-novels",
+      "category_title": "ONGOING NOVELS",
+      "title": "Nenjam Marappadhillai — Your thoughts on Chapter 24?",
+      "author_id": 2,
+      "views_count": 145,
+      "replies_count": 2,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 8,
+      "last_reply_at": "2026-10-14 10:15:00",
+      "created_at": "2026-10-14 09:30:00",
+      "updated_at": "2026-10-14 10:15:00"
+    },
+    {
+      "id": "topic-rain-coffee",
+      "category_id": "tea-time",
+      "category_title": "TEA TIME",
+      "title": "Today's rainfall and a hot cup of coffee ☕",
+      "author_id": 8,
+      "views_count": 195,
+      "replies_count": 3,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 8,
+      "last_reply_at": "2026-10-13 21:10:00",
+      "created_at": "2026-10-11 16:30:00",
+      "updated_at": "2026-10-13 21:10:00"
+    },
+    {
+      "id": "topic-review-style",
+      "category_id": "review-junction",
+      "category_title": "REVIEW JUNCTION",
+      "title": "A critical perspective on Rudhra Prarthana's storytelling style",
+      "author_id": 8,
+      "views_count": 230,
+      "replies_count": 4,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 2,
+      "last_reply_at": "2026-10-14 08:20:00",
+      "created_at": "2026-10-12 11:00:00",
+      "updated_at": "2026-10-14 08:20:00"
+    },
+    {
+      "id": "topic-short-story",
+      "category_id": "short-stories",
+      "category_title": "SHORT STORIES",
+      "title": "Loved reading People of the Rain — Heartwarming story",
+      "author_id": 2,
+      "views_count": 155,
+      "replies_count": 2,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 8,
+      "last_reply_at": "2026-10-12 15:30:00",
+      "created_at": "2026-10-10 10:00:00",
+      "updated_at": "2026-10-12 15:30:00"
+    },
+    {
+      "id": "topic-tamil-kanave",
+      "category_id": "ongoing-novels",
+      "category_title": "ONGOING NOVELS",
+      "title": "காதல் கொண்டேன் கனவே — வாசகர்களின் மனம் கவர்ந்த உணர்ச்சிப்பூர்வமான தருணங்கள்",
+      "author_id": 2,
+      "views_count": 178,
+      "replies_count": 3,
+      "is_published": 1,
+      "visibility": "public",
+      "last_reply_author_id": 8,
+      "last_reply_at": "2026-10-14 10:55:00",
+      "created_at": "2026-10-14 10:45:00",
+      "updated_at": "2026-10-14 10:55:00"
+    }
+  ],
+  "homepage_sections": [
+    {
+      "section_key": "audio",
+      "title": "Audio Novels",
+      "subtitle": "Listen & Enjoy",
+      "is_visible": 1,
+      "sort_order": 3,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "completed",
+      "title": "Completed Novels",
+      "subtitle": "Completed Works",
+      "is_visible": 1,
+      "sort_order": 5,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "continue_reading",
+      "title": "Continue Reading",
+      "subtitle": "Pick Up Where You Left Off",
+      "is_visible": 1,
+      "sort_order": 2,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "featured",
+      "title": "Featured Ongoing Novels",
+      "subtitle": "Currently Releasing",
+      "is_visible": 1,
+      "sort_order": 1,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "trending",
+      "title": "Trending Novels",
+      "subtitle": "Reader Favorites",
+      "is_visible": 1,
+      "sort_order": 4,
+      "updated_at": "2026-10-18 10:55:10"
+    }
+  ],
+  "likes": [
+    {
+      "id": 1,
+      "target_type": "novel",
+      "target_id": "nenjam-marappadhillai",
+      "user_id": 8,
+      "created_at": "2026-10-14 10:32:00"
+    },
+    {
+      "id": 2,
+      "target_type": "novel",
+      "target_id": "kaadhal-konden-kanave",
+      "user_id": 8,
+      "created_at": "2026-10-13 19:05:00"
+    },
+    {
+      "id": 3,
+      "target_type": "chapter",
+      "target_id": "nenjam-marappadhillai:24",
+      "user_id": 8,
+      "created_at": "2026-10-14 10:31:00"
+    }
+  ],
+  "media": [
+    {
+      "id": 1,
+      "filename": "media-1792588721777-7qe96e.png",
+      "original_name": "test-cover-1792588721773.png",
+      "url": "/uploads/media/media-1792588721777-7qe96e.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:48:41"
+    },
+    {
+      "id": 2,
+      "filename": "media-1792588808411-4ogaaf.png",
+      "original_name": "test-cover-1792588808411.png",
+      "url": "/uploads/media/media-1792588808411-4ogaaf.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:50:08"
+    },
+    {
+      "id": 3,
+      "filename": "media-1792588964534-vgkybd.png",
+      "original_name": "test-cover-1792588964533.png",
+      "url": "/uploads/media/media-1792588964534-vgkybd.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:52:44"
+    },
+    {
+      "id": 4,
+      "filename": "media-1792588990958-vp3f1a.png",
+      "original_name": "test-cover-1792588990956.png",
+      "url": "/uploads/media/media-1792588990958-vp3f1a.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:53:10"
+    },
+    {
+      "id": 5,
+      "filename": "media-1792589011815-f1x67i.png",
+      "original_name": "test-cover-1792589011812.png",
+      "url": "/uploads/media/media-1792589011815-f1x67i.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:53:31"
+    },
+    {
+      "id": 6,
+      "filename": "media-1792589047264-olf3vd.png",
+      "original_name": "test-cover-1792589047258.png",
+      "url": "/uploads/media/media-1792589047264-olf3vd.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:54:07"
+    },
+    {
+      "id": 7,
+      "filename": "media-1792589088841-xrwsru.png",
+      "original_name": "test-cover-1792589088834.png",
+      "url": "/uploads/media/media-1792589088841-xrwsru.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:54:48"
+    },
+    {
+      "id": 8,
+      "filename": "media-1792589150406-7qhjcs.png",
+      "original_name": "test-cover-1792589150403.png",
+      "url": "/uploads/media/media-1792589150406-7qhjcs.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:55:50"
+    },
+    {
+      "id": 9,
+      "filename": "media-1792589198836-xr5491.png",
+      "original_name": "test-cover-1792589198833.png",
+      "url": "/uploads/media/media-1792589198836-xr5491.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 18:56:38"
+    },
+    {
+      "id": 10,
+      "filename": "media-1792590653547-carapd.png",
+      "original_name": "direct-upload-cover.png",
+      "url": "/uploads/media/media-1792590653547-carapd.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:20:53"
+    },
+    {
+      "id": 11,
+      "filename": "media-1792590654157-m660js.png",
+      "original_name": "persisted-cover.png",
+      "url": "/uploads/media/media-1792590654157-m660js.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:20:54"
+    },
+    {
+      "id": 12,
+      "filename": "media-1792590725822-7v7bkb.png",
+      "original_name": "direct-upload-cover.png",
+      "url": "/uploads/media/media-1792590725822-7v7bkb.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:22:05"
+    },
+    {
+      "id": 13,
+      "filename": "media-1792590726383-eq00va.png",
+      "original_name": "persisted-cover.png",
+      "url": "/uploads/media/media-1792590726383-eq00va.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:22:06"
+    },
+    {
+      "id": 14,
+      "filename": "media-1792592112368-d2j9up.png",
+      "original_name": "direct-upload-cover.png",
+      "url": "/uploads/media/media-1792592112368-d2j9up.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:45:12"
+    },
+    {
+      "id": 15,
+      "filename": "media-1792592112987-dvc7pk.png",
+      "original_name": "persisted-cover.png",
+      "url": "/uploads/media/media-1792592112987-dvc7pk.png",
+      "mime_type": "image/png",
+      "size_bytes": 70,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 19:45:12"
+    },
+    {
+      "id": 16,
+      "filename": "media-1792593059059-1tf52e.png",
+      "original_name": "Golden_Filigree_and_Feather_Banner.png",
+      "url": "/uploads/media/media-1792593059059-1tf52e.png",
+      "mime_type": "image/png",
+      "size_bytes": 2003283,
+      "uploaded_by": 2,
+      "created_at": "2026-10-21 20:00:59"
+    }
+  ],
+  "notifications": [
+    {
+      "id": 1,
+      "user_id": 8,
+      "type": "chapter_release",
+      "title": "New Chapter Released!",
+      "message": "Rudhra Prarthana has published Chapter 24 of Nenjam Marappadhillai.",
+      "link": "#reader?novel=nenjam-marappadhillai&ch=24",
+      "is_read": 0,
+      "created_at": "2026-10-14 09:30:00"
+    },
+    {
+      "id": 2,
+      "user_id": 8,
+      "type": "announcement",
+      "title": "Welcome to Rudhra Prarthana Novels",
+      "message": "Experience distraction-free reading, audio novels, and our interactive community.",
+      "link": "#home",
+      "is_read": 1,
+      "created_at": "2026-10-01 10:00:00"
+    },
+    {
+      "id": 3,
+      "user_id": 2,
+      "type": "announcement",
+      "title": "Welcome Rudhra Prarthana",
+      "message": "Welcome to your official author portal. Your works are loved by hundreds of thousands of readers.",
+      "link": "#home",
+      "is_read": 0,
+      "created_at": "2026-10-01 10:00:00"
+    }
+  ],
+  "novels": [
+    {
+      "id": "kaadhal-konden-kanave",
+      "title": "Kaadhal Konden Kanave",
+      "author": "Rudhra Prarthana",
+      "genre": "Romance",
+      "category": "Ongoing Novels",
+      "status": "Ongoing",
+      "badge": "Ongoing",
+      "cover": "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=600&q=80",
+      "description": "A romance that begins through shared dreams faces real-life trials and triumphs. A youth-filled emotional story of affection.",
+      "chapters_count": 18,
+      "views": "112,400",
+      "rating": "4.8",
+      "updated_date": "Yesterday",
+      "featured": 1,
+      "continue_reading": 1,
+      "is_audio": 0,
+      "audio_available": 0,
+      "audio_duration": null,
+      "audio_voice": null,
+      "youtube_url": null,
+      "trending_rank": 2,
+      "sort_order": 2,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=kaadhal-konden-kanave",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": "maaya-nadhi-theeram",
+      "title": "Maaya Nadhi Theeram",
+      "author": "Rudhra Prarthana",
+      "genre": "Mystery / Thriller",
+      "category": "Audio Novels",
+      "status": "Ongoing",
+      "badge": "Audio Novel",
+      "cover": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80",
+      "description": "A gripping thriller set along a mysterious riverbank where uncovered secrets and suspense keep listeners captivated.",
+      "chapters_count": 12,
+      "views": "89,400",
+      "rating": "4.8",
+      "updated_date": "Part 06 Released",
+      "featured": 1,
+      "continue_reading": 0,
+      "is_audio": 1,
+      "audio_available": 1,
+      "audio_duration": "4h 25m",
+      "audio_voice": "Rudhra Prarthana",
+      "youtube_url": "https://www.youtube.com/@rudhraprarthanaaudionovels",
+      "trending_rank": 5,
+      "sort_order": 5,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=maaya-nadhi-theeram",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": "nenjam-marappadhillai",
+      "title": "Nenjam Marappadhillai",
+      "author": "Rudhra Prarthana",
+      "genre": "Family Drama / Romance",
+      "category": "Ongoing Novels",
+      "status": "Ongoing",
+      "badge": "Ongoing",
+      "cover": "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80",
+      "description": "Two souls living in different worlds are drawn together by the threads of fate, embarking on an emotional journey of family bonds and deep devotion.",
+      "chapters_count": 24,
+      "views": "148,200",
+      "rating": "4.9",
+      "updated_date": "Today (October 2026)",
+      "featured": 1,
+      "continue_reading": 1,
+      "is_audio": 0,
+      "audio_available": 1,
+      "audio_duration": null,
+      "audio_voice": "Rudhra Prarthana",
+      "youtube_url": "https://www.youtube.com/@rudhraprarthanaaudionovels",
+      "trending_rank": 1,
+      "sort_order": 1,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=nenjam-marappadhillai",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": "poongaatru-punnagaikka",
+      "title": "Poongaatru Punnagaikka",
+      "author": "Rudhra Prarthana",
+      "genre": "Short Stories / Feel Good",
+      "category": "Short Stories",
+      "status": "Completed",
+      "badge": "Short Story",
+      "cover": "https://images.unsplash.com/photo-1491841573634-28140fc7ced7?auto=format&fit=crop&w=600&q=80",
+      "description": "Heartwarming short stories bringing the gentle joys and relatable warmth of everyday life to readers.",
+      "chapters_count": 8,
+      "views": "64,300",
+      "rating": "4.7",
+      "updated_date": "Full Collection",
+      "featured": 0,
+      "continue_reading": 0,
+      "is_audio": 0,
+      "audio_available": 0,
+      "audio_duration": null,
+      "audio_voice": null,
+      "youtube_url": null,
+      "trending_rank": 6,
+      "sort_order": 6,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=poongaatru-punnagaikka",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": "uyire-unakkaga",
+      "title": "Uyire Unakkaga",
+      "author": "Rudhra Prarthana",
+      "genre": "Family / Emotional",
+      "category": "Completed Novels",
+      "status": "Completed",
+      "badge": "Completed",
+      "cover": "https://images.unsplash.com/photo-1476275466078-4007374efbbe?auto=format&fit=crop&w=600&q=80",
+      "description": "The inspiring story of a mother whose devotion and sacrifice guide her children through life's most meaningful crossroads.",
+      "chapters_count": 45,
+      "views": "340,900",
+      "rating": "5.0",
+      "updated_date": "Completed Novel",
+      "featured": 1,
+      "continue_reading": 0,
+      "is_audio": 0,
+      "audio_available": 1,
+      "audio_duration": null,
+      "audio_voice": "Rudhra Prarthana",
+      "youtube_url": "https://www.youtube.com/@rudhraprarthanaaudionovels",
+      "trending_rank": 3,
+      "sort_order": 3,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=uyire-unakkaga",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": "vizhigalil-vizhundha-kavithai",
+      "title": "Vizhigalil Vizhundha Kavithai",
+      "author": "Rudhra Prarthana",
+      "genre": "Romance / Poetry",
+      "category": "Completed Novels",
+      "status": "Completed",
+      "badge": "Completed",
+      "cover": "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=600&q=80",
+      "description": "A poetic tale where silent glances speak louder than words, chronicling a pure and enduring romance.",
+      "chapters_count": 36,
+      "views": "220,150",
+      "rating": "4.9",
+      "updated_date": "Completed Novel",
+      "featured": 0,
+      "continue_reading": 0,
+      "is_audio": 0,
+      "audio_available": 0,
+      "audio_duration": null,
+      "audio_voice": null,
+      "youtube_url": null,
+      "trending_rank": 4,
+      "sort_order": 4,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=vizhigalil-vizhundha-kavithai",
+      "created_at": "2026-10-21 22:13:55",
+      "updated_at": "2026-10-21 22:13:55"
+    }
+  ],
+  "password_resets": [
+    {
+      "id": 5,
+      "user_id": 2,
+      "email": "digitalmarkservices.in@gmail.com",
+      "otp_hash": "1f15322696190b54030e58c800b1ff753761c3f5b7999a9577268c577ce7f1fbea55c194d795d9d4bc699fdaea077d2d5b4298ff5f2d106d6cfae6f08c2e51bb",
+      "otp_salt": "cc24c2cae1c1906d98c243ea01f90ed9",
+      "attempts": 1,
+      "max_attempts": 5,
+      "expires_at": "2026-10-21 18:27:39",
+      "resend_after": "2026-10-21 18:13:33",
+      "reset_token": "f37346e6a4f67e1687d42b5838b1d02368eedec953da190c98f84e02907046ee",
+      "used": 1,
+      "created_at": "2026-10-21 18:12:33"
+    }
+  ],
+  "profiles": [
+    {
+      "user_id": 2,
+      "display_name": "Rudhra Prarthana",
+      "display_name_ta": "Rudhra Prarthana",
+      "avatar": "/profile.png",
+      "bio": "Writing is my soul. Deeply grateful for the immense love of novel readers.",
+      "bio_ta": "Writing is my soul. Deeply grateful for the immense love of novel readers.",
+      "title": "Author",
+      "title_ta": "எழுத்தாளர்",
+      "joined_date": "Jan 2024",
+      "posts_count": 2,
+      "topics_count": 0,
+      "followers_count": 0
+    },
+    {
+      "user_id": 8,
+      "display_name": "Harish",
+      "display_name_ta": "ஹரிஷ்",
+      "avatar": "/profile.png",
+      "bio": "Administrator and passionate reader of Rudhra Prarthana Novels.",
+      "bio_ta": "நாவல் பிரியர் மற்றும் நிர்வாகி.",
+      "title": "Admin",
+      "title_ta": "நிர்வாகி",
+      "joined_date": "Feb 2024",
+      "posts_count": 8,
+      "topics_count": 2,
+      "followers_count": 420
+    },
+    {
+      "user_id": 28,
+      "display_name": "Harish",
+      "display_name_ta": "Harish",
+      "avatar": null,
+      "bio": "",
+      "bio_ta": "",
+      "title": "Member",
+      "title_ta": "Member",
+      "joined_date": "Oct 2026",
+      "posts_count": 6,
+      "topics_count": 1,
+      "followers_count": 0
+    }
+  ],
+  "reactions": [
+    {
+      "id": 1,
+      "target_type": "novel",
+      "target_id": "en-uyiril-nee",
+      "user_id": 2,
+      "emoji": "👍",
+      "created_at": "2026-10-21 21:45:57"
+    },
+    {
+      "id": 2,
+      "target_type": "chapter",
+      "target_id": "nenjam-marappadhillai:24",
+      "user_id": 8,
+      "emoji": "❤️",
+      "created_at": "2026-10-14 10:31:00"
+    },
+    {
+      "id": 3,
+      "target_type": "chapter",
+      "target_id": "nenjam-marappadhillai:24",
+      "user_id": 2,
+      "emoji": "❤️",
+      "created_at": "2026-10-14 10:41:00"
+    },
+    {
+      "id": 4,
+      "target_type": "novel",
+      "target_id": "nenjam-marappadhillai",
+      "user_id": 8,
+      "emoji": "👍",
+      "created_at": "2026-10-14 10:32:00"
+    },
+    {
+      "id": 5,
+      "target_type": "novel",
+      "target_id": "kaadhal-konden-kanave",
+      "user_id": 8,
+      "emoji": "😍",
+      "created_at": "2026-10-13 19:05:00"
+    }
+  ],
+  "reading_progress": [
+    {
+      "id": 66,
+      "user_id": 8,
+      "novel_id": "nenjam-marappadhillai",
+      "chapter_num": "24",
+      "progress_percentage": 100,
+      "last_read_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 67,
+      "user_id": 8,
+      "novel_id": "kaadhal-konden-kanave",
+      "chapter_num": "18",
+      "progress_percentage": 100,
+      "last_read_at": "2026-10-21 22:13:55"
+    },
+    {
+      "id": 68,
+      "user_id": 28,
+      "novel_id": "maaya-nadhi-theeram",
+      "chapter_num": "1",
+      "progress_percentage": 100,
+      "last_read_at": "2026-10-21 23:06:03"
+    }
+  ],
+  "schema_migrations": [
+    {
+      "version": "001_initial_schema",
+      "applied_at": "2026-10-18 10:55:10"
+    },
+    {
+      "version": "002_seed_genuine_data",
+      "applied_at": "2026-10-18 10:55:10"
+    },
+    {
+      "version": "003_admin_episodes_scheduler",
+      "applied_at": "2026-10-20 07:50:26"
+    },
+    {
+      "version": "004_session_separation",
+      "applied_at": "2026-10-21 14:24:27"
+    },
+    {
+      "version": "005_enlarge_avatar_cover",
+      "applied_at": "2026-10-21 16:58:19"
+    }
+  ],
+  "sessions": [
+    {
+      "token": "047520d9a4b75fa42741780392c668fee9f941fe43751d4501ca923aaf41c547",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:39:53",
+      "created_at": "2026-10-21 19:39:53",
+      "session_type": "author"
+    },
+    {
+      "token": "09d15f94f4b1818f0e92ea171355bf6d80b4cb2b237379f05e7cd025b65c990d",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:17:42",
+      "created_at": "2026-10-21 22:17:42",
+      "session_type": "reader"
+    },
+    {
+      "token": "137a394590e57e31483f59a2ce7a04cd8efdbc9a479d302ad68c1071c2601de2",
+      "user_id": 2,
+      "expires_at": "2026-11-20 22:55:20",
+      "created_at": "2026-10-21 22:55:20",
+      "session_type": "author"
+    },
+    {
+      "token": "140748ae903b5e2c526a28d14dff8d4e7e84ee7d2bb93afd6bdcef15df27bf2d",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:22:29",
+      "created_at": "2026-10-21 19:22:29",
+      "session_type": "author"
+    },
+    {
+      "token": "1d7ea19d03033adbab4e600b3cc0505ef880b76d5ac9556aa237ce08b1b62949",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:55:53",
+      "created_at": "2026-10-21 18:55:53",
+      "session_type": "author"
+    },
+    {
+      "token": "324937272a313d7f5b7a5c85547a81d872a6b9c60d782b77aeb012a4a8a881b1",
+      "user_id": 2,
+      "expires_at": "2026-11-20 20:53:21",
+      "created_at": "2026-10-21 20:53:21",
+      "session_type": "author"
+    },
+    {
+      "token": "3dc0b4c9716131d69e23e81a4109985529e9e37f21d7d437f37b73a6e39c0aa4",
+      "user_id": 2,
+      "expires_at": "2026-11-20 21:36:33",
+      "created_at": "2026-10-21 21:36:33",
+      "session_type": "reader"
+    },
+    {
+      "token": "44b4a0b0bdec00d743c9e61d965aa3f58fc627b8535bde415dd559f547601f73",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:17:20",
+      "created_at": "2026-10-21 22:17:20",
+      "session_type": "reader"
+    },
+    {
+      "token": "44c23939d69c1e9c07e8f6021bc7fc4136c5bd992f74c87e01bf66294638473e",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:12:40",
+      "created_at": "2026-10-21 18:12:40",
+      "session_type": "author"
+    },
+    {
+      "token": "44d839f28e2b27ddeefa0c4a784c32de9650c62db38b99a86595ffbe0e921a5c",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:26:47",
+      "created_at": "2026-10-21 22:26:47",
+      "session_type": "reader"
+    },
+    {
+      "token": "474e25cd67cbc413a08bb762f2fb48c295b8259e5f368cb2f3b9baec442fcd87",
+      "user_id": 28,
+      "expires_at": "2026-11-20 21:36:33",
+      "created_at": "2026-10-21 21:36:33",
+      "session_type": "reader"
+    },
+    {
+      "token": "49db5335167087d4d50d77a7a3f08aad8cd122613b32a6d384ae2696b62a1f6d",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:45:51",
+      "created_at": "2026-10-21 19:45:51",
+      "session_type": "author"
+    },
+    {
+      "token": "4af0fdc157770029c233a9b79a76f14bd8baec0a8cd660b9bb7c6d14ba0a6a69",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:55:43",
+      "created_at": "2026-10-21 22:55:43",
+      "session_type": "reader"
+    },
+    {
+      "token": "4dfdd560e9a09d5f5ab23b1ed5428e40c99bc9f31bb645a454c65e757893524d",
+      "user_id": 2,
+      "expires_at": "2026-11-20 12:59:55",
+      "created_at": "2026-10-21 18:29:55",
+      "session_type": "author"
+    },
+    {
+      "token": "4f66eb31d9419a68faa9a24f9aec2dfcd71a51b85c2730cc5b747e835d93bf85",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:45:09",
+      "created_at": "2026-10-21 19:45:09",
+      "session_type": "author"
+    },
+    {
+      "token": "4f8d54491a19bc839a2db49fa6dcd79d354599f291b91ac0515c4e42eafd14d3",
+      "user_id": 2,
+      "expires_at": "2026-11-20 13:00:56",
+      "created_at": "2026-10-21 18:30:56",
+      "session_type": "author"
+    },
+    {
+      "token": "5879c59230bbe2e68e223086fcc9d8c35f5492a14788a73ccd3d472b1daeb03f",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:18:21",
+      "created_at": "2026-10-21 22:18:21",
+      "session_type": "reader"
+    },
+    {
+      "token": "5b8443f4b953cc10d1afc981e217801e8ee88a8dc2c2c3f7b574f87e27c9e6ae",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:29:53",
+      "created_at": "2026-10-21 18:29:53",
+      "session_type": "author"
+    },
+    {
+      "token": "61c59c2b6bdfea292949f683e55c535db3198fbdd30ca25517c19f5590069523",
+      "user_id": 2,
+      "expires_at": "2026-11-20 22:55:20",
+      "created_at": "2026-10-21 22:55:20",
+      "session_type": "author"
+    },
+    {
+      "token": "62f6b43c873417038723a851e368b97db2c40270b15925c75e4b9f8b270bf26f",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:43:44",
+      "created_at": "2026-10-21 19:43:44",
+      "session_type": "author"
+    },
+    {
+      "token": "632064c6439ec9714097a14828ab62cb53757a89465cfeaffe16f597a4acb825",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:45:56",
+      "created_at": "2026-10-21 18:45:56",
+      "session_type": "author"
+    },
+    {
+      "token": "735c0b41c2088145fd76894153ef03f1c2424be45ac296f51e22a49a7d61942d",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:57:13",
+      "created_at": "2026-10-21 22:57:13",
+      "session_type": "reader"
+    },
+    {
+      "token": "753e4bf29bd2dfd1d7be5c15ee154793c996394efa2e646cb30f9856efd73018",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:45:53",
+      "created_at": "2026-10-21 19:45:53",
+      "session_type": "author"
+    },
+    {
+      "token": "76fa08fef91b981e406d71fd64d0f6e006e5937e63c322af8cddfc21e93e8abc",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:12:40",
+      "created_at": "2026-10-21 18:12:40",
+      "session_type": "author"
+    },
+    {
+      "token": "7a01b4e914a345c6485a5358bb2ddf7d3d8330607a7b9168af99a75c424e843c",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:15:06",
+      "created_at": "2026-10-21 22:15:06",
+      "session_type": "reader"
+    },
+    {
+      "token": "7d5fdfe1b2b47c9a1abdf781a760316f73d00a20f81f390aa3c2503ff3c73434",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:14:13",
+      "created_at": "2026-10-21 22:14:13",
+      "session_type": "reader"
+    },
+    {
+      "token": "848d8876f501af172ee472921e702ae68fd16fe2f49f37962381b64abeeb6440",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:39:46",
+      "created_at": "2026-10-21 19:39:46",
+      "session_type": "author"
+    },
+    {
+      "token": "895e3d795c7dd8c327c214d3ebfc1fb36104b947eb117ee6d076316b0c4d69ac",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:21:59",
+      "created_at": "2026-10-21 19:21:59",
+      "session_type": "author"
+    },
+    {
+      "token": "8a86c821356984e09d346c8042ced9465e67bc5e8878b4c98e1830ff2606563a",
+      "user_id": 28,
+      "expires_at": "2026-11-20 18:30:56",
+      "created_at": "2026-10-21 18:30:56",
+      "session_type": "reader"
+    },
+    {
+      "token": "8c738398e8cb3bb906cb8ce96fcc1e38ae2d2d3b8acfaf6612119916fab8c31a",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:38:00",
+      "created_at": "2026-10-21 19:38:00",
+      "session_type": "author"
+    },
+    {
+      "token": "8e8a72b7441df3e6adfa96a06f387de9592bee7d95624272fa495492109c1c64",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:22:02",
+      "created_at": "2026-10-21 19:22:02",
+      "session_type": "author"
+    },
+    {
+      "token": "8faf1cb7fe34ef95b00bf41cfc64fda300b8ff01455d68ba9f91be73ae27b911",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:54:48",
+      "created_at": "2026-10-21 18:54:48",
+      "session_type": "author"
+    },
+    {
+      "token": "918d71e22dc3c462c9469b91a6a587a00166d46bd84ead68a4e816e1945a2933",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:31:26",
+      "created_at": "2026-10-21 18:31:26",
+      "session_type": "author"
+    },
+    {
+      "token": "91bf887e58468c024f72b2e8c48947d3ba3535b14eb25dca1bef6dbcdc0da278",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:46:49",
+      "created_at": "2026-10-21 19:46:49",
+      "session_type": "author"
+    },
+    {
+      "token": "91d8339d4c6baaa864a5b1b145f538d5264f462d53976b66aa3e95b1022b60c5",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:43:42",
+      "created_at": "2026-10-21 19:43:42",
+      "session_type": "author"
+    },
+    {
+      "token": "91e6ece345842a875b89fb46355734e948f465dabad447d8de28baef1769a033",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:56:41",
+      "created_at": "2026-10-21 18:56:41",
+      "session_type": "author"
+    },
+    {
+      "token": "9446e06e2f0cd2fa0f84ac3b0dccd37c2ba3fc5192b535e2c2b4c9882a0039e1",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:56:38",
+      "created_at": "2026-10-21 18:56:38",
+      "session_type": "author"
+    },
+    {
+      "token": "986e232bdce4294b7e702275c17b48107b33acbbfc4cb583e774fa0a9d6cef60",
+      "user_id": 2,
+      "expires_at": "2026-11-20 20:53:47",
+      "created_at": "2026-10-21 20:53:47",
+      "session_type": "author"
+    },
+    {
+      "token": "a0a934c01e5fc969b28b271ac5bc4cdd08dcc3f26e7a616d5bc049c519286dd4",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:50:27",
+      "created_at": "2026-10-21 22:50:27",
+      "session_type": "reader"
+    },
+    {
+      "token": "a6853db6d42869fb5e84c25c9d4f461a8488c97ff2aa976e198f535f4a311a46",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:22:26",
+      "created_at": "2026-10-21 19:22:26",
+      "session_type": "author"
+    },
+    {
+      "token": "aae984c58c143234b9c88c4e3295c57d9225312d8330b8c4c662ea10348cfcc4",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:20:47",
+      "created_at": "2026-10-21 19:20:47",
+      "session_type": "author"
+    },
+    {
+      "token": "b072eab582f1b285d357684da712bc1cd48f57435faa847a314068201ede0557",
+      "user_id": 2,
+      "expires_at": "2026-11-20 22:55:53",
+      "created_at": "2026-10-21 22:55:53",
+      "session_type": "author"
+    },
+    {
+      "token": "b62a127bbfbcf8c20bc848c7aa21ecc6cfdbb6bc05eec6e47b77a7feaf8264d0",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:46:46",
+      "created_at": "2026-10-21 19:46:46",
+      "session_type": "author"
+    },
+    {
+      "token": "bb4fc4b2aa5a57dba7000d812b5c7a89e1f090a6a2d84ea8fa37f2401587e091",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:55:50",
+      "created_at": "2026-10-21 18:55:50",
+      "session_type": "author"
+    },
+    {
+      "token": "bd8fb467a2d7b61a1378be941830a357238f3adf99ecf66753492541330d6c87",
+      "user_id": 28,
+      "expires_at": "2026-11-20 23:05:55",
+      "created_at": "2026-10-21 23:05:55",
+      "session_type": "reader"
+    },
+    {
+      "token": "c0cc464e623787905ffb7090eca5beae0c5f86d39be77dccbaafc17cb752972f",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:19:22",
+      "created_at": "2026-10-21 19:19:22",
+      "session_type": "author"
+    },
+    {
+      "token": "c385faa2a27340d661a63d9896524279967dfaf955366ef9d6703588e42b95bb",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:53:31",
+      "created_at": "2026-10-21 18:53:31",
+      "session_type": "author"
+    },
+    {
+      "token": "c3ee49d4537397dee45fc0b9e57f9adb80be47eaee3524f63612b25ab9dbc76e",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:19:06",
+      "created_at": "2026-10-21 22:19:06",
+      "session_type": "reader"
+    },
+    {
+      "token": "c90a77f264ae0a8721966c4a086605335327cee8f9d68769576d1a0eae6dc9cf",
+      "user_id": 2,
+      "expires_at": "2026-11-20 13:15:58",
+      "created_at": "2026-10-21 18:45:58",
+      "session_type": "author"
+    },
+    {
+      "token": "cccd347e74b2f969b9af73a9a7368a1a5ed926ddebd41e39fa155ec1c01e75ea",
+      "user_id": 28,
+      "expires_at": "2026-11-20 20:07:30",
+      "created_at": "2026-10-21 20:07:30",
+      "session_type": "reader"
+    },
+    {
+      "token": "d21134605487e0cf71cb889d39f043d62f2800a4897f233427167b94a62dc2c2",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:54:07",
+      "created_at": "2026-10-21 18:54:07",
+      "session_type": "author"
+    },
+    {
+      "token": "d2153e2b984d6a80f30f85f30a513a1b10df51c7f53326b001ebbd43ebf3b9ae",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:52:44",
+      "created_at": "2026-10-21 18:52:44",
+      "session_type": "author"
+    },
+    {
+      "token": "d22448e7026f5d3bf502458ac46d8de1e2658bacb48621e1bf448f1cf90d3d03",
+      "user_id": 2,
+      "expires_at": "2026-11-20 22:55:14",
+      "created_at": "2026-10-21 22:55:14",
+      "session_type": "author"
+    },
+    {
+      "token": "d6b3103cd8e699e57aa7094ef694b2ff2be3c23fb7899c28f4cde1fcf19c04d3",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:20:50",
+      "created_at": "2026-10-21 19:20:50",
+      "session_type": "author"
+    },
+    {
+      "token": "dab1dfd0bc56bb89c6709a9b9d4b21001bc81243445cd40b184cc6c89ed9efbf",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:45:06",
+      "created_at": "2026-10-21 19:45:06",
+      "session_type": "author"
+    },
+    {
+      "token": "dfe67613c6b70c2ff4ba0dbfbdd8dc946b84828db17e21b80fa4aaf95672a1a8",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:58:33",
+      "created_at": "2026-10-21 22:58:33",
+      "session_type": "reader"
+    },
+    {
+      "token": "e279137be1a00c91bf8e940415af18b69b4cd83905376ac67c6c94933fd0899e",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:50:08",
+      "created_at": "2026-10-21 18:50:08",
+      "session_type": "author"
+    },
+    {
+      "token": "e3b1d10c3997c73a0fd632af85e3d81469e29e5443e621ad312811d54f5f17d0",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:47:19",
+      "created_at": "2026-10-21 18:47:19",
+      "session_type": "127.0.0.1"
+    },
+    {
+      "token": "e81ea05b928854b10ddd846ce8bad7f15a809b0c84b796b4f873a995585eaa28",
+      "user_id": 2,
+      "expires_at": "2026-11-20 19:19:25",
+      "created_at": "2026-10-21 19:19:25",
+      "session_type": "author"
+    },
+    {
+      "token": "e8f02af5b457956b8dc23a60d34d75ab972e6f53caf34399bdcbe81c941b9604",
+      "user_id": 2,
+      "expires_at": "2026-11-20 20:22:04",
+      "created_at": "2026-10-21 20:22:04",
+      "session_type": "author"
+    },
+    {
+      "token": "f0332f1e077d79a8e9fa674e58315d504d1c496eadb1cc0da19ab3040d40ea62",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:53:10",
+      "created_at": "2026-10-21 18:53:10",
+      "session_type": "author"
+    },
+    {
+      "token": "f3efe333867829081115606e66cf55efa69c80c0fa325e3a7b58d17df0450c44",
+      "user_id": 2,
+      "expires_at": "2026-11-20 18:48:41",
+      "created_at": "2026-10-21 18:48:41",
+      "session_type": "author"
+    },
+    {
+      "token": "fe4db76526f8f8e484170a017e28a91c95b8113959d5e96feb93b721bbaa3ccc",
+      "user_id": 2,
+      "expires_at": "2026-11-20 20:53:50",
+      "created_at": "2026-10-21 20:53:50",
+      "session_type": "author"
+    },
+    {
+      "token": "fe60ef54a60c62b218e81bcb07ea104c2d6b79c913a9ad47a6dcf461b682b35a",
+      "user_id": 28,
+      "expires_at": "2026-11-20 22:08:30",
+      "created_at": "2026-10-21 22:08:30",
+      "session_type": "reader"
+    }
+  ],
+  "site_settings": [
+    {
+      "setting_key": "author_name",
+      "setting_value": "Rudhra Prarthana",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "default_timezone",
+      "setting_value": "Asia/Kolkata",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "editor_autosave_interval",
+      "setting_value": "30",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "site_title",
+      "setting_value": "Rudhra Prarthana Novels",
+      "updated_at": "2026-10-20 07:50:26"
+    }
+  ],
+  "users": [
+    {
+      "id": 2,
+      "username": "rudhra_author",
+      "email": "rudhra@rpnovels.com",
+      "password_hash": "030279cef60e30bae7c83cf5d12fc9a9649fba1ffab805bf70b457b3eb3d467e5d1c2bf89f21e3d69723db6ebab4b8cc446668f8b05ca60d6c57c6d5276e6d56",
+      "salt": "1a15b0b3193c167e5eb44360ab67de7c",
+      "role": "Admin",
+      "created_at": "2026-10-18 10:55:10",
+      "updated_at": "2026-10-21 22:13:44"
+    },
+    {
+      "id": 28,
+      "username": "harish",
+      "email": "harish89460@gmail.com",
+      "password_hash": "b925515c30297c02b0fe79e7c158b0ade4858d7385d755e507fb8651d0600d6a81a2b7f16e4c12e91c2d1479f7c42bbb943ea5dfa4fb2653858a212af8061310",
+      "salt": "9ecf5371ebd3df8200b8dd4faceed6e0",
+      "role": "Admin",
+      "created_at": "2026-10-21 17:07:57",
+      "updated_at": "2026-10-21 22:13:44"
+    }
+  ]
+}

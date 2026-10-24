@@ -34,7 +34,7 @@ export function initReader() {
       date: new Date().toLocaleDateString(),
       scrollY: window.scrollY
     }));
-    showToast(`அத்தியாயம் ${chNum} புக்மார்க் செய்யப்பட்டது! ✨`);
+    showToast(`Chapter ${chNum} bookmarked! ✨`);
   };
 
   window.shareChapter = (type, title) => {
@@ -45,7 +45,7 @@ export function initReader() {
       window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
     } else if (type === 'copy') {
       navigator.clipboard.writeText(url).then(() => {
-        showToast('இணைப்பு நகலெடுக்கப்பட்டது! 📋');
+        showToast('Link copied to clipboard! 📋');
       });
     }
   };

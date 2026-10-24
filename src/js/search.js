@@ -1,12 +1,15 @@
-// Global Search Controller
+// Global Search Controller with Dynamic SQL Data Querying
 
-import { SITE_DATA } from './data.js';
-import { t, getLanguage } from './i18n.js';
+import { t } from './i18n.js';
+import { getNovelsList, getForumTopics, getMembersList } from './content-service.js';
 
 let activeSearchFilter = 'all';
+let cachedSearchNovels = [];
+let cachedSearchTopics = [];
+let cachedSearchMembers = [];
 
 export function initSearch() {
-  window.openSearchModal = () => {
+  window.openSearchModal = async () => {
     const modal = document.getElementById('search-modal');
     if (modal) {
       modal.classList.add('open');
@@ -15,6 +18,7 @@ export function initSearch() {
         input.value = '';
         input.focus();
       }
+      await refreshSearchIndex();
       renderSearchResults('');
     }
   };
@@ -51,58 +55,71 @@ export function initSearch() {
   }
 }
 
+async function refreshSearchIndex() {
+  try {
+    const [novels, topics, membersData] = await Promise.all([
+      getNovelsList({ all: true }),
+      getForumTopics(),
+      getMembersList()
+    ]);
+    if (novels && Array.isArray(novels)) cachedSearchNovels = novels;
+    if (topics && Array.isArray(topics)) cachedSearchTopics = topics;
+    if (membersData && Array.isArray(membersData.members)) cachedSearchMembers = membersData.members;
+  } catch (err) {
+    console.warn('[Search] Index refresh notice:', err);
+  }
+}
+
 function renderSearchResults(query) {
   const container = document.getElementById('search-results-container');
   if (!container) return;
 
   const q = query.trim().toLowerCase();
   const results = [];
-  const isTa = getLanguage() === 'ta';
 
-  // Search Novels
+  // Search Novels from SQL
   if (activeSearchFilter === 'all' || activeSearchFilter === 'novels') {
-    SITE_DATA.novels.forEach(n => {
-      if (!q || n.title.toLowerCase().includes(q) || n.tamilTitle.toLowerCase().includes(q) || n.genre.toLowerCase().includes(q)) {
-        const title = isTa ? n.tamilTitle : n.title;
-        const author = isTa ? n.author : 'Rudhra Prarthana';
-        const subtitle = isTa ? `எழுத்தாளர்: ${author} • ${n.chaptersCount} அத்தியாயங்கள்` : `Author: ${author} • ${n.chaptersCount} Chapters`;
+    cachedSearchNovels.forEach(n => {
+      if (!q || n.title.toLowerCase().includes(q) || (n.genre && n.genre.toLowerCase().includes(q))) {
+        const title = n.title;
+        const author = n.author || 'Rudhra Prarthana';
+        const count = n.chaptersCount !== undefined ? n.chaptersCount : (n.chapters ? n.chapters.length : '');
+        const subtitle = `Author: ${author}${count ? ` • ${count} Chapters` : ''}`;
         results.push({
-          type: isTa ? 'நாவல்' : 'Novel',
+          type: 'Novel',
           title: title,
           subtitle: subtitle,
-          link: `#novel?id=${n.id}`
+          link: `#novel?id=${encodeURIComponent(n.id)}`
         });
       }
     });
   }
 
-  // Search Forum Topics
+  // Search Forum Topics from SQL
   if (activeSearchFilter === 'all' || activeSearchFilter === 'topics') {
-    SITE_DATA.forumTopics.forEach(t => {
-      if (!q || t.title.toLowerCase().includes(q) || t.categoryTitle.toLowerCase().includes(q)) {
-        const subtitle = isTa ? `பிரிவு: ${t.categoryTitle} • ${t.repliesCount} பதில்கள்` : `Category: ${t.categoryTitle} • ${t.repliesCount} Replies`;
+    cachedSearchTopics.forEach(t => {
+      if (!q || t.title.toLowerCase().includes(q) || (t.categoryTitle && t.categoryTitle.toLowerCase().includes(q))) {
+        const subtitle = `Category: ${t.categoryTitle || 'Discussions'} • ${t.repliesCount || 0} Replies`;
         results.push({
-          type: isTa ? 'விவாதம்' : 'Topic',
+          type: 'Topic',
           title: t.title,
           subtitle: subtitle,
-          link: `#topic?id=${t.id}`
+          link: `#topic?id=${encodeURIComponent(t.id)}`
         });
       }
     });
   }
 
-  // Search Members
+  // Search Members from SQL
   if (activeSearchFilter === 'all' || activeSearchFilter === 'members') {
-    (SITE_DATA.members || []).forEach(m => {
-      const name = m.displayName || m.name || m.username || '';
+    cachedSearchMembers.forEach(m => {
+      const name = m.displayName || m.username || '';
       const username = m.username || '';
-      const role = m.role || '';
-      if (!q || name.toLowerCase().includes(q) || username.toLowerCase().includes(q) || role.toLowerCase().includes(q)) {
-        const title = m.title || 'Member';
-        const posts = m.postsCount || m.posts || 0;
-        const subtitle = isTa ? `${title} • ${posts} பதிவுகள்` : `${title} • ${posts} Posts`;
+      if (!q || name.toLowerCase().includes(q) || username.toLowerCase().includes(q)) {
+        const posts = m.posts || m.postsCount || 0;
+        const subtitle = `Member • ${posts} Posts`;
         results.push({
-          type: isTa ? 'உறுப்பினர்' : 'Member',
+          type: 'Member',
           title: `${name} (@${username})`,
           subtitle: subtitle,
           link: `#member?id=${encodeURIComponent(username || m.id)}`

@@ -1,11 +1,13 @@
-// Authentication & User Role Manager
+// Authentication & User Session Manager
 
 import { showToast } from './reader.js';
-import { t, getLanguage } from './i18n.js';
+import { t } from './i18n.js';
 import { apiFetch } from './errors.js';
+import { connectRealtimeNotificationStream, updateNotificationBadge } from './notifications.js';
+import { updateAuthorWriterHeader } from './author-header.js';
 
-window.CURRENT_USER_ROLE = localStorage.getItem('rp_user_role') || 'Registered Member';
-window.IS_LOGGED_IN = window.CURRENT_USER_ROLE !== 'Guest';
+window.IS_LOGGED_IN = Boolean(localStorage.getItem('rp_auth_token'));
+window.CURRENT_USER = null;
 
 export function initAuth() {
   window.openAuthModal = (view = 'login') => {
@@ -40,7 +42,6 @@ export function initAuth() {
   window.switchAuthView = (view) => {
     const container = document.getElementById('auth-form-container');
     const title = document.getElementById('auth-modal-title');
-    const isTa = getLanguage() === 'ta';
     if (!container) return;
 
     if (view === 'login') {
@@ -70,7 +71,7 @@ export function initAuth() {
           <button type="submit" id="login-submit-btn" class="btn btn-gold" style="width:100%;">${t('btn_login')}</button>
           
           <div class="auth-security-note">
-            <span>🔒 SSL Encrypted & Local Database Protected</span>
+            <span>🔒 SSL Encrypted & Protected Session</span>
           </div>
 
           <div class="auth-switch-links">
@@ -88,8 +89,8 @@ export function initAuth() {
             <input type="text" id="reg-username" class="form-input" placeholder="e.g. priya_reader" required autocomplete="username">
           </div>
           <div class="form-group">
-            <label class="form-label">${isTa ? 'காட்சிப் பெயர் (Display Name)' : 'Display Name'}</label>
-            <input type="text" id="reg-displayname" class="form-input" placeholder="${isTa ? 'உங்கள் விருப்பப் பெயர்' : 'Your display name (Optional)'}">
+            <label class="form-label">Display Name</label>
+            <input type="text" id="reg-displayname" class="form-input" placeholder="Your display name (Optional)">
           </div>
           <div class="form-group">
             <label class="form-label">${t('auth_email_label')} <span style="color:#EF4444;">*</span></label>
@@ -105,7 +106,7 @@ export function initAuth() {
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">${isTa ? 'கடவுச்சொல்லை உறுதிப்படுத்துக' : 'Confirm Password'} <span style="color:#EF4444;">*</span></label>
+            <label class="form-label">Confirm Password <span style="color:#EF4444;">*</span></label>
             <div style="position:relative; display:flex; align-items:center;">
               <input type="password" id="reg-confirm-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required minlength="6" autocomplete="new-password">
               <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reg-confirm-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
@@ -201,7 +202,7 @@ export function initAuth() {
               </button>
             </div>
             <small style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">
-              ${isTa ? 'குறைந்தது 6 எழுத்துக்கள் இருக்க வேண்டும்.' : 'Must be at least 6 characters long.'}
+              Must be at least 6 characters long.
             </small>
           </div>
 
@@ -225,20 +226,20 @@ export function initAuth() {
         </form>
       `;
     } else if (view === 'forgot-success') {
-      if (title) title.innerText = isTa ? 'கடவுச்சொல் மாற்றப்பட்டது!' : 'Success!';
+      if (title) title.innerText = 'Success!';
       const email = window.FORGOT_STATE?.email || '';
       container.innerHTML = `
         <div style="text-align:center; padding:16px 8px;">
           <div style="font-size:52px; margin-bottom:12px; line-height:1;">🎉</div>
           <h3 style="color:var(--color-navy-deep); font-size:1.3rem; margin-bottom:8px; font-family:var(--font-serif);">
-            ${isTa ? 'கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது!' : 'Password Reset Complete!'}
+            Password Reset Complete!
           </h3>
           <p style="color:var(--color-text-muted); font-size:14px; line-height:1.6; margin-bottom:24px;">
-            ${isTa ? 'உங்கள் கணக்கிற்கான புதிய கடவுச்சொல் வெற்றிகரமாகப் புதுப்பிக்கப்பட்டது. இப்போது உங்கள் புதிய கடவுச்சொல்லுடன் உள்நுழையலாம்.' : 'Your account password has been updated. You can now log in using your new password.'}
+            Your account password has been updated. You can now log in using your new password.
           </p>
 
           <button class="btn btn-gold" style="width:100%;" onclick="switchAuthView('login'); const el = document.getElementById('login-username'); if(el) el.value = '${email}';">
-            ${isTa ? 'உள்நுழைய செல்லவும் ➔' : 'Proceed to Login ➔'}
+            Proceed to Login ➔
           </button>
         </div>
       `;
@@ -269,7 +270,7 @@ export function initAuth() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        const errorText = data.error || (getLanguage() === 'ta' ? 'உள்நுழைவு தோல்வியடைந்தது.' : 'Login failed.');
+        const errorText = data.error || 'Login failed.';
         if (errorEl) {
           errorEl.textContent = errorText;
           errorEl.style.display = 'block';
@@ -279,15 +280,14 @@ export function initAuth() {
       }
 
       localStorage.setItem('rp_auth_token', data.token);
-      localStorage.setItem('rp_user_role', data.user.role);
       window.CURRENT_USER = data.user;
-      window.CURRENT_USER_ROLE = data.user.role;
       window.IS_LOGGED_IN = true;
       window.closeAuthModal();
 
-      const msg = getLanguage() === 'ta' ? 'வெற்றிகரமாக உள்நுழைந்துள்ளீர்கள்! ✨' : 'Logged in successfully! Welcome! ✨';
-      showToast(msg);
+      showToast('Logged in successfully! Welcome! ✨');
       updateHeaderUserArea();
+      connectRealtimeNotificationStream();
+      updateNotificationBadge();
 
       // Check redirect destination (e.g. from restricted chapter or audio)
       const redirectHash = sessionStorage.getItem('rp_auth_redirect');
@@ -300,7 +300,7 @@ export function initAuth() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      const errMsg = getLanguage() === 'ta' ? 'பிணையப் பிழை. மீண்டும் முயற்சிக்கவும்.' : 'Network error during login.';
+      const errMsg = 'Network error during login.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -322,7 +322,6 @@ export function initAuth() {
     const confirmPasswordInput = document.getElementById('reg-confirm-password');
     const submitBtn = document.getElementById('register-submit-btn');
     const errorEl = document.getElementById('auth-error-msg');
-    const isTa = getLanguage() === 'ta';
     if (errorEl) errorEl.style.display = 'none';
 
     const username = usernameInput?.value?.trim();
@@ -334,7 +333,7 @@ export function initAuth() {
     if (!username || !email || !password) return;
 
     if (password !== confirmPassword) {
-      const errMatch = isTa ? 'கடவுச்சொற்கள் பொருந்தவில்லை!' : 'Passwords do not match!';
+      const errMatch = 'Passwords do not match!';
       if (errorEl) {
         errorEl.textContent = errMatch;
         errorEl.style.display = 'block';
@@ -356,7 +355,7 @@ export function initAuth() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        const errorText = data.error || (isTa ? 'பதிவு தோல்வியடைந்தது.' : 'Registration failed.');
+        const errorText = data.error || 'Registration failed.';
         if (errorEl) {
           errorEl.textContent = errorText;
           errorEl.style.display = 'block';
@@ -366,15 +365,14 @@ export function initAuth() {
       }
 
       localStorage.setItem('rp_auth_token', data.token);
-      localStorage.setItem('rp_user_role', data.user.role);
       window.CURRENT_USER = data.user;
-      window.CURRENT_USER_ROLE = data.user.role;
       window.IS_LOGGED_IN = true;
       window.closeAuthModal();
 
-      const msg = isTa ? 'உங்கள் கணக்கு உருவாக்கப்பட்டது! 🎉' : 'Account created successfully! 🎉';
-      showToast(msg);
+      showToast('Account created successfully! 🎉');
       updateHeaderUserArea();
+      connectRealtimeNotificationStream();
+      updateNotificationBadge();
 
       // Check redirect destination
       const redirectHash = sessionStorage.getItem('rp_auth_redirect');
@@ -387,7 +385,7 @@ export function initAuth() {
       }
     } catch (err) {
       console.error('Registration error:', err);
-      const errMsg = isTa ? 'பிணையப் பிழை. மீண்டும் முயற்சிக்கவும்.' : 'Network error during registration.';
+      const errMsg = 'Network error during registration.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -423,7 +421,7 @@ export function initAuth() {
       countdownEl.textContent = `⏱ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
       if (window.FORGOT_STATE.remainingSeconds <= 0) {
         clearInterval(window.FORGOT_STATE.timerInterval);
-        countdownEl.textContent = getLanguage() === 'ta' ? 'காலாவதியாகிவிட்டது!' : 'Expired!';
+        countdownEl.textContent = 'Expired!';
         countdownEl.style.color = '#EF4444';
         const verifyBtn = document.getElementById('verify-otp-btn');
         if (verifyBtn) verifyBtn.disabled = true;
@@ -446,16 +444,13 @@ export function initAuth() {
     }
     const resendBtn = document.getElementById('resend-otp-btn');
     if (!resendBtn) return;
-    const isTa = getLanguage() === 'ta';
 
     const updateBtn = () => {
       const btn = document.getElementById('resend-otp-btn');
       if (!btn) return;
       if (window.FORGOT_STATE.cooldownRemaining > 0) {
         btn.disabled = true;
-        btn.textContent = isTa 
-          ? `மீண்டும் அனுப்ப (${window.FORGOT_STATE.cooldownRemaining}வி)` 
-          : `Resend OTP (${window.FORGOT_STATE.cooldownRemaining}s)`;
+        btn.textContent = `Resend OTP (${window.FORGOT_STATE.cooldownRemaining}s)`;
         btn.style.opacity = '0.6';
       } else {
         btn.disabled = false;
@@ -516,7 +511,6 @@ export function initAuth() {
     const emailInput = document.getElementById('forgot-email');
     const sendBtn = document.getElementById('forgot-send-btn');
     const errorEl = document.getElementById('auth-error-msg');
-    const isTa = getLanguage() === 'ta';
     if (errorEl) errorEl.style.display = 'none';
 
     const email = emailInput?.value?.trim().toLowerCase();
@@ -536,7 +530,7 @@ export function initAuth() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const errMsg = isTa && data.errorTa ? data.errorTa : (data.error || 'Failed to send OTP.');
+        const errMsg = data.error || 'Failed to send OTP.';
         if (errorEl) {
           errorEl.textContent = errMsg;
           errorEl.style.display = 'block';
@@ -549,12 +543,11 @@ export function initAuth() {
       window.FORGOT_STATE.remainingSeconds = data.expiresInSeconds || 300;
       window.FORGOT_STATE.cooldownRemaining = data.cooldownSeconds || 60;
 
-      const successMsg = isTa ? 'சரிபார்ப்புக் குறியீடு அனுப்பப்பட்டது! 📩' : 'Verification code sent to email! 📩';
-      showToast(successMsg);
+      showToast('Verification code sent to email! 📩');
       switchAuthView('forgot-otp');
     } catch (err) {
       console.error('Request OTP error:', err);
-      const errMsg = isTa ? 'பிணையப் பிழை. மீண்டும் முயற்சிக்கவும்.' : 'Network error. Please try again.';
+      const errMsg = 'Network error. Please try again.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -572,7 +565,6 @@ export function initAuth() {
     const inputs = document.querySelectorAll('#otp-inputs-container .otp-digit');
     const verifyBtn = document.getElementById('verify-otp-btn');
     const errorEl = document.getElementById('auth-error-msg');
-    const isTa = getLanguage() === 'ta';
     if (errorEl) errorEl.style.display = 'none';
 
     let otp = '';
@@ -581,7 +573,7 @@ export function initAuth() {
     });
 
     if (otp.length !== 6) {
-      const errMsg = isTa ? 'முழுமையான 6 இலக்க OTP குறியீட்டை உள்ளிடவும்.' : 'Please enter the complete 6-digit OTP code.';
+      const errMsg = 'Please enter the complete 6-digit OTP code.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -604,7 +596,7 @@ export function initAuth() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const errMsg = isTa && data.errorTa ? data.errorTa : (data.error || 'Invalid OTP code.');
+        const errMsg = data.error || 'Invalid OTP code.';
         if (errorEl) {
           errorEl.textContent = errMsg;
           errorEl.style.display = 'block';
@@ -619,11 +611,11 @@ export function initAuth() {
       if (window.FORGOT_STATE.timerInterval) clearInterval(window.FORGOT_STATE.timerInterval);
       if (window.FORGOT_STATE.cooldownInterval) clearInterval(window.FORGOT_STATE.cooldownInterval);
 
-      showToast(isTa ? 'OTP சரிபார்க்கப்பட்டது! ✨' : 'OTP verified successfully! ✨');
+      showToast('OTP verified successfully! ✨');
       switchAuthView('forgot-new-password');
     } catch (err) {
       console.error('Verify OTP error:', err);
-      const errMsg = isTa ? 'சரிபார்ப்பில் பிழை ஏற்பட்டது.' : 'Error verifying OTP.';
+      const errMsg = 'Error verifying OTP.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -640,7 +632,6 @@ export function initAuth() {
   window.handleForgotResendOtp = async () => {
     const resendBtn = document.getElementById('resend-otp-btn');
     const errorEl = document.getElementById('auth-error-msg');
-    const isTa = getLanguage() === 'ta';
     if (errorEl) errorEl.style.display = 'none';
 
     if (window.FORGOT_STATE.cooldownRemaining > 0) {
@@ -661,7 +652,7 @@ export function initAuth() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const errMsg = isTa && data.errorTa ? data.errorTa : (data.error || 'Failed to resend OTP.');
+        const errMsg = data.error || 'Failed to resend OTP.';
         if (errorEl) {
           errorEl.textContent = errMsg;
           errorEl.style.display = 'block';
@@ -682,10 +673,10 @@ export function initAuth() {
       startOtpExpiryTimer();
       startOtpCooldownTimer();
 
-      showToast(isTa ? 'புதிய OTP குறியீடு அனுப்பப்பட்டது! 📩' : 'New OTP code sent! 📩');
+      showToast('New OTP code sent! 📩');
     } catch (err) {
       console.error('Resend OTP error:', err);
-      showToast(isTa ? 'மீண்டும் அனுப்புவதில் பிழை.' : 'Error resending OTP.');
+      showToast('Error resending OTP.');
     } finally {
       if (resendBtn) {
         resendBtn.disabled = false;
@@ -699,14 +690,13 @@ export function initAuth() {
     const confirmPassInput = document.getElementById('reset-confirm-password');
     const submitBtn = document.getElementById('reset-password-submit-btn');
     const errorEl = document.getElementById('auth-error-msg');
-    const isTa = getLanguage() === 'ta';
     if (errorEl) errorEl.style.display = 'none';
 
     const newPassword = newPassInput?.value;
     const confirmPassword = confirmPassInput?.value;
 
     if (!newPassword || newPassword.length < 6) {
-      const errMsg = isTa ? 'கடவுச்சொல் குறைந்தது 6 எழுத்துகள் கொண்டதாக இருக்க வேண்டும்.' : 'Password must be at least 6 characters long.';
+      const errMsg = 'Password must be at least 6 characters long.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -716,7 +706,7 @@ export function initAuth() {
     }
 
     if (newPassword !== confirmPassword) {
-      const errMsg = isTa ? 'கடவுச்சொற்கள் பொருந்தவில்லை!' : 'Passwords do not match!';
+      const errMsg = 'Passwords do not match!';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -744,7 +734,7 @@ export function initAuth() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const errMsg = isTa && data.errorTa ? data.errorTa : (data.error || 'Failed to reset password.');
+        const errMsg = data.error || 'Failed to reset password.';
         if (errorEl) {
           errorEl.textContent = errMsg;
           errorEl.style.display = 'block';
@@ -753,11 +743,11 @@ export function initAuth() {
         return;
       }
 
-      showToast(isTa ? 'கடவுச்சொல் மாற்றப்பட்டது! 🎉' : 'Password reset successfully! 🎉');
+      showToast('Password reset successfully! 🎉');
       switchAuthView('forgot-success');
     } catch (err) {
       console.error('Reset password error:', err);
-      const errMsg = isTa ? 'கடவுச்சொல்லை மாற்றுவதில் பிழை.' : 'Error resetting password.';
+      const errMsg = 'Error resetting password.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -778,20 +768,37 @@ export function initAuth() {
         await apiFetch('/api/auth/logout', {
           method: 'POST'
         });
-      } catch {}
+      } catch { }
     }
     localStorage.removeItem('rp_auth_token');
+    localStorage.removeItem('rp_user_role');
+    sessionStorage.clear();
     window.CURRENT_USER = null;
-    window.setUserRole('Guest');
-    const msg = getLanguage() === 'ta' ? 'வெளியேறிவிட்டீர்கள்.' : 'Logged out successfully.';
-    showToast(msg);
+    window.IS_LOGGED_IN = false;
+    updateHeaderUserArea();
+    updateNotificationBadge();
+    showToast('Logged out successfully.');
+
+    // Protect private pages against access through browser history after logout
+    if (window.history.replaceState) {
+      window.history.replaceState(null, '', '#home');
+    }
+    window.location.hash = '#home';
+
+    if (window.renderAppView) window.renderAppView();
+
+    // Prompt user with login modal per requirement
+    setTimeout(() => {
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
+    }, 150);
   };
 
   window.updateProfile = async (formData) => {
     const token = localStorage.getItem('rp_auth_token');
-    const isTa = getLanguage() === 'ta';
     if (!token) {
-      showToast(isTa ? 'தயவுசெய்து உள்நுழையவும்.' : 'Please log in to edit profile.');
+      showToast('Please log in to edit profile.');
       return { success: false };
     }
 
@@ -811,19 +818,19 @@ export function initAuth() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        const errMsg = data.error || (isTa ? 'சுயவிவரத்தைப் புதுப்பிக்க முடியவில்லை.' : 'Failed to update profile.');
+        const errMsg = data.error || 'Failed to update profile.';
         showToast(errMsg);
         return { success: false, error: errMsg };
       }
 
       window.CURRENT_USER = data.user;
       updateHeaderUserArea();
-      showToast(isTa ? 'சுயவிவரம் வெற்றிகரமாக புதுப்பிக்கப்பட்டது! ✨' : 'Profile updated successfully! ✨');
+      showToast('Profile updated successfully! ✨');
       if (window.renderAppView) window.renderAppView();
       return { success: true, user: data.user };
     } catch (err) {
       console.error('Update profile error:', err);
-      showToast(isTa ? 'பிணையப் பிழை ஏற்பட்டது.' : 'Network error updating profile.');
+      showToast('Network error updating profile.');
       return { success: false, error: err.message };
     } finally {
       if (saveBtn) {
@@ -835,7 +842,6 @@ export function initAuth() {
 
   window.toggleActivityStatus = async (enabled) => {
     const token = localStorage.getItem('rp_auth_token');
-    const isTa = getLanguage() === 'ta';
     if (!token) return;
 
     try {
@@ -850,29 +856,43 @@ export function initAuth() {
       if (data.success) {
         if (window.CURRENT_USER) {
           window.CURRENT_USER.activityStatusEnabled = enabled;
+          try {
+            localStorage.setItem('rp_user', JSON.stringify(window.CURRENT_USER));
+          } catch {}
         }
         const lbl = document.getElementById('activity-status-label');
         if (lbl) {
-          lbl.textContent = enabled ? (isTa ? 'செயலில்' : 'Enabled') : (isTa ? 'மறைக்கப்பட்டது' : 'Hidden');
+          lbl.textContent = enabled ? 'Enabled' : 'Hidden';
+          lbl.className = `activity-status-badge ${enabled ? 'enabled' : 'hidden'}`;
         }
-        showToast(enabled ? (isTa ? 'செயல்பாடு நிலை இயக்கப்பட்டது 🟢' : 'Activity status enabled 🟢') : (isTa ? 'செயல்பாடு நிலை மறைக்கப்பட்டது 🔒' : 'Activity status hidden 🔒'));
+        const iconEl = document.querySelector('.activity-status-icon');
+        if (iconEl) {
+          iconEl.textContent = enabled ? '🟢' : '🔒';
+        }
+        const toggle = document.getElementById('profile-activity-toggle');
+        if (toggle) {
+          toggle.checked = enabled;
+        }
+
+        showToast(enabled ? 'Activity status enabled 🟢' : 'Activity status hidden 🔒');
+
+        // Dispatch live event to notify any open pages/components
+        window.dispatchEvent(new CustomEvent('rp:activity-status-changed', { detail: { enabled } }));
       }
     } catch (err) {
       console.warn('Failed to update activity status', err);
+      showToast('Could not update activity status');
     }
   };
 
-  window.setUserRole = setUserRole;
   checkAuthSession();
 }
 
 export async function checkAuthSession() {
   const token = localStorage.getItem('rp_auth_token');
   if (!token) {
-    if (!localStorage.getItem('rp_user_role')) {
-      window.CURRENT_USER_ROLE = 'Guest';
-      window.IS_LOGGED_IN = false;
-    }
+    window.IS_LOGGED_IN = false;
+    window.CURRENT_USER = null;
     return;
   }
   try {
@@ -881,11 +901,14 @@ export async function checkAuthSession() {
       const data = await res.json();
       if (data.authenticated && data.user) {
         window.CURRENT_USER = data.user;
-        window.CURRENT_USER_ROLE = data.user.role;
         window.IS_LOGGED_IN = true;
         updateHeaderUserArea();
+        connectRealtimeNotificationStream();
+        updateNotificationBadge();
       } else {
         localStorage.removeItem('rp_auth_token');
+        window.IS_LOGGED_IN = false;
+        window.CURRENT_USER = null;
       }
     }
   } catch (e) {
@@ -893,86 +916,16 @@ export async function checkAuthSession() {
   }
 }
 
-export function setUserRole(role) {
-  window.CURRENT_USER_ROLE = role;
-  window.IS_LOGGED_IN = role !== 'Guest';
-  localStorage.setItem('rp_user_role', role);
-  
-  // Update all role select dropdowns in announcement bar & mobile drawer
-  document.querySelectorAll('.role-select').forEach(select => {
-    select.value = role;
-  });
-
-  updateHeaderUserArea();
-  const isTa = getLanguage() === 'ta';
-  let roleToast = '';
-  if (role === 'Admin' || role === 'Moderator') {
-    roleToast = isTa ? 'அணுகல் புதுப்பிக்கப்பட்டது' : 'Access updated';
-  } else if (role === 'Guest') {
-    roleToast = isTa ? 'விருந்தினர் பயன்முறை' : 'Switched to Guest mode';
-  } else if (role === 'Author') {
-    roleToast = isTa ? 'எழுத்தாளர் பயன்முறை' : 'Switched to Author mode';
-  } else {
-    roleToast = isTa ? 'உறுப்பினர் பயன்முறை' : 'Switched to Member mode';
-  }
-  showToast(roleToast);
-
-  // Re-render current app view to apply any role permissions
-  if (window.renderAppView) {
-    window.renderAppView();
-  }
-
-  if (window.updateNotificationBadge) {
-    window.updateNotificationBadge();
-  }
-}
-window.setUserRole = setUserRole;
-
 export function updateHeaderUserArea() {
+  if (document.body.classList.contains('author-page-view')) {
+    updateAuthorWriterHeader(true);
+    return;
+  }
+
   const container = document.getElementById('header-auth-container');
   const drawerContainer = document.getElementById('drawer-auth-container');
-  const topTicker = document.getElementById('top-ticker-content');
-  const adminLinks = document.querySelectorAll('.admin-only-link');
 
-  const isGuest = !window.IS_LOGGED_IN || window.CURRENT_USER_ROLE === 'Guest';
-  const isTa = getLanguage() === 'ta';
-
-  // Synchronize any role select dropdowns
-  document.querySelectorAll('.role-select').forEach(select => {
-    select.value = window.CURRENT_USER_ROLE;
-  });
-
-  let roleBadge = '';
-  if (window.CURRENT_USER_ROLE !== 'Admin' && window.CURRENT_USER_ROLE !== 'Moderator') {
-    roleBadge = isTa 
-      ? (window.CURRENT_USER_ROLE === 'Author' ? 'எழுத்தாளர்' : 'உறுப்பினர்')
-      : (window.CURRENT_USER_ROLE === 'Author' ? 'Author' : 'Member');
-  }
-
-  // Admin link visibility (preserve permissions)
-  adminLinks.forEach(link => {
-    link.style.display = window.CURRENT_USER_ROLE === 'Admin' ? 'flex' : 'none';
-  });
-
-  // 1. Top Ticker Content (Desktop only)
-  if (topTicker) {
-    if (isGuest) {
-      topTicker.innerHTML = `
-        <span class="announcement-badge">${t('welcome_badge')}</span>
-        <div class="guest-top-welcome">
-          <span>${t('guest_welcome_banner')}</span>
-          <button class="guest-top-btn" onclick="openAuthModal('login')">${t('btn_login')}</button>
-        </div>
-      `;
-    } else {
-      topTicker.innerHTML = `
-        <span class="announcement-badge">${t('announcement_badge')}</span>
-        <a href="#reader?novel=nenjam-marappadhillai&ch=24" style="color:var(--color-parchment); text-decoration:none;">
-          ${isTa ? "ருத்ரா பிரார்த்தனாவின் 'நெஞ்சம் மறப்பதில்லை' அத்தியாயம் 24 வெளியானது! ➔" : "Rudhra Prarthana's 'Nenjam Marappadhillai' Chapter 24 is now live! ➔"}
-        </a>
-      `;
-    }
-  }
+  const isGuest = !window.IS_LOGGED_IN;
 
   // 2. Desktop Header Auth Area
   if (container) {
@@ -983,45 +936,32 @@ export function updateHeaderUserArea() {
       `;
     } else {
       const user = window.CURRENT_USER;
-      const displayName = user 
-        ? (isTa ? (user.displayNameTa || user.displayName || user.username) : (user.displayName || user.username))
-        : (isTa ? 'பயனர்' : 'Member');
+      const displayName = user ? (user.displayName || user.username) : 'Member';
       const rawAvatar = user?.avatar;
       const avatar = (rawAvatar && !rawAvatar.includes('images.unsplash.com') && !rawAvatar.includes('ui-avatars.com')) ? rawAvatar : '/profile.png';
       const memberParam = user?.username || (user?.id ? String(user.id) : 'me');
-      const roleBadgeHtml = roleBadge 
-        ? `<span class="user-role-badge" style="font-size:9px; color:var(--color-gold-warm); font-weight:700;">${roleBadge}</span>`
-        : '';
+
       container.innerHTML = `
-        <div class="user-profile-trigger" onclick="window.location.hash = '#member?id=${memberParam}';">
+        <div class="user-profile-trigger" onclick="window.location.hash = '#member?id=${memberParam}';" title="View Profile">
           <img src="${avatar}" class="user-avatar-sm" alt="${displayName}" onerror="this.src='/profile.png'">
           <div style="display:flex; flex-direction:column; line-height:1.1;">
             <span class="user-name-sm">${displayName}</span>
-            ${roleBadgeHtml}
           </div>
         </div>
-        <button class="action-btn" onclick="handleLogout()" title="${t('btn_logout')}" style="width:34px; height:34px; font-size:12px;">
+        ${(user?.isAdmin && user?.isAuthorSession) ? `
+          <button class="btn btn-gold btn-sm" onclick="window.location.hash='#admin';" style="padding:4px 10px; font-size:12px; gap:4px;" title="Author & Admin Dashboard">
+            👑 Author Dashboard
+          </button>
+        ` : ''}
+        <button class="action-btn" onclick="handleLogout()" title="${t('btn_logout')} (Logout)" style="width:34px; height:34px; font-size:12px;">
           ✕
         </button>
       `;
     }
   }
 
-  // 3. Mobile Drawer Guest / User Card (With Role Switcher)
+  // 3. Mobile Drawer Guest / User Card
   if (drawerContainer) {
-    const roleSwitcherHtml = `
-      <div class="drawer-role-switcher" style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(0,0,0,0.08); font-size:12px;">
-        <span style="font-weight:600; color:var(--color-navy-deep);">${isTa ? 'பார்வை:' : 'View As:'}</span>
-        <select class="role-select" style="background:#fff; color:var(--color-navy-deep); border:1px solid var(--color-border); padding:3px 8px; border-radius:var(--radius-sm); font-size:11px; cursor:pointer;" onchange="setUserRole(this.value)">
-          <option value="Guest" ${window.CURRENT_USER_ROLE === 'Guest' ? 'selected' : ''}>${isTa ? 'விருந்தினர்' : 'Guest'}</option>
-          <option value="Registered Member" ${window.CURRENT_USER_ROLE === 'Registered Member' ? 'selected' : ''}>${isTa ? 'உறுப்பினர்' : 'Member'}</option>
-          <option value="Author" ${window.CURRENT_USER_ROLE === 'Author' ? 'selected' : ''}>${isTa ? 'எழுத்தாளர்' : 'Author'}</option>
-          <option value="Moderator" ${window.CURRENT_USER_ROLE === 'Moderator' ? 'selected' : ''}>Moderator</option>
-          <option value="Admin" ${window.CURRENT_USER_ROLE === 'Admin' ? 'selected' : ''}>Admin</option>
-        </select>
-      </div>
-    `;
-
     if (isGuest) {
       drawerContainer.innerHTML = `
         <div class="drawer-guest-card">
@@ -1033,33 +973,31 @@ export function updateHeaderUserArea() {
           <button class="btn btn-outline btn-sm" style="width:100%; margin-top:8px;" onclick="openAuthModal('register'); closeMobileDrawer();">
             ${t('btn_register')}
           </button>
-          ${roleSwitcherHtml}
         </div>
       `;
     } else {
       const user = window.CURRENT_USER;
-      const displayName = user 
-        ? (isTa ? (user.displayNameTa || user.displayName || user.username) : (user.displayName || user.username))
-        : (isTa ? 'பயனர்' : 'Member');
+      const displayName = user ? (user.displayName || user.username) : 'Member';
       const rawAvatar = user?.avatar;
       const avatar = (rawAvatar && !rawAvatar.includes('images.unsplash.com') && !rawAvatar.includes('ui-avatars.com')) ? rawAvatar : '/profile.png';
       const memberParam = user?.username || (user?.id ? String(user.id) : 'me');
-      const drawerRoleBadgeHtml = roleBadge 
-        ? `<div style="font-size:11px; color:var(--color-gold-warm); font-weight:700;">${roleBadge}</div>`
-        : '';
+
       drawerContainer.innerHTML = `
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:4px; cursor:pointer;" onclick="window.location.hash='#member?id=${memberParam}'; closeMobileDrawer();">
           <img src="${avatar}" 
                class="user-avatar-sm" style="width:40px; height:40px;" alt="${displayName}" onerror="this.src='/profile.png'">
           <div>
             <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep);">${displayName}</div>
-            ${drawerRoleBadgeHtml}
           </div>
         </div>
+        ${(user?.isAdmin && user?.isAuthorSession) ? `
+          <button class="btn btn-gold btn-sm" style="width:100%; margin-bottom:8px;" onclick="window.location.hash='#admin'; closeMobileDrawer();">
+            👑 Author & Admin Dashboard
+          </button>
+        ` : ''}
         <button class="btn btn-outline btn-sm" style="width:100%;" onclick="handleLogout(); closeMobileDrawer();">
           ${t('btn_logout')}
         </button>
-        ${roleSwitcherHtml}
       `;
     }
   }

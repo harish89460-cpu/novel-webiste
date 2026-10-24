@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="ta">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rudhra Prarthana Novels — Premium Tamil Literary Novel Community</title>
-  <meta name="description" content="Explore captivating Tamil novels by author Rudhra Prarthana, enjoy comfortable distraction-free reading, audio novels, and join our vibrant reader community.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rudhra Prarthana Novels — Premium Literary Novel Community</title>
+  <meta name="description" content="Explore captivating novels by author Rudhra Prarthana, enjoy comfortable distraction-free reading, audio novels, and join our vibrant reader community.">
   <link rel="icon" type="image/png" href="/images/logo.png">
 
   <!-- OpenGraph / Social Meta -->
-  <meta property="og:title" content="Rudhra Prarthana Novels — Tamil Literary Community">
-  <meta property="og:description" content="Read, Discover, Discuss, Connect. Premium Tamil novels and discussions.">
+  <meta property="og:title" content="Rudhra Prarthana Novels — Literary Community">
+  <meta property="og:description" content="Read, Discover, Discuss, Connect. Premium novels and discussions.">
   <meta property="og:image" content="/images/logo.png">
   <meta property="og:type" content="website">
 
@@ -194,27 +194,6 @@
     <div class="rp-loader-text" id="rp-loader-status-text">Preparing your reading experience…</div>
   </div>
 
-  <!-- Top Announcement Bar & User Role Switcher (Hidden on Mobile) -->
-  <div class="announcement-bar" id="top-announcement-bar">
-    <div class="ticker-content" id="top-ticker-content">
-      <span class="announcement-badge">Announcement</span>
-      <a href="#reader?novel=nenjam-marappadhillai&ch=24" style="color:var(--color-parchment); text-decoration:none;">
-        Rudhra Prarthana's 'Nenjam Marappadhillai' Chapter 24 is now live! ➔
-      </a>
-    </div>
-
-    <!-- Live Interactive Role Previewer for Testing All 5 WP Roles -->
-    <div class="role-switcher-bar">
-      <span id="role-preview-label">View As:</span>
-      <select id="role-select-box" class="role-select" onchange="setUserRole(this.value)">
-        <option value="Guest">Guest</option>
-        <option value="Registered Member" selected>Member</option>
-        <option value="Author">Author</option>
-        <option value="Moderator">Moderator</option>
-        <option value="Admin">Admin</option>
-      </select>
-    </div>
-  </div>
 
   <!-- Primary Site Header -->
   <header class="site-header">
@@ -227,8 +206,10 @@
       </button>
 
       <!-- 2. Logo Branding (Center/Left on Mobile, Left on Desktop) -->
-      <a href="#home" class="brand-link" title="Rudhra Prarthana Novels Home">
-        <img src="/images/logo.png" alt="Rudhra Prarthana Novels Logo" class="brand-logo">
+      <a href="#home" class="brand-link" id="rp-brand-link" title="Rudhra Prarthana Novels Home">
+        <span class="brand-logo-wrap">
+          <img src="/images/logo.png" alt="Rudhra Prarthana Novels Logo" class="brand-logo custom-logo" width="44" height="44">
+        </span>
         <div class="brand-titles">
           <span class="brand-name">Rudhra Prarthana</span>
           <span class="brand-tagline">Novels & Community</span>
@@ -237,10 +218,11 @@
 
       <!-- 3. Desktop Navigation (Hidden on Mobile) -->
       <nav class="nav-desktop" aria-label="Main Navigation">
-        <a href="#home" class="nav-link active">Home</a>
-        <a href="#forum" class="nav-link">
+        <a href="#home" class="nav-link">Home</a>
+        <a href="#forum" class="nav-link active">
           Forum <span class="nav-link-badge">New</span>
         </a>
+        <a href="#audio" class="nav-link">Audio Novels</a>
         <a href="#novels?category=Ongoing" class="nav-link">What's New</a>
         <a href="#members" class="nav-link">Members</a>
         <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="nav-link">Pratilipi</a>
@@ -250,12 +232,8 @@
         </a>
       </nav>
 
-      <!-- 4. Header Actions (Right side: Language Switcher, Search, Notification, Desktop Login) -->
+      <!-- 4. Header Actions (Right side: Search, Notification, Desktop Login) -->
       <div class="header-actions">
-        <!-- Unique Language Switcher (Displays opposite target language) -->
-        <button class="lang-toggle-btn" id="lang-toggle-btn" onclick="toggleLanguage()" aria-label="Switch to தமிழ்" title="Switch to தமிழ்">
-          தமிழ்
-        </button>
 
         <!-- Global Search -->
         <button class="action-btn" onclick="openSearchModal()" title="Search (ESC)" aria-label="Search">
@@ -300,22 +278,19 @@
           <span style="font-family:var(--font-serif); font-size:1.15rem; font-weight:700; color:var(--color-navy-deep);">RP Novels</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <button class="lang-toggle-btn drawer-lang-toggle" id="drawer-lang-toggle-btn" onclick="toggleLanguage()" aria-label="Switch to தமிழ்" title="Switch to தமிழ்">
-            தமிழ்
-          </button>
           <button class="drawer-close" onclick="closeMobileDrawer()">✕</button>
         </div>
       </div>
 
       <nav class="drawer-nav">
-        <a href="#home" class="drawer-nav-item active">Home</a>
-        <a href="#forum" class="drawer-nav-item">Forum</a>
-        <a href="#novels?category=Ongoing" class="drawer-nav-item">What's New</a>
-        <a href="#members" class="drawer-nav-item">Members</a>
-        <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="drawer-nav-item">Pratilipi</a>
-        <a href="#contact" class="drawer-nav-item">Contact</a>
-        <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="drawer-nav-item" style="color:#C89B3C;">▶ YouTube Channel</a>
-        <a href="#admin" class="drawer-nav-item admin-only-link" style="display:none; color:var(--color-gold-warm);">⚙️ WordPress Admin</a>
+        <a href="#home" class="drawer-nav-item" onclick="closeMobileDrawer()">Home</a>
+        <a href="#audio" class="drawer-nav-item" onclick="closeMobileDrawer()">Audio Novels</a>
+        <a href="#novels" class="drawer-nav-item" onclick="closeMobileDrawer()">Novel Library</a>
+        <a href="#forum" class="drawer-nav-item active" onclick="closeMobileDrawer()">Forum</a>
+        <a href="#members" class="drawer-nav-item" onclick="closeMobileDrawer()">Members</a>
+        <a href="#contact" class="drawer-nav-item" onclick="closeMobileDrawer()">Contact</a>
+        <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="drawer-nav-item" onclick="closeMobileDrawer()">Pratilipi</a>
+        <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="drawer-nav-item" style="color:#C89B3C;" onclick="closeMobileDrawer()">▶ YouTube Channel</a>
       </nav>
 
       <!-- Drawer Auth / Guest Welcome Box -->
@@ -347,19 +322,6 @@
           </div>
         </div>
 
-        <!-- Quick Links -->
-        <div>
-          <h4 class="footer-title">Quick Links</h4>
-          <div class="footer-links">
-            <a href="#home" class="footer-link">Home</a>
-            <a href="#novels" class="footer-link">Novels</a>
-            <a href="#forum" class="footer-link">Forum</a>
-            <a href="#members" class="footer-link">Members</a>
-            <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="footer-link">Pratilipi</a>
-            <a href="#contact" class="footer-link">Contact</a>
-            <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="footer-link" style="color:var(--color-gold);">YouTube Channel</a>
-          </div>
-        </div>
 
         <!-- Legal Links -->
         <div>
@@ -369,7 +331,6 @@
             <a href="#contact" class="footer-link">Terms of Service</a>
             <a href="#contact" class="footer-link">Copyright Notice</a>
             <a href="#contact" class="footer-link">Disclaimer</a>
-            <a href="#admin" class="footer-link" style="color:var(--color-gold);">WordPress Admin</a>
           </div>
         </div>
 
@@ -385,7 +346,7 @@
 
       <div class="footer-bottom">
         <div>© 2026 Rudhra Prarthana Novels. All Rights Reserved.</div>
-        <div style="font-size:11px; color:rgba(255,255,255,0.5);">Designed with literary elegance for Tamil novel lovers.</div>
+        <div style="font-size:11px; color:rgba(255,255,255,0.5);">Designed with literary elegance for novel lovers.</div>
       </div>
     </div>
   </footer>

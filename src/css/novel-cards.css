@@ -34,6 +34,13 @@
   font-weight: 700;
 }
 
+@media (max-width: 640px) {
+  .section-subtitle {
+    letter-spacing: 0.8px;
+    font-size: 11px;
+  }
+}
+
 .section-title {
   font-size: clamp(1.6rem, 3vw, 2.25rem);
   color: var(--color-navy-deep);
@@ -67,20 +74,204 @@
 
 @media (max-width: 640px) {
   .novel-grid {
-    grid-template-columns: 1fr;
-    gap: var(--space-4);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .section {
-    padding: var(--space-8) 0;
+    padding: var(--space-6) 0;
   }
 
   .section-header {
-    margin-bottom: var(--space-5);
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+
+  .section-heading-group .section-subtitle {
+    display: none;
   }
 
   .section-title {
-    font-size: 1.5rem;
+    font-family: var(--font-serif);
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--color-navy-deep);
+    line-height: 1.25;
+    margin: 0;
+  }
+
+  .section-link {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--color-brown-literary);
+    white-space: nowrap;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .novel-card {
+    border-radius: 16px;
+    border: 1px solid #E8DCCB;
+    background: #FFFFFF;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 14px rgba(11, 31, 51, 0.05);
+    height: 100%;
+    box-sizing: border-box;
+  }
+
+  .novel-card-cover {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    background: #F4EFE6;
+  }
+
+  .novel-card-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+
+  .novel-badge-status {
+    top: 8px;
+    right: 8px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: #0B1F33;
+    color: #E8B958;
+    border: 1px solid #C89B3C;
+    border-radius: 4px;
+    line-height: 1.2;
+    z-index: 2;
+  }
+
+  .novel-badge-genre {
+    bottom: 8px;
+    left: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #FFFFFF;
+    color: #102A43;
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    line-height: 1.2;
+    z-index: 2;
+  }
+
+  .novel-card-body {
+    padding: 12px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    box-sizing: border-box;
+  }
+
+  .novel-card-title {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-navy-deep);
+    line-height: 1.25;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.5em;
+  }
+
+  .novel-card-tamil-title {
+    display: none;
+  }
+
+  .novel-card-author {
+    font-size: 11.5px;
+    color: var(--color-brown-literary);
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .novel-card-desc {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 11px;
+    color: #486581;
+    line-height: 1.4;
+    margin: 0 0 8px 0;
+    min-height: 2.8em;
+  }
+
+  .novel-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #627D98;
+    margin-top: auto;
+    padding-top: 6px;
+    padding-bottom: 4px;
+    border-top: 1px dashed rgba(200, 155, 60, 0.25);
+  }
+
+  .novel-card-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .novel-card-footer {
+    padding: 10px;
+    background: #FAF4EB;
+    border-top: 1px solid #F0E6D8;
+    margin-top: auto;
+    box-sizing: border-box;
+  }
+
+  .novel-card-footer .btn,
+  .novel-card-footer .btn-gold,
+  .novel-card-footer .btn-primary {
+    background: #C08D38 !important;
+    color: #FFFFFF !important;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 8px;
+    width: 100%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(192, 141, 56, 0.25);
+    box-sizing: border-box;
   }
 }
 
@@ -115,10 +306,85 @@
   width: 100%;
 }
 
+.novel-detail-cover-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 2px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  background: var(--color-parchment, #F4EFE6);
+}
+
+.novel-detail-cover-wrap .novel-detail-cover-img,
+.novel-detail-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.novel-detail-title {
+  font-family: var(--font-serif);
+  font-size: clamp(1.4rem, 5vw, 2.35rem);
+  line-height: 1.25;
+  color: var(--color-navy-deep);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.novel-detail-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.novel-detail-actions .btn:first-child {
+  flex: 1 1 auto;
+}
+
+.novel-detail-actions .bookmark-btn {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  border-radius: var(--radius-md);
+}
+
 @media (max-width: 640px) {
+  .novel-detail-grid {
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+  }
+
   .novel-detail-cover-col {
-    max-width: 240px;
+    max-width: 200px;
     margin: 0 auto;
+    gap: 10px;
+  }
+
+  .novel-detail-actions {
+    gap: 8px;
+  }
+
+  .novel-detail-actions .btn:first-child {
+    padding: 10px 14px;
+    font-size: 13.5px;
+    justify-content: center;
+  }
+
+  .novel-detail-actions .bookmark-btn {
+    width: 42px;
+    height: 42px;
   }
 }
 
@@ -178,10 +444,15 @@
   background: var(--color-parchment);
 }
 
+.novel-card-cover .novel-card-img,
 .novel-card-img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
   object-fit: cover;
+  object-position: center;
+  display: block;
   transition: transform var(--transition-normal);
 }
 
@@ -309,7 +580,14 @@
   border-top: 1px solid var(--color-border-light);
 }
 
-/* Audio Novel Card */
+/* Audio Novel Card & Grid */
+.audio-novels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-6);
+  width: 100%;
+}
+
 .audio-card {
   background: #FFFFFF;
   border: 1px solid var(--color-border);
@@ -320,6 +598,8 @@
   gap: var(--space-4);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .audio-card:hover {
@@ -331,11 +611,13 @@
 .audio-card-top {
   display: flex;
   gap: var(--space-4);
+  align-items: center;
+  min-width: 0;
 }
 
 .audio-card-cover {
-  width: 90px;
-  height: 90px;
+  width: 84px;
+  height: 84px;
   border-radius: var(--radius-md);
   object-fit: cover;
   flex-shrink: 0;
@@ -346,6 +628,35 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.audio-card-info h3 {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--color-navy-deep);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  margin: 0;
+  line-height: 1.3;
+}
+
+@media (max-width: 640px) {
+  .audio-novels-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .audio-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .audio-card-cover {
+    width: 68px;
+    height: 68px;
+  }
 }
 
 .audio-player-controls {

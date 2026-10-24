@@ -87,7 +87,17 @@ export function getTransporter() {
  * @param {string} params.username - Recipient username or display name
  * @param {string} params.otp - 6-digit OTP code
  */
-export async function sendOtpEmail({ to, username, otp }) {
+export async function sendOtpEmail(param1, param2) {
+  let to, username, otp;
+  if (typeof param1 === 'object' && param1 !== null) {
+    to = param1.to;
+    username = param1.username || 'Author';
+    otp = param1.otp;
+  } else {
+    to = param1;
+    otp = param2;
+    username = 'Author';
+  }
   const { transporter, smtpUser, smtpPass } = getTransporter();
   const senderEmail = smtpUser || 'trendup089@gmail.com';
   const senderName = 'Rudhra Prarthana Novels';
@@ -97,7 +107,7 @@ export async function sendOtpEmail({ to, username, otp }) {
 
   const htmlContent = `
     <!DOCTYPE html>
-    <html lang="ta">
+    <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -110,8 +120,7 @@ export async function sendOtpEmail({ to, username, otp }) {
         .logo-subtitle { color: #EFE3C2; font-size: 13px; margin-top: 6px; letter-spacing: 1px; text-transform: uppercase; }
         .content { padding: 36px 28px; color: #202020; line-height: 1.6; }
         .greeting { font-size: 17px; font-weight: 600; color: #0B1F33; margin-bottom: 12px; }
-        .message-en { font-size: 14px; color: #4B5563; margin-bottom: 8px; }
-        .message-ta { font-size: 14px; color: #1F2937; margin-bottom: 24px; font-family: 'Mukta Malar', 'Noto Sans Tamil', sans-serif; }
+        .message-en { font-size: 14px; color: #4B5563; margin-bottom: 16px; }
         .otp-box { background: #FDF9F0; border: 2px dashed #C89B3C; border-radius: 10px; padding: 20px; text-align: center; margin: 24px 0; }
         .otp-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #8A6418; letter-spacing: 1.5px; margin-bottom: 8px; }
         .otp-code { font-size: 38px; font-weight: 800; color: #0B1F33; letter-spacing: 10px; margin: 6px 0; font-family: 'Courier New', Courier, monospace; }
@@ -126,32 +135,28 @@ export async function sendOtpEmail({ to, username, otp }) {
         <div class="wrapper">
           <div class="header">
             <h1 class="logo-title">👑 Rudhra Prarthana Novels</h1>
-            <div class="logo-subtitle">Tamil Literary Community</div>
+            <div class="logo-subtitle">Novels & Community</div>
           </div>
           <div class="content">
-            <div class="greeting">வணக்கம் ${username || 'வாசகரே'}, / Hello ${username || 'Reader'},</div>
+            <div class="greeting">Hello ${username || 'Reader'},</div>
             
             <p class="message-en">
               We received a request to reset the password for your Rudhra Prarthana Novels account. Please use the verification code below:
             </p>
-            <p class="message-ta">
-              உங்கள் ருத்ரா பிரார்த்தனா நாவல்கள் கணக்கிற்கான கடவுச்சொல்லை மாற்ற கோரிக்கை பெறப்பட்டுள்ளது. கீழே உள்ள 6 இலக்க OTP குறியீட்டைப் பயன்படுத்தவும்:
-            </p>
 
             <div class="otp-box">
-              <div class="otp-label">Password Reset Code / ஒருமுறை கடவுச்சொல்</div>
+              <div class="otp-label">Password Reset Code</div>
               <div class="otp-code">${otp}</div>
-              <div class="otp-timer">⏱ Valid for 5 minutes only / 5 நிமிடங்களுக்கு மட்டுமே செல்லுபடியாகும்</div>
+              <div class="otp-timer">⏱ Valid for 5 minutes only</div>
             </div>
 
             <div class="warning-box">
-              <strong>Security Warning / பாதுகாப்பு எச்சரிக்கை:</strong><br>
-              Never share this OTP with anyone. Rudhra Prarthana Novels support will never ask for your OTP.<br>
-              இந்த OTP குறியீட்டை யாரிடமும் பகிர வேண்டாம். நீங்கள் இக்கோரிக்கையை விடுக்கவில்லை என்றால், இந்த மின்னஞ்சலைப் புறக்கணிக்கவும்.
+              <strong>Security Warning:</strong><br>
+              Never share this OTP with anyone. Rudhra Prarthana Novels support will never ask for your OTP. If you did not request this code, you can safely ignore this email.
             </div>
 
             <p style="font-size: 13px; color: #6B7280; margin-top: 24px;">
-              If you did not request this password reset, your account is safe and no further action is required.
+              If you did not request this password reset, your account remains secure and no further action is required.
             </p>
           </div>
           <div class="footer">

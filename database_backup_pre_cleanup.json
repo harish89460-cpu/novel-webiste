@@ -1,0 +1,238 @@
+{
+  "users": [
+    {
+      "id": 2,
+      "username": "rudhra_author",
+      "email": "rudhra@rpnovels.com",
+      "password_hash": "86a12240413a04fdf68a8f6efb3df2d2caed73dfbf0e63ec12efa28c1a44a52ff2832e6570903dec821af9374544edbc9fc7c87092fac14e65ac77190978a8f5",
+      "salt": "b60edbcbf0109167cb4a6ea61afca0de",
+      "role": "Admin",
+      "created_at": "2026-10-18 10:55:10",
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": 20,
+      "username": "anand_reader",
+      "email": "anand@example.com",
+      "password_hash": "980ba394abc159d69a85d1c1955c2d145ff49d1493fdf17391fbd3c97040167da5f33f38b4eb1dfd26d51fbb8699a8174b93492c5adc2057dc3e45c3b783067b",
+      "salt": "67cf90955828a3fab46bdd553d1aa8bc",
+      "role": "Member",
+      "created_at": "2026-10-21 15:39:53",
+      "updated_at": "2026-10-21 15:39:53"
+    }
+  ],
+  "profiles": [
+    {
+      "user_id": 2,
+      "display_name": "Rudhra Prarthana",
+      "display_name_ta": "ருத்ர பிரார்த்தனா",
+      "avatar": "/profile.png",
+      "bio": "Writing is my soul. Deeply grateful for the immense love of novel readers.",
+      "bio_ta": "எழுத்தே என் உயிர். நாவல் வாசகர்களின் பேரன்பிற்கு என்றும் நன்றியுடன்.",
+      "title": "Author",
+      "title_ta": "எழுத்தாளர்",
+      "joined_date": "Jan 2024",
+      "posts_count": 5,
+      "topics_count": 4,
+      "followers_count": 1250
+    },
+    {
+      "user_id": 20,
+      "display_name": "Anand R",
+      "display_name_ta": "Anand R",
+      "avatar": null,
+      "bio": "",
+      "bio_ta": "",
+      "title": "Member",
+      "title_ta": "Member",
+      "joined_date": "Oct 2026",
+      "posts_count": 0,
+      "topics_count": 0,
+      "followers_count": 0
+    }
+  ],
+  "activity_status": [
+    {
+      "user_id": 2,
+      "is_enabled": 1,
+      "is_online": 1,
+      "last_seen": "2026-10-21 15:39:45"
+    },
+    {
+      "user_id": 20,
+      "is_enabled": 1,
+      "is_online": 1,
+      "last_seen": "2026-10-21 15:39:57"
+    }
+  ],
+  "sessions": [
+    {
+      "token": "14ab557ea5dc205ab3507ab0160a6e36c71fc6cdaef549e84e537db4d1988944",
+      "user_id": 20,
+      "expires_at": "2026-11-20 10:09:57",
+      "created_at": "2026-10-21 15:39:57",
+      "session_type": "reader"
+    },
+    {
+      "token": "bf0995ee1ed10f0f67e6cc4ee05b73ba3eec15735de6723b94b40735414895bb",
+      "user_id": 20,
+      "expires_at": "2026-11-20 10:09:53",
+      "created_at": "2026-10-21 15:39:53",
+      "session_type": "reader"
+    },
+    {
+      "token": "f2be7fa845c7547e3eb987045700eec03065d0ad2f9e65d1c6e67dd2e3603511",
+      "user_id": 2,
+      "expires_at": "2026-11-20 10:09:45",
+      "created_at": "2026-10-21 15:39:45",
+      "session_type": "author"
+    }
+  ],
+  "novels": [
+    {
+      "id": "kanneeril-ezhuthiya-kavithai",
+      "title": "Kanneeril Ezhuthiya Kavithai",
+      "author": "Rudhra Prarthana",
+      "genre": "Emotional Drama / Family",
+      "category": "Ongoing Novels",
+      "status": "Ongoing",
+      "badge": "New Release",
+      "cover": "/profile.png",
+      "description": "A deeply moving narrative of sacrifice, unconditional love, and redemption.",
+      "chapters_count": 0,
+      "views": "0",
+      "rating": "5.0",
+      "updated_date": "Just added",
+      "featured": 1,
+      "continue_reading": 0,
+      "is_audio": 0,
+      "audio_available": 0,
+      "audio_duration": null,
+      "audio_voice": null,
+      "youtube_url": null,
+      "trending_rank": 0,
+      "sort_order": 0,
+      "is_published": 1,
+      "visibility": "public",
+      "link": "#novel?id=kanneeril-ezhuthiya-kavithai",
+      "created_at": "2026-10-21 15:39:49",
+      "updated_at": "2026-10-21 15:39:49"
+    }
+  ],
+  "chapters": [],
+  "comments": [],
+  "reactions": [],
+  "likes": [],
+  "notifications": [],
+  "reading_progress": [],
+  "forum_topics": [],
+  "forum_posts": [],
+  "forum_categories": [
+    {
+      "id": "general",
+      "title": "General Discussions",
+      "description": "General announcements, welcome area, and platform updates.",
+      "icon": "💬",
+      "sort_order": 5,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "ongoing-novels",
+      "title": "Ongoing Novels Discussion",
+      "description": "Episode updates, reader theories, character analysis, and lively discussions on current serials.",
+      "icon": "📖",
+      "sort_order": 1,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "review-junction",
+      "title": "Review Junction",
+      "description": "Detailed reader reviews, ratings, and critical literary perspectives on Rudhra Prarthana novels.",
+      "icon": "✍️",
+      "sort_order": 2,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "short-stories",
+      "title": "Short Stories Hub",
+      "description": "Discussions and feedback on standalone short stories, festive specials, and flash fiction.",
+      "icon": "✨",
+      "sort_order": 4,
+      "created_at": "2026-10-18 10:55:10"
+    },
+    {
+      "id": "tea-time",
+      "title": "Tea Time Chit-Chat",
+      "description": "Casual conversations, daily greetings, life musings, and reader camaraderie.",
+      "icon": "☕",
+      "sort_order": 3,
+      "created_at": "2026-10-18 10:55:10"
+    }
+  ],
+  "homepage_sections": [
+    {
+      "section_key": "audio",
+      "title": "Audio Novels",
+      "subtitle": "Listen & Enjoy",
+      "is_visible": 1,
+      "sort_order": 3,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "completed",
+      "title": "Completed Novels",
+      "subtitle": "Completed Works",
+      "is_visible": 1,
+      "sort_order": 5,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "continue_reading",
+      "title": "Continue Reading",
+      "subtitle": "Pick Up Where You Left Off",
+      "is_visible": 1,
+      "sort_order": 2,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "featured",
+      "title": "Featured Ongoing Novels",
+      "subtitle": "Currently Releasing",
+      "is_visible": 1,
+      "sort_order": 1,
+      "updated_at": "2026-10-18 10:55:10"
+    },
+    {
+      "section_key": "trending",
+      "title": "Trending Novels",
+      "subtitle": "Reader Favorites",
+      "is_visible": 1,
+      "sort_order": 4,
+      "updated_at": "2026-10-18 10:55:10"
+    }
+  ],
+  "media": [],
+  "site_settings": [
+    {
+      "setting_key": "author_name",
+      "setting_value": "Rudhra Prarthana",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "default_timezone",
+      "setting_value": "Asia/Kolkata",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "editor_autosave_interval",
+      "setting_value": "30",
+      "updated_at": "2026-10-20 07:50:26"
+    },
+    {
+      "setting_key": "site_title",
+      "setting_value": "Rudhra Prarthana Novels",
+      "updated_at": "2026-10-20 07:50:26"
+    }
+  ],
+  "password_resets": []
+}

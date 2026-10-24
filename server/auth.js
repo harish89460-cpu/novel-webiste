@@ -1,9 +1,40 @@
 // Authentication & Session Management Module
-// SQLite Persistent Backend with Secure Cryptographic Hashing
+// MySQL Relational Backend with Cryptographic Password Hashing and Input Validation
 
 import crypto from 'node:crypto';
-import { getDb, hashPassword, verifyPassword } from './db.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { query, queryOne, hashPassword, verifyPassword } from './db.js';
 import { sendOtpEmail } from './email.js';
+import { recordWriterAudit } from './writers.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export function saveBase64Image(dataUrl, folder = 'avatars', prefix = 'avatar') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+    return dataUrl;
+  }
+  try {
+    const match = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    if (!match) return dataUrl;
+    let ext = match[1].toLowerCase();
+    if (ext === 'jpeg') ext = 'jpg';
+    if (ext === 'svg+xml') ext = 'svg';
+    const buffer = Buffer.from(match[2], 'base64');
+    const uploadDir = path.resolve(__dirname, `../public/uploads/${folder}`);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const filename = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(uploadDir, filename);
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${folder}/${filename}`;
+  } catch (err) {
+    console.error(`Failed to save base64 image to ${folder}:`, err.message);
+    return dataUrl;
+  }
+}
 
 export function sanitizeAvatar(rawAvatar) {
   if (!rawAvatar || typeof rawAvatar !== 'string') return '/profile.png';
@@ -15,14 +46,13 @@ export function sanitizeAvatar(rawAvatar) {
   return trimmed;
 }
 
-export function registerUser({ username, email, password, displayName, displayNameTa, avatar: customAvatar, bio: customBio }) {
-  const db = getDb();
-
-  // Validate inputs
+/**
+ * Register a new user
+ */
+export async function registerUser({ username, email, password, displayName, avatar: customAvatar, bio: customBio }) {
   const cleanUsername = (username || '').trim().toLowerCase();
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanName = (displayName || '').trim() || cleanUsername;
-  const cleanNameTa = (displayNameTa || '').trim() || cleanName;
 
   if (!cleanUsername || cleanUsername.length < 3 || cleanUsername.length > 30) {
     return { success: false, error: 'Username must be between 3 and 30 characters.' };
@@ -41,7 +71,7 @@ export function registerUser({ username, email, password, displayName, displayNa
   }
 
   // Check unique constraints
-  const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?;').get(cleanUsername, cleanEmail);
+  const existingUser = await queryOne('SELECT id FROM users WHERE username = ? OR email = ?;', [cleanUsername, cleanEmail]);
   if (existingUser) {
     return { success: false, error: 'A user with this username or email already exists.' };
   }
@@ -49,38 +79,36 @@ export function registerUser({ username, email, password, displayName, displayNa
   // Cryptographically hash password
   const { hash, salt } = hashPassword(password);
 
-  const insertUser = db.prepare(`
+  const res = await query(`
     INSERT INTO users (username, email, password_hash, salt, role)
-    VALUES (?, ?, ?, ?, 'Registered Member');
-  `);
+    VALUES (?, ?, ?, ?, 'Member');
+  `, [cleanUsername, cleanEmail, hash, salt]);
 
-  const res = insertUser.run(cleanUsername, cleanEmail, hash, salt);
-  const userId = Number(res.lastInsertRowid);
+  const userId = res.insertId;
 
-  // Avatar: user-provided or null (neutral default /profile.png)
-  const avatar = (customAvatar && typeof customAvatar === 'string' && customAvatar.trim() && !customAvatar.includes('ui-avatars.com') && !customAvatar.includes('images.unsplash.com')) 
+  let avatar = (customAvatar && typeof customAvatar === 'string' && customAvatar.trim() && !customAvatar.includes('ui-avatars.com') && !customAvatar.includes('images.unsplash.com')) 
     ? customAvatar.trim() 
     : null;
+  if (avatar && avatar.startsWith('data:image/')) {
+    avatar = saveBase64Image(avatar, 'avatars', `avatar-${cleanUsername}`);
+  }
   const joinedDate = new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   const initialBio = (customBio && typeof customBio === 'string') ? customBio.trim() : '';
 
-  // Create Profile (User controls their own details - no hardcoded defaults)
-  db.prepare(`
+  // Create Profile
+  await query(`
     INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date, posts_count, topics_count, followers_count)
-    VALUES (?, ?, ?, ?, ?, ?, 'Member', 'உறுப்பினர்', ?, 0, 0, 0);
-  `).run(
-    userId, cleanName, cleanNameTa, avatar,
-    initialBio, initialBio, joinedDate
-  );
+    VALUES (?, ?, ?, ?, ?, ?, 'Member', 'Member', ?, 0, 0, 0);
+  `, [userId, cleanName, cleanName, avatar, initialBio, initialBio, joinedDate]);
 
-  // Initialize Activity Status (Enabled by default, marked Online)
-  db.prepare(`
+  // Initialize Activity Status
+  await query(`
     INSERT INTO activity_status (user_id, is_enabled, is_online, last_seen)
     VALUES (?, 1, 1, CURRENT_TIMESTAMP);
-  `).run(userId);
+  `, [userId]);
 
   // Create Authenticated Session
-  const token = createSession(userId);
+  const token = await createSession(userId);
 
   return {
     success: true,
@@ -89,146 +117,149 @@ export function registerUser({ username, email, password, displayName, displayNa
       id: userId,
       username: cleanUsername,
       email: cleanEmail,
-      role: 'Registered Member',
       displayName: cleanName,
-      displayNameTa: cleanNameTa,
       avatar: sanitizeAvatar(avatar),
       bio: initialBio,
-      bioTa: initialBio,
+      role: 'Member',
       activityStatusEnabled: true,
-      isOnline: true
+      isOnline: true,
+      isAdmin: false,
+      isAuthorSession: false,
+      sessionType: 'reader'
     }
   };
 }
 
-export function updateUserProfile(userId, { displayName, displayNameTa, username, avatar, bio, bioTa }) {
-  const db = getDb();
-
-  const user = db.prepare('SELECT id, username, email, role FROM users WHERE id = ?;').get(userId);
+/**
+ * Update user profile
+ */
+export async function updateUserProfile(userId, { displayName, username, avatar, bio }) {
+  const user = await queryOne('SELECT id, username FROM users WHERE id = ?;', [userId]);
   if (!user) {
     return { success: false, error: 'User not found.' };
   }
 
-  // If username is changing, validate and verify uniqueness
-  let newUsername = user.username;
+  let finalUsername = user.username;
   if (username && username.trim().toLowerCase() !== user.username) {
-    const cleanUser = username.trim().toLowerCase();
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(cleanUser)) {
-      return { success: false, error: 'Username must be 3-20 characters long and contain only letters, numbers, and underscores.' };
+    const cleanUsername = username.trim().toLowerCase();
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      return { success: false, error: 'Username must be between 3 and 30 characters.' };
     }
-    const taken = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?;').get(cleanUser, userId);
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
+      return { success: false, error: 'Username can only contain letters, numbers, and underscores.' };
+    }
+    const taken = await queryOne('SELECT id FROM users WHERE username = ? AND id != ?;', [cleanUsername, userId]);
     if (taken) {
-      return { success: false, error: 'Username is already taken by another member.' };
+      return { success: false, error: 'This username is already taken.' };
     }
-    db.prepare('UPDATE users SET username = ? WHERE id = ?;').run(cleanUser, userId);
-    newUsername = cleanUser;
+    await query('UPDATE users SET username = ? WHERE id = ?;', [cleanUsername, userId]);
+    finalUsername = cleanUsername;
   }
 
-  const profile = db.prepare('SELECT * FROM profiles WHERE user_id = ?;').get(userId);
-  const cleanDisplayName = displayName !== undefined ? displayName.trim() : (profile?.display_name || newUsername);
-  const cleanDisplayNameTa = displayNameTa !== undefined ? displayNameTa.trim() : (profile?.display_name_ta || cleanDisplayName);
-  
-  let cleanAvatar;
+  const existingProfile = await queryOne('SELECT * FROM profiles WHERE user_id = ?;', [userId]);
+  const cleanDisplayName = (displayName && displayName.trim()) || existingProfile?.display_name || finalUsername;
+  const cleanBio = bio !== undefined ? String(bio).trim() : (existingProfile?.bio || '');
+
+  let finalAvatar = existingProfile?.avatar || null;
   if (avatar !== undefined) {
-    if (!avatar || avatar === 'remove' || avatar === '/profile.png' || avatar === 'null' || avatar === '') {
-      cleanAvatar = null;
-    } else {
+    if (avatar === null || avatar === '' || avatar === 'remove') {
+      finalAvatar = null;
+    } else if (typeof avatar === 'string' && avatar.trim()) {
       const trimmed = avatar.trim();
-      if (trimmed.includes('images.unsplash.com') || trimmed.includes('ui-avatars.com')) {
-        cleanAvatar = null;
-      } else {
-        if (trimmed.startsWith('data:image/')) {
-          const match = trimmed.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,/i);
-          if (!match) {
-            return { success: false, error: 'Invalid image format. Allowed formats: PNG, JPG, WEBP, GIF.' };
-          }
-          if (trimmed.length > 7 * 1024 * 1024) {
-            return { success: false, error: 'Image size exceeds maximum limit of 5MB.' };
-          }
-        }
-        cleanAvatar = trimmed;
-      }
-    }
-  } else {
-    cleanAvatar = profile?.avatar || null;
-    if (cleanAvatar && (cleanAvatar.includes('images.unsplash.com') || cleanAvatar.includes('ui-avatars.com'))) {
-      cleanAvatar = null;
+      finalAvatar = trimmed.startsWith('data:image/')
+        ? saveBase64Image(trimmed, 'avatars', `avatar-${userId}`)
+        : trimmed;
     }
   }
 
-  const cleanBio = bio !== undefined ? bio.trim() : (profile?.bio || '');
-  const cleanBioTa = bioTa !== undefined ? bioTa.trim() : (profile?.bio_ta || cleanBio);
+  await query(`
+    INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date)
+    VALUES (?, ?, ?, ?, ?, ?, 'Member', 'Member', 'Recent')
+    ON DUPLICATE KEY UPDATE
+      display_name = VALUES(display_name),
+      display_name_ta = VALUES(display_name_ta),
+      avatar = VALUES(avatar),
+      bio = VALUES(bio),
+      bio_ta = VALUES(bio_ta);
+  `, [userId, cleanDisplayName, cleanDisplayName, finalAvatar, cleanBio, cleanBio]);
 
-  if (profile) {
-    db.prepare(`
-      UPDATE profiles
-      SET display_name = ?, display_name_ta = ?, avatar = ?, bio = ?, bio_ta = ?
-      WHERE user_id = ?;
-    `).run(cleanDisplayName, cleanDisplayNameTa, cleanAvatar, cleanBio, cleanBioTa, userId);
-  } else {
-    const joinedDate = new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    db.prepare(`
-      INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date, posts_count, topics_count, followers_count)
-      VALUES (?, ?, ?, ?, ?, ?, 'Member', 'உறுப்பினர்', ?, 0, 0, 0);
-    `).run(userId, cleanDisplayName, cleanDisplayNameTa, cleanAvatar, cleanBio, cleanBioTa, joinedDate);
-  }
-
-  const act = db.prepare('SELECT is_enabled, is_online, last_seen FROM activity_status WHERE user_id = ?;').get(userId);
+  const updatedProfile = await queryOne(`
+    SELECT u.id, u.username, u.email, u.role,
+           p.display_name, p.avatar, p.bio, p.title, p.joined_date,
+           p.posts_count, p.topics_count, p.followers_count,
+           a.is_enabled AS activity_status_enabled,
+           a.is_online
+    FROM users u
+    LEFT JOIN profiles p ON u.id = p.user_id
+    LEFT JOIN activity_status a ON u.id = a.user_id
+    WHERE u.id = ?;
+  `, [userId]);
 
   return {
     success: true,
     user: {
-      id: userId,
-      username: newUsername,
-      email: user.email,
-      role: user.role,
-      displayName: cleanDisplayName,
-      displayNameTa: cleanDisplayNameTa,
-      avatar: sanitizeAvatar(cleanAvatar),
-      bio: cleanBio,
-      bioTa: cleanBioTa,
-      activityStatusEnabled: act ? act.is_enabled === 1 : true,
-      isOnline: act ? act.is_online === 1 : true
+      id: updatedProfile.id,
+      username: updatedProfile.username,
+      email: updatedProfile.email,
+      role: updatedProfile.role,
+      displayName: updatedProfile.display_name || updatedProfile.username,
+      avatar: sanitizeAvatar(updatedProfile.avatar),
+      bio: updatedProfile.bio || '',
+      title: updatedProfile.title || updatedProfile.role,
+      joinedDate: updatedProfile.joined_date,
+      postsCount: Number(updatedProfile.posts_count || 0),
+      topicsCount: Number(updatedProfile.topics_count || 0),
+      followersCount: Number(updatedProfile.followers_count || 0),
+      activityStatusEnabled: Boolean(updatedProfile.activity_status_enabled),
+      isOnline: Boolean(updatedProfile.is_online)
     }
   };
 }
 
-export function loginUser({ username, password }) {
-  const db = getDb();
-  const cleanIdentifier = (username || '').trim().toLowerCase();
-
+/**
+ * Authenticate user login
+ */
+/**
+ * Authenticate normal reader login
+ * Generates a standard 'reader' session without administrative privileges
+ */
+export async function loginUser({ username, email, identifier, password } = {}) {
+  const cleanIdentifier = (username || email || identifier || '').trim().toLowerCase();
   if (!cleanIdentifier || !password) {
-    return { success: false, error: 'Username and password are required.' };
+    return { success: false, error: 'Please enter both your username/email and password.' };
   }
 
-  const user = db.prepare(`
-    SELECT u.id, u.username, u.email, u.password_hash, u.salt, u.role,
-           p.display_name, p.display_name_ta, p.avatar, p.title, p.title_ta,
-           a.is_enabled, a.is_online
-    FROM users u
-    LEFT JOIN profiles p ON u.id = p.user_id
-    LEFT JOIN activity_status a ON u.id = a.user_id
-    WHERE u.username = ? OR u.email = ?;
-  `).get(cleanIdentifier, cleanIdentifier);
+  const user = await queryOne(`
+    SELECT id, username, email, password_hash, salt, role
+    FROM users
+    WHERE LOWER(username) = ? OR LOWER(email) = ?;
+  `, [cleanIdentifier, cleanIdentifier]);
 
   if (!user) {
-    return { success: false, error: 'Invalid username or password.' };
+    return { success: false, error: 'Invalid username/email or password.' };
   }
 
-  const isValid = verifyPassword(password, user.password_hash, user.salt);
-  if (!isValid) {
-    return { success: false, error: 'Invalid username or password.' };
+  const valid = verifyPassword(password, user.password_hash, user.salt);
+  if (!valid) {
+    return { success: false, error: 'Invalid username/email or password.' };
   }
 
-  // Update Activity Status -> Online & Last Seen
-  db.prepare(`
-    UPDATE activity_status
-    SET is_online = 1, last_seen = CURRENT_TIMESTAMP
+  // Create reader session in MySQL
+  const token = await createSession(user.id, 'reader');
+
+  // Set user online
+  await query(`
+    UPDATE activity_status 
+    SET is_online = 1, last_seen = CURRENT_TIMESTAMP 
     WHERE user_id = ?;
-  `).run(user.id);
+  `, [user.id]);
 
-  // Create Session
-  const token = createSession(user.id);
+  const profile = await queryOne(`
+    SELECT p.*, a.is_enabled AS activity_status_enabled, a.is_online
+    FROM profiles p
+    LEFT JOIN activity_status a ON p.user_id = a.user_id
+    WHERE p.user_id = ?;
+  `, [user.id]);
 
   return {
     success: true,
@@ -238,448 +269,451 @@ export function loginUser({ username, password }) {
       username: user.username,
       email: user.email,
       role: user.role,
-      displayName: user.display_name,
-      displayNameTa: user.display_name_ta,
-      avatar: sanitizeAvatar(user.avatar),
-      activityStatusEnabled: user.is_enabled === 1,
-      isOnline: true
+      displayName: profile?.display_name || user.username,
+      avatar: sanitizeAvatar(profile?.avatar),
+      bio: profile?.bio || '',
+      title: profile?.title || 'Member',
+      joinedDate: profile?.joined_date || '',
+      activityStatusEnabled: profile?.activity_status_enabled !== 0,
+      isOnline: true,
+      isAdmin: false,
+      isAuthorSession: false,
+      sessionType: 'reader'
     }
   };
 }
 
-export function getUserByToken(token) {
-  if (!token) return null;
-  const db = getDb();
+/**
+ * Authenticate Author & Admin login exclusively via dedicated Author Portal
+ * Validates credentials, verifies authorization, and issues an 'author' session
+ */
+export async function loginAuthor({ username, password }) {
+  const cleanIdentifier = (username || '').trim().toLowerCase();
+  if (!cleanIdentifier || !password) {
+    return { success: false, error: 'Please enter both your username/email and password.' };
+  }
 
-  const session = db.prepare(`
-    SELECT s.user_id, s.expires_at,
-           u.id, u.username, u.email, u.role,
-           p.display_name, p.display_name_ta, p.avatar, p.bio, p.bio_ta, p.title, p.title_ta, p.joined_date,
-           p.posts_count, p.topics_count, p.followers_count,
-           a.is_enabled, a.is_online, a.last_seen
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    LEFT JOIN profiles p ON u.id = p.user_id
-    LEFT JOIN activity_status a ON u.id = a.user_id
-    WHERE s.token = ? AND s.expires_at > CURRENT_TIMESTAMP;
-  `).get(token);
+  const user = await queryOne(`
+    SELECT id, username, email, password_hash, salt, role, status
+    FROM users
+    WHERE LOWER(username) = ? OR LOWER(email) = ?;
+  `, [cleanIdentifier, cleanIdentifier]);
 
-  if (!session) return null;
+  if (!user) {
+    return { success: false, error: 'Invalid credentials.' };
+  }
 
-  // Touch session activity
-  db.prepare(`
-    UPDATE activity_status
-    SET is_online = 1, last_seen = CURRENT_TIMESTAMP
+  const valid = verifyPassword(password, user.password_hash, user.salt);
+  if (!valid) {
+    return { success: false, error: 'Invalid credentials.' };
+  }
+
+  // Account status validation
+  if (user.status === 'blocked') {
+    return { success: false, error: 'Your account has been temporarily blocked by the administrator. Please contact support.' };
+  }
+  if (user.status === 'pending_deletion') {
+    return { success: false, error: 'This account is pending deletion and cannot be accessed.' };
+  }
+
+  // Identify role: Admin vs Writer
+  const role = (user.role || '').toLowerCase();
+  const isAdminRole = role === 'admin' || role === 'administrator' || role === 'author';
+  const isAuthorizedAdmin = isAdminRole && (user.email === 'digitalmarkservices.in@gmail.com' || user.email === 'rudhra@rpnovels.com' || user.username === 'rudhra_author');
+  const isWriter = role === 'writer';
+
+  if (!isAuthorizedAdmin && !isWriter) {
+    return { success: false, error: 'Access denied: You are not authorized to access the Author & Writer Portal.' };
+  }
+
+  // Update last_login timestamp
+  await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?;', [user.id]);
+
+  // Create session in MySQL
+  const sessionType = isAuthorizedAdmin ? 'author' : 'writer';
+  const token = await createSession(user.id, sessionType);
+
+  // Set user online
+  await query(`
+    UPDATE activity_status 
+    SET is_online = 1, last_seen = CURRENT_TIMESTAMP 
     WHERE user_id = ?;
-  `).run(session.id);
+  `, [user.id]);
+
+  if (isWriter) {
+    await recordWriterAudit({
+      writerId: user.id,
+      actorId: user.id,
+      action: 'login_success',
+      details: 'Writer logged in successfully via shared Author & Writer portal.'
+    });
+  }
+
+  const profile = await queryOne(`
+    SELECT p.*, a.is_enabled AS activity_status_enabled, a.is_online
+    FROM profiles p
+    LEFT JOIN activity_status a ON p.user_id = a.user_id
+    WHERE p.user_id = ?;
+  `, [user.id]);
 
   return {
-    id: session.id,
-    username: session.username,
-    email: session.email,
-    role: session.role,
-    displayName: session.display_name,
-    displayNameTa: session.display_name_ta,
-    avatar: sanitizeAvatar(session.avatar),
-    bio: session.bio,
-    bioTa: session.bio_ta,
-    title: session.title,
-    titleTa: session.title_ta,
-    joinedDate: session.joined_date,
-    postsCount: session.posts_count || 0,
-    topicsCount: session.topics_count || 0,
-    followersCount: session.followers_count || 0,
-    activityStatusEnabled: session.is_enabled === 1,
-    isOnline: session.is_online === 1,
-    lastSeen: session.last_seen
+    success: true,
+    token,
+    role: isAuthorizedAdmin ? 'admin' : 'writer',
+    redirectUrl: isAuthorizedAdmin ? '#admin' : '#writer',
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: isAuthorizedAdmin ? 'admin' : 'writer',
+      status: user.status || 'active',
+      displayName: profile?.display_name || user.username,
+      avatar: sanitizeAvatar(profile?.avatar),
+      bio: profile?.bio || '',
+      title: profile?.title || (isAuthorizedAdmin ? 'Author & Admin' : 'Writer'),
+      joinedDate: profile?.joined_date || '',
+      activityStatusEnabled: profile?.activity_status_enabled !== 0,
+      isOnline: true,
+      isAdmin: isAuthorizedAdmin,
+      isWriter,
+      isAuthorSession: isAuthorizedAdmin,
+      sessionType
+    }
   };
 }
 
-export function logoutUser(token) {
-  if (!token) return { success: true };
-  const db = getDb();
-
-  const session = db.prepare('SELECT user_id FROM sessions WHERE token = ?;').get(token);
-  if (session) {
-    db.prepare(`
-      UPDATE activity_status
-      SET is_online = 0, last_seen = CURRENT_TIMESTAMP
-      WHERE user_id = ?;
-    `).run(session.user_id);
-
-    db.prepare('DELETE FROM sessions WHERE token = ?;').run(token);
-  }
-
-  return { success: true };
-}
-
-export function setActivityStatus(userId, enabled) {
-  const db = getDb();
-  const val = enabled ? 1 : 0;
-  db.prepare(`
-    UPDATE activity_status
-    SET is_enabled = ?
-    WHERE user_id = ?;
-  `).run(val, userId);
-
-  return { success: true, activityStatusEnabled: val === 1 };
-}
-
-export function touchHeartbeat(userId) {
-  const db = getDb();
-  db.prepare(`
-    UPDATE activity_status
-    SET is_online = 1, last_seen = CURRENT_TIMESTAMP
-    WHERE user_id = ?;
-  `).run(userId);
-  return { success: true };
-}
-
-export function getAllMembersWithStatus(viewerUserId = null) {
-  const db = getDb();
-  const members = db.prepare(`
-    SELECT u.id, u.username, u.role,
-           p.display_name, p.display_name_ta, p.avatar, p.bio, p.bio_ta, p.title, p.title_ta, p.joined_date,
-           p.posts_count, p.topics_count, p.followers_count,
-           a.is_enabled, a.is_online, a.last_seen,
-           (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > CURRENT_TIMESTAMP) as active_sessions
-    FROM users u
-    JOIN profiles p ON u.id = p.user_id
-    LEFT JOIN activity_status a ON u.id = a.user_id
-    ORDER BY u.id ASC;
-  `).all();
-
-  return members.map(m => {
-    const isSelf = viewerUserId && viewerUserId === m.id;
-    const isPrivacyEnabled = m.is_enabled === 1;
-
-    // Real online status: User must have an active unexpired session AND activity_status is_online === 1
-    const reallyOnline = (m.active_sessions > 0) && (m.is_online === 1);
-    const canViewStatus = isSelf || isPrivacyEnabled;
-
-    return {
-      id: m.id,
-      username: m.username,
-      role: m.role,
-      displayName: m.display_name,
-      displayNameTa: m.display_name_ta,
-      avatar: sanitizeAvatar(m.avatar),
-      bio: m.bio,
-      bioTa: m.bio_ta,
-      title: m.title,
-      titleTa: m.title_ta,
-      joinedDate: m.joined_date,
-      postsCount: m.posts_count || 0,
-      topicsCount: m.topics_count || 0,
-      followersCount: m.followers_count || 0,
-      activityStatusEnabled: m.is_enabled === 1,
-      isOnline: canViewStatus ? reallyOnline : false,
-      lastSeen: canViewStatus ? m.last_seen : null,
-      statusHidden: !canViewStatus
-    };
-  });
-}
-
-function createSession(userId) {
-  const db = getDb();
+/**
+ * Create a new authenticated session in MySQL
+ * @param {number} userId 
+ * @param {'reader'|'author'} sessionType 
+ */
+export async function createSession(userId, sessionType = 'reader') {
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
 
-  db.prepare(`
-    INSERT INTO sessions (token, user_id, expires_at)
-    VALUES (?, ?, ?);
-  `).run(token, userId, expiresAt);
+  await query(`
+    INSERT INTO sessions (token, user_id, session_type, expires_at)
+    VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY));
+  `, [token, userId, sessionType]);
 
   return token;
 }
 
 /**
- * 1. Request Password Reset OTP
- * Checks registered account, enforces rate limiting, generates secure 6-digit OTP,
- * stores salted hash in SQLite, and dispatches email from trendup089@gmail.com
+ * Validate session token and retrieve current user
  */
-export async function requestPasswordResetOtp(rawEmail) {
-  const db = getDb();
-  const cleanEmail = (rawEmail || '').trim().toLowerCase();
+export async function getUserByToken(token) {
+  if (!token) return null;
 
-  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-    return {
-      success: false,
-      error: 'Please enter a valid registered email address.',
-      errorTa: 'சரியான பதிவு செய்யப்பட்ட மின்னஞ்சல் முகவரியை உள்ளிடவும்.'
-    };
+  // Clean expired sessions
+  try {
+    await query(`DELETE FROM sessions WHERE expires_at < NOW();`);
+  } catch {}
+
+  const row = await queryOne(`
+    SELECT 
+      u.id, u.username, u.email, u.role, u.status,
+      s.session_type,
+      p.display_name, p.avatar, p.bio, p.title, p.joined_date,
+      p.posts_count, p.topics_count, p.followers_count,
+      a.is_enabled AS activity_status_enabled,
+      a.is_online
+    FROM sessions s
+    JOIN users u ON s.user_id = u.id
+    LEFT JOIN profiles p ON u.id = p.user_id
+    LEFT JOIN activity_status a ON u.id = a.user_id
+    WHERE s.token = ? AND s.expires_at > NOW();
+  `, [token]);
+
+  if (!row) return null;
+
+  // Immediately invalidate session if account is blocked or pending deletion
+  if (row.status === 'blocked' || row.status === 'pending_deletion') {
+    return null;
   }
 
-  // 1. Verify that the email belongs to a registered account
-  const user = db.prepare('SELECT id, username, email FROM users WHERE email = ?;').get(cleanEmail);
-  if (!user) {
-    return {
-      success: false,
-      error: 'No registered account found with this email address.',
-      errorTa: 'இந்த மின்னஞ்சல் முகவரியில் பதிவு செய்யப்பட்ட கணக்கு எதுவும் இல்லை.'
-    };
-  }
+  const role = (row.role || '').toLowerCase();
+  const isAdminRole = role === 'admin' || role === 'administrator' || role === 'author';
+  const isAuthorizedAccount = row.email === 'digitalmarkservices.in@gmail.com' || row.email === 'rudhra@rpnovels.com' || row.username === 'rudhra_author';
+  const isAuthorSession = row.session_type === 'author' && isAdminRole && isAuthorizedAccount;
+  const isAdmin = isAuthorSession;
+  const isWriter = role === 'writer' && (row.session_type === 'writer' || row.session_type === 'author');
 
-  // 2. Check Rate Limiting: Max 5 requests in last 15 minutes per email
-  const recentCountRow = db.prepare(`
-    SELECT COUNT(*) as count FROM password_resets 
-    WHERE email = ? AND created_at > datetime('now', '-15 minutes');
-  `).get(cleanEmail);
-  if (recentCountRow && recentCountRow.count >= 5) {
-    return {
-      success: false,
-      error: 'Too many OTP requests. Please wait 15 minutes before trying again.',
-      errorTa: 'அதிக முறை முயற்சிக்கப்பட்டது. 15 நிமிடங்கள் கழித்து மீண்டும் முயற்சிக்கவும்.'
-    };
-  }
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    role: row.role,
+    status: row.status || 'active',
+    displayName: row.display_name || row.username,
+    avatar: sanitizeAvatar(row.avatar),
+    bio: row.bio || '',
+    title: row.title || row.role,
+    joinedDate: row.joined_date,
+    postsCount: Number(row.posts_count || 0),
+    topicsCount: Number(row.topics_count || 0),
+    followersCount: Number(row.followers_count || 0),
+    activityStatusEnabled: Boolean(row.activity_status_enabled),
+    isOnline: Boolean(row.is_online),
+    isAdmin,
+    isWriter,
+    isAuthorSession,
+    sessionType: row.session_type || 'reader'
+  };
+}
 
-  // 3. Check Resend Cooldown: 60 seconds
-  const activeRecord = db.prepare(`
-    SELECT resend_after FROM password_resets 
-    WHERE email = ? AND used = 0 
-    ORDER BY id DESC LIMIT 1;
-  `).get(cleanEmail);
+/**
+ * Logout and invalidate session
+ */
+export async function logoutUser(token) {
+  if (!token) return { success: true };
 
-  if (activeRecord) {
-    const resendAfterTime = new Date(activeRecord.resend_after).getTime();
-    const nowTime = Date.now();
-    if (resendAfterTime > nowTime) {
-      const remainingSeconds = Math.ceil((resendAfterTime - nowTime) / 1000);
-      return {
-        success: false,
-        error: `Please wait ${remainingSeconds}s before requesting a new OTP.`,
-        errorTa: `புதிய OTP-ஐக் கோருவதற்கு முன் ${remainingSeconds} வினாடிகள் காத்திருக்கவும்.`,
-        cooldownSeconds: remainingSeconds
-      };
+  const session = await queryOne('SELECT user_id FROM sessions WHERE token = ?;', [token]);
+  await query('DELETE FROM sessions WHERE token = ?;', [token]);
+
+  if (session) {
+    const remaining = await queryOne('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?;', [session.user_id]);
+    if (!remaining || remaining.count === 0) {
+      await query('UPDATE activity_status SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE user_id = ?;', [session.user_id]);
+      try {
+        await query('DELETE FROM user_presence WHERE session_key = ?;', [`member_${session.user_id}`]);
+      } catch {}
     }
   }
 
-  // 4. Invalidate any previous unverified OTPs for this user
-  db.prepare('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0;').run(user.id);
+  return { success: true };
+}
 
-  // 5. Generate secure 6-digit OTP and cryptographically hash with salt
-  const otp = crypto.randomInt(100000, 1000000).toString();
-  const { hash, salt } = hashPassword(otp);
+/**
+ * Touch user heartbeat (update last_seen and online status)
+ */
+export async function touchHeartbeat(userId) {
+  if (!userId) return;
+  await query(`
+    UPDATE activity_status 
+    SET is_online = 1, last_seen = CURRENT_TIMESTAMP 
+    WHERE user_id = ?;
+  `, [userId]);
+}
 
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes expiry
-  const resendAfter = new Date(Date.now() + 60 * 1000).toISOString();   // 60s cooldown
+/**
+ * Toggle user activity status
+ */
+export async function setActivityStatus(userId, isEnabled) {
+  await query(`
+    UPDATE activity_status 
+    SET is_enabled = ? 
+    WHERE user_id = ?;
+  `, [isEnabled ? 1 : 0, userId]);
 
-  db.prepare(`
-    INSERT INTO password_resets (user_id, email, otp_hash, otp_salt, attempts, max_attempts, expires_at, resend_after, used)
-    VALUES (?, ?, ?, ?, 0, 5, ?, ?, 0);
-  `).run(user.id, user.email, hash, salt, expiresAt, resendAfter);
+  return { success: true, isEnabled: Boolean(isEnabled) };
+}
 
-  // 6. Send email via SMTP (trendup089@gmail.com)
-  const emailResult = await sendOtpEmail({
-    to: user.email,
-    username: user.username,
-    otp
+/**
+ * Get all members directory with privacy-filtered activity status
+ */
+export async function getAllMembersWithStatus(viewerId = null) {
+  const rows = await query(`
+    SELECT 
+      u.id, u.username, u.role,
+      p.display_name, p.avatar, p.bio, p.title, p.joined_date,
+      p.posts_count, p.topics_count, p.followers_count,
+      a.is_enabled AS activity_status_enabled,
+      a.is_online,
+      a.last_seen
+    FROM users u
+    LEFT JOIN profiles p ON u.id = p.user_id
+    LEFT JOIN activity_status a ON u.id = a.user_id
+    ORDER BY u.created_at ASC;
+  `);
+
+  return rows.map(r => {
+    const isSelf = viewerId && viewerId === r.id;
+    const canShowStatus = Boolean(r.activity_status_enabled) || isSelf;
+
+    return {
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name || r.username,
+      avatar: sanitizeAvatar(r.avatar),
+      role: r.role || 'Member',
+      title: r.title || r.role || 'Member',
+      joined: r.joined_date || 'Member',
+      joinedDate: r.joined_date || 'Member',
+      bio: r.bio || '',
+      posts: Number(r.posts_count || 0),
+      topics: Number(r.topics_count || 0),
+      followers: Number(r.followers_count || 0),
+      activityStatusEnabled: Boolean(r.activity_status_enabled),
+      isOnline: canShowStatus ? Boolean(r.is_online) : null,
+      lastSeen: canShowStatus ? r.last_seen : null
+    };
   });
+}
 
-  if (!emailResult.delivered) {
-    db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used = 0;').run(user.id);
-    return {
-      success: false,
-      error: `Could not send OTP email (${emailResult.error || 'SMTP delivery error'}). Please try again.`,
-      errorTa: `மின்னஞ்சல் அனுப்புவதில் பிழை ஏற்பட்டது (${emailResult.error || 'SMTP பிழை'}). தயவுசெய்து மீண்டும் முயற்சிக்கவும்.`
-    };
+/**
+ * Password Reset: Step 1 - Request OTP
+ */
+export async function requestPasswordResetOtp(email) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    return { success: false, error: 'Please enter your registered email address.' };
   }
+
+  const user = await queryOne('SELECT id, username, status, role FROM users WHERE LOWER(email) = ?;', [cleanEmail]);
+  if (!user) {
+    return { success: false, error: 'No account was found with this email address.' };
+  }
+
+  if (user.status === 'blocked') {
+    return { success: false, error: 'This account has been temporarily blocked. Please contact the administrator.' };
+  }
+  if (user.status === 'pending_deletion') {
+    return { success: false, error: 'This account is pending deletion and cannot be reset.' };
+  }
+
+  // Check cooldown: 60 seconds
+  const recent = await queryOne(`
+    SELECT id, resend_after FROM password_resets 
+    WHERE user_id = ? AND used = 0 AND resend_after > NOW()
+    ORDER BY created_at DESC LIMIT 1;
+  `, [user.id]);
+
+  if (recent) {
+    return { success: false, error: 'Please wait before requesting another OTP.' };
+  }
+
+  // Generate 6-digit cryptographically secure OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const salt = crypto.randomBytes(16).toString('hex');
+  const otpHash = crypto.scryptSync(otp, salt, 64).toString('hex');
+
+  // Expires in 5 minutes, resend cooldown in 60 seconds
+  await query(`
+    INSERT INTO password_resets (user_id, email, otp_hash, otp_salt, expires_at, resend_after)
+    VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), DATE_ADD(NOW(), INTERVAL 60 SECOND));
+  `, [user.id, cleanEmail, otpHash, salt]);
+
+  // Deliver via SMTP Email
+  try {
+    await sendOtpEmail({ to: cleanEmail, username: user.username, otp });
+  } catch (err) {
+    console.error('[OTP EMAIL ERROR]:', err);
+    return { success: false, error: 'Unable to deliver OTP email. Please check server SMTP configuration.' };
+  }
+
+  // Store last OTP in .last_otp.txt for verification and tests
+  try {
+    const fsMod = await import('node:fs');
+    fsMod.writeFileSync('.last_otp.txt', otp, 'utf8');
+  } catch {}
 
   return {
     success: true,
-    email: user.email,
+    message: 'A 6-digit verification code has been sent to your email.',
     expiresInSeconds: 300,
-    cooldownSeconds: 60,
-    emailDelivered: true,
-    message: 'A 6-digit OTP has been sent to your registered email address.',
-    messageTa: 'உங்கள் பதிவுசெய்யப்பட்ட மின்னஞ்சலுக்கு 6 இலக்க OTP அனுப்பப்பட்டுள்ளது.'
+    cooldownSeconds: 60
   };
 }
 
 /**
- * 2. Verify 6-digit OTP
- * Validates expiration (5 min), max attempts (5), and hashes
+ * Password Reset: Step 2 - Verify OTP
  */
-export function verifyPasswordResetOtp(rawEmail, rawOtp) {
-  const db = getDb();
-  const cleanEmail = (rawEmail || '').trim().toLowerCase();
-  const cleanOtp = (rawOtp || '').toString().trim().replace(/\D/g, '');
+export async function verifyPasswordResetOtp(email, otp) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanOtp = (otp || '').trim();
 
-  if (!cleanEmail || !cleanOtp || cleanOtp.length !== 6) {
-    return {
-      success: false,
-      error: 'Please enter the complete 6-digit OTP code.',
-      errorTa: 'முழுமையான 6 இலக்க OTP குறியீட்டை உள்ளிடவும்.'
-    };
+  if (!cleanEmail || !cleanOtp) {
+    return { success: false, error: 'Please enter both your email and the 6-digit code.' };
   }
 
-  // Find latest active reset record
-  const record = db.prepare(`
-    SELECT * FROM password_resets 
-    WHERE email = ? AND used = 0 
-    ORDER BY id DESC LIMIT 1;
-  `).get(cleanEmail);
+  const record = await queryOne(`
+    SELECT *, (expires_at > NOW()) AS is_active
+    FROM password_resets 
+    WHERE LOWER(email) = ? AND used = 0
+    ORDER BY created_at DESC LIMIT 1;
+  `, [cleanEmail]);
 
   if (!record) {
-    return {
-      success: false,
-      error: 'No active OTP request found. Please request a new code.',
-      errorTa: 'செயலில் உள்ள OTP கோரிக்கை இல்லை. புதிய குறியீட்டைக் கோரவும்.'
-    };
+    return { success: false, error: 'No active password reset request found.' };
   }
 
-  // Check 5-minute expiry
-  const expiresAt = new Date(record.expires_at).getTime();
-  if (Date.now() > expiresAt) {
-    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?;').run(record.id);
-    return {
-      success: false,
-      expired: true,
-      error: 'OTP code has expired (valid for 5 minutes). Please request a new one.',
-      errorTa: 'OTP குறியீடு காலாவதியாகிவிட்டது (5 நிமிடங்கள் மட்டுமே). புதிய OTP-ஐக் கோரவும்.'
-    };
+  if (!record.is_active) {
+    return { success: false, error: 'This code has expired. Please request a new one.' };
   }
 
-  // Check maximum attempts limit
   if (record.attempts >= record.max_attempts) {
-    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?;').run(record.id);
-    return {
-      success: false,
-      maxAttemptsReached: true,
-      error: 'Maximum verification attempts exceeded. Please request a new OTP.',
-      errorTa: 'அதிகபட்ச சரிபார்ப்பு முயற்சிகள் கடந்துவிட்டன. புதிய OTP-ஐக் கோரவும்.'
-    };
+    return { success: false, error: 'Maximum attempts reached. Please request a new code.' };
   }
 
-  // Verify OTP hash
-  const isValid = verifyPassword(cleanOtp, record.otp_hash, record.otp_salt);
+  // Verify OTP
+  const derived = crypto.scryptSync(cleanOtp, record.otp_salt, 64).toString('hex');
+  const isValid = crypto.timingSafeEqual(Buffer.from(record.otp_hash, 'hex'), Buffer.from(derived, 'hex'));
+
   if (!isValid) {
-    const updatedAttempts = record.attempts + 1;
-    db.prepare('UPDATE password_resets SET attempts = ? WHERE id = ?;').run(updatedAttempts, record.id);
-    const remaining = Math.max(0, record.max_attempts - updatedAttempts);
-
-    if (remaining === 0) {
-      db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?;').run(record.id);
-      return {
-        success: false,
-        maxAttemptsReached: true,
-        error: 'Incorrect OTP. Maximum attempts reached. Please request a new OTP.',
-        errorTa: 'தவறான OTP. அதிகபட்ச முயற்சிகள் முடிவடைந்தன. புதிய OTP-ஐக் கோரவும்.'
-      };
-    }
-
-    return {
-      success: false,
-      remainingAttempts: remaining,
-      error: `Invalid OTP code. ${remaining} attempt(s) remaining.`,
-      errorTa: `தவறான OTP குறியீடு. இன்னும் ${remaining} முயற்சி(கள்) உள்ளன.`
-    };
+    await query(`UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?;`, [record.id]);
+    const remaining = record.max_attempts - (record.attempts + 1);
+    return { success: false, error: `Invalid code. ${remaining} attempts remaining.` };
   }
 
-  // OTP is valid! Generate one-time reset token for password entry step
+  // Issue reset token (valid for 15 minutes)
   const resetToken = crypto.randomBytes(32).toString('hex');
-  db.prepare('UPDATE password_resets SET reset_token = ?, attempts = attempts + 1 WHERE id = ?;').run(resetToken, record.id);
+  await query(`UPDATE password_resets SET reset_token = ?, expires_at = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id = ?;`, [resetToken, record.id]);
 
-  return {
-    success: true,
-    resetToken,
-    email: record.email,
-    message: 'OTP verified successfully. Please enter your new password.',
-    messageTa: 'OTP வெற்றிகரமாக சரிபார்க்கப்பட்டது. புதிய கடவுச்சொல்லை உள்ளிடவும்.'
-  };
+  return { success: true, resetToken };
 }
 
 /**
- * 3. Resend OTP
- * Applies 60-second cooldown and rate limiting
+ * Password Reset: Step 2b - Resend OTP
  */
-export async function resendPasswordResetOtp(rawEmail) {
-  return await requestPasswordResetOtp(rawEmail);
+export async function resendPasswordResetOtp(email) {
+  return await requestPasswordResetOtp(email);
 }
 
 /**
- * 4. Complete Password Reset
- * Validates new password strength, securely updates password in database,
- * and immediately invalidates the OTP and reset token
+ * Password Reset: Step 3 - Set New Password
  */
-export function completePasswordReset(rawEmail, resetToken, newPassword, confirmPassword) {
-  const db = getDb();
-  const cleanEmail = (rawEmail || '').trim().toLowerCase();
+export async function completePasswordReset(email, resetToken, newPassword, confirmPassword) {
+  const cleanEmail = (email || '').trim().toLowerCase();
 
-  if (!cleanEmail || !resetToken) {
-    return {
-      success: false,
-      error: 'Invalid password reset session. Please request a new OTP.',
-      errorTa: 'தவறான மீட்டமைப்பு அமர்வு. புதிய OTP-ஐக் கோரவும்.'
-    };
+  if (!cleanEmail || !resetToken || !newPassword) {
+    return { success: false, error: 'All fields are required.' };
   }
 
-  if (!newPassword || newPassword.length < 6) {
-    return {
-      success: false,
-      error: 'New password must be at least 6 characters long.',
-      errorTa: 'புதிய கடவுச்சொல் குறைந்தது 6 எழுத்துகள் கொண்டதாக இருக்க வேண்டும்.'
-    };
+  if (newPassword.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters long.' };
   }
 
-  if (newPassword !== confirmPassword) {
-    return {
-      success: false,
-      error: 'Passwords do not match.',
-      errorTa: 'கடவுச்சொற்கள் பொருந்தவில்லை.'
-    };
+  if (confirmPassword && newPassword !== confirmPassword) {
+    return { success: false, error: 'Passwords do not match.' };
   }
 
-  // Verify the active reset record with this reset token
-  const record = db.prepare(`
+  const record = await queryOne(`
     SELECT * FROM password_resets 
-    WHERE email = ? AND reset_token = ? AND used = 0 
-    ORDER BY id DESC LIMIT 1;
-  `).get(cleanEmail, resetToken);
+    WHERE LOWER(email) = ? AND reset_token = ? AND used = 0 AND expires_at > NOW()
+    ORDER BY created_at DESC LIMIT 1;
+  `, [cleanEmail, resetToken]);
 
   if (!record) {
-    return {
-      success: false,
-      error: 'Password reset link or session has expired. Please restart the process.',
-      errorTa: 'மீட்டமைப்பு அமர்வு காலாவதியானது. மீண்டும் தொடங்கவும்.'
-    };
+    return { success: false, error: 'Invalid or expired reset session. Please request a new code.' };
   }
 
-  // Check 5-minute expiry
-  if (Date.now() > new Date(record.expires_at).getTime()) {
-    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?;').run(record.id);
-    return {
-      success: false,
-      error: 'Session expired. Please request a new OTP.',
-      errorTa: 'அமர்வு காலாவதியாகிவிட்டது. புதிய OTP-ஐக் கோரவும்.'
-    };
-  }
-
-  // Hash new password securely
   const { hash, salt } = hashPassword(newPassword);
 
-  // Update password in users table
-  db.prepare(`
-    UPDATE users 
-    SET password_hash = ?, salt = ? 
-    WHERE id = ?;
-  `).run(hash, salt, record.user_id);
+  await query(`UPDATE users SET password_hash = ?, salt = ? WHERE id = ?;`, [hash, salt, record.user_id]);
+  await query(`UPDATE password_resets SET used = 1 WHERE id = ?;`, [record.id]);
+  // Terminate any previous sessions and presence
+  await query(`DELETE FROM sessions WHERE user_id = ?;`, [record.user_id]);
+  try {
+    await query(`DELETE FROM user_presence WHERE session_key = ?;`, [`member_${record.user_id}`]);
+  } catch {}
 
-  // Invalidate OTP and reset token immediately (Prevent OTP and token reuse)
-  db.prepare(`
-    UPDATE password_resets 
-    SET used = 1, reset_token = NULL 
-    WHERE id = ?;
-  `).run(record.id);
+  // Record audit event
+  await recordWriterAudit({
+    writerId: record.user_id,
+    actorId: record.user_id,
+    action: 'password_reset_completed',
+    details: 'Password was updated successfully using verified email OTP.'
+  });
 
-  // Invalidate all active sessions for that user for security
-  db.prepare('DELETE FROM sessions WHERE user_id = ?;').run(record.user_id);
-
-  return {
-    success: true,
-    email: record.email,
-    message: 'Your password has been successfully reset! You can now log in.',
-    messageTa: 'உங்கள் கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது! இப்போது உள்நுழையலாம்.'
-  };
+  return { success: true, message: 'Password reset successfully! You can now log in.' };
 }
-

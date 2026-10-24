@@ -40,10 +40,10 @@ export function initMessaging() {
     thread.messages.push({
       sender: 'me',
       text: text,
-      time: 'இப்போது'
+      time: 'Just now'
     });
     thread.snippet = text;
-    thread.time = 'இப்போது';
+    thread.time = 'Just now';
     input.value = '';
 
     renderMessagesDrawerContent();
@@ -74,11 +74,11 @@ function renderMessagesDrawerContent() {
       <img src="${thread.avatar || '/profile.png'}" class="user-avatar-sm" alt="${thread.user}" onerror="this.src='/profile.png'">
       <div>
         <div style="font-weight:700; font-size:13px; color:var(--color-navy-deep);">${thread.user}</div>
-        <div style="font-size:10px; color:var(--color-success);">● ஆன்லைன்</div>
+        <div style="font-size:10px; color:var(--color-success);">● Online</div>
       </div>
       <button onclick="window.showThreadList = !window.showThreadList; renderMessagesDrawerContent();" 
               class="btn-outline btn-sm" style="margin-left:auto;">
-        உரையாடல்கள்
+        Threads
       </button>
     </div>
 
@@ -95,9 +95,9 @@ function renderMessagesDrawerContent() {
     <!-- Message Composer -->
     <div class="message-composer">
       <input type="text" id="chat-message-input" class="message-input" 
-             placeholder="செய்தியை தட்டச்சு செய்யவும்..." 
+             placeholder="Type a message..." 
              onkeydown="if(event.key === 'Enter') sendMessage();">
-      <button class="message-send-btn" onclick="sendMessage()" title="அனுப்பு">
+      <button class="message-send-btn" onclick="sendMessage()" title="Send">
         ➤
       </button>
     </div>

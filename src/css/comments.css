@@ -1,96 +1,235 @@
-/* Comments & Emoji Reactions Design System for Rudhra Prarthana Novels */
+/* ==========================================================================
+   Comments & Emoji Reactions Design System for Rudhra Prarthana Novels
+   WordPress-Style Rich-Text Editor & Episode Heart Reaction System
+   ========================================================================== */
 
 /* ==========================================================================
-   1. Emoji Reactions Toolbar
+   1. Episode Heart Like & 7-Emoji Reaction System
    ========================================================================== */
-.rp-reactions-container {
-  margin: var(--space-8, 2rem) 0;
-  padding: var(--space-6, 1.5rem);
-  background: #FFFDF8;
-  border: 1px solid var(--color-border, #E8DCCB);
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.rp-reactions-wrap {
+  margin: var(--space-6, 1.5rem) 0;
+  padding: 10px 0;
 }
 
-.rp-reactions-header {
+.rp-like-widget-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.rp-reactions-title {
-  font-family: var(--font-serif, 'Cormorant Garamond', serif);
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-navy-deep, #0B1F33);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-
-.rp-reactions-guest-note {
-  font-size: 12px;
-  color: var(--color-text-muted, #627D98);
-}
-
-.rp-reactions-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
-.rp-reaction-pill {
+.rp-like-trigger-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+/* Heart-Shaped Like Button */
+.rp-like-btn.rp-heart-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 8px;
+  padding: 8px 20px;
   background: #FFFFFF;
   border: 1.5px solid var(--color-border, #E8DCCB);
   border-radius: 9999px;
+  font-family: inherit;
   font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.4, 1);
-  user-select: none;
+  font-weight: 600;
   color: var(--color-navy-deep, #0B1F33);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(16, 42, 67, 0.06);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
 }
 
-.rp-reaction-pill:hover {
+.rp-like-btn.rp-heart-btn:hover {
   transform: translateY(-2px);
-  border-color: var(--color-gold, #C89B3C);
-  box-shadow: 0 4px 12px rgba(200, 155, 60, 0.15);
+  border-color: #E53E3E;
+  box-shadow: 0 4px 16px rgba(229, 62, 62, 0.2);
+  color: #C53030;
 }
 
-.rp-reaction-pill:active {
+.rp-like-btn.rp-heart-btn:active {
   transform: scale(0.96);
 }
 
-.rp-reaction-pill.active {
-  background: #FFF7E6;
-  border-color: var(--color-gold, #C89B3C);
-  box-shadow: 0 0 0 2px rgba(200, 155, 60, 0.2);
+.rp-like-btn.rp-heart-btn.active {
+  background: linear-gradient(135deg, #FFF5F5 0%, #FED7D7 100%);
+  border-color: #E53E3E;
+  color: #C53030;
+  box-shadow: 0 3px 12px rgba(229, 62, 62, 0.25);
   font-weight: 700;
-  color: #8C6116;
 }
 
-.rp-reaction-emoji {
-  font-size: 18px;
+.rp-heart-glyph {
+  font-size: 19px;
   line-height: 1;
+  display: inline-block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.rp-reaction-count {
-  font-size: 13px;
+.rp-like-btn.rp-heart-btn:hover .rp-heart-glyph {
+  transform: scale(1.2);
+}
+
+.rp-like-btn.rp-heart-btn.active .rp-heart-glyph {
+  animation: rpHeartBeat 0.45s ease-in-out;
+}
+
+@keyframes rpHeartBeat {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.35); }
+  50% { transform: scale(0.95); }
+  75% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.rp-like-label {
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+}
+
+.rp-like-total-badge {
+  background: rgba(229, 62, 62, 0.12);
+  color: #C53030;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  margin-left: 2px;
+}
+
+.rp-like-btn.rp-heart-btn.active .rp-like-total-badge {
+  background: #E53E3E;
+  color: #FFFFFF;
+}
+
+/* Floating 7-Emoji Reaction Picker Tray */
+.rp-emoji-picker {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #FFFFFF;
+  border: 1.5px solid var(--color-gold, #C89B3C);
+  border-radius: 9999px;
+  box-shadow: 0 10px 30px rgba(16, 42, 67, 0.16), 0 2px 8px rgba(0, 0, 0, 0.05);
+  z-index: 120;
+  animation: rpEmojiPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  white-space: nowrap;
+}
+
+/* Upward pointer bubble */
+.rp-emoji-picker::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 28px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #FFFFFF transparent transparent transparent;
+  filter: drop-shadow(0 2px 2px rgba(16, 42, 67, 0.08));
+}
+
+@keyframes rpEmojiPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.rp-emoji-option {
+  position: relative;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.4, 1.2), background 0.15s ease;
+}
+
+.rp-emoji-option:hover {
+  transform: scale(1.35) translateY(-4px);
+  background: rgba(200, 155, 60, 0.12);
+}
+
+.rp-emoji-option.selected {
+  background: #FFF3D6;
+  box-shadow: 0 0 0 2px var(--color-gold, #C89B3C);
+}
+
+.rp-emoji-glyph {
+  font-size: 22px;
+  line-height: 1;
+  display: block;
+}
+
+.rp-emoji-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted, #627D98);
+  margin-top: 2px;
+}
+
+.rp-emoji-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-navy-deep, #0B1F33);
+  color: #FFFFFF;
+  font-size: 10px;
   font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.rp-emoji-option:hover .rp-emoji-tooltip {
+  opacity: 1;
+}
+
+/* Live Community Reactions Breakdown Summary Pill */
+.rp-reactions-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #FDFBF7;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: 9999px;
+  font-size: 12.5px;
+  color: var(--color-text-main, #334E68);
+  box-shadow: var(--shadow-sm);
+}
+
+.rp-summary-emojis {
+  font-size: 15px;
+  letter-spacing: -1px;
+}
+
+.rp-summary-count {
+  font-weight: 600;
+  color: var(--color-navy-deep, #0B1F33);
 }
 
 /* ==========================================================================
-   2. Comments Section
+   2. Comments Container & Header
    ========================================================================== */
 .rp-comments-container {
   margin: var(--space-8, 2rem) 0;
@@ -132,7 +271,7 @@
 }
 
 /* ==========================================================================
-   3. Comment Submission Box
+   3. WordPress-Style Attached Rich-Text Comment Editor
    ========================================================================== */
 .rp-comment-form-wrap {
   margin-bottom: var(--space-8, 2rem);
@@ -146,7 +285,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .rp-comment-author-avatar {
@@ -168,33 +307,451 @@
   color: var(--color-navy-deep, #0B1F33);
 }
 
-.rp-comment-textarea {
-  width: 100%;
-  min-height: 90px;
-  padding: 12px 14px;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--color-navy-deep, #0B1F33);
-  background: #FFFFFF;
+/* Attached Editor Wrapper (Toolbar + ContentEditable Box) */
+.rp-editor-wrapper {
   border: 1.5px solid var(--color-border, #E8DCCB);
   border-radius: var(--radius-md, 8px);
-  resize: vertical;
-  box-sizing: border-box;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #FFFFFF;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.rp-comment-textarea:focus {
-  outline: none;
+.rp-editor-wrapper:focus-within {
   border-color: var(--color-gold, #C89B3C);
-  box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.15);
+  box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.16);
 }
 
+/* Attached Formatting Toolbar (WordPress Style) */
+.rp-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 7px 10px;
+  background: #FAF7F0;
+  border-bottom: 1px solid var(--color-border, #E8DCCB);
+  user-select: none;
+}
+
+.rp-tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rp-tb-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #627D98);
+  margin-right: 2px;
+}
+
+.rp-tb-select {
+  padding: 3px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-navy-deep, #0B1F33);
+  background: #FFFFFF;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.rp-tb-select:hover {
+  border-color: var(--color-gold, #C89B3C);
+}
+
+.rp-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  min-width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-navy-deep, #0B1F33);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.rp-tb-btn:hover {
+  background: #EFE8D8;
+  border-color: rgba(200, 155, 60, 0.35);
+  color: #8C6116;
+}
+
+.rp-tb-btn:active {
+  background: #E5DAC4;
+}
+
+.rp-tb-btn.rp-btn-highlight {
+  background: #FFF4DC;
+  border-color: rgba(200, 155, 60, 0.4);
+  color: #8C6116;
+}
+
+.rp-tb-btn.rp-btn-highlight:hover {
+  background: #FDE8BD;
+}
+
+/* Color Picker & Swatches */
+.rp-color-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rp-tb-color-picker {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+
+.rp-color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease;
+}
+
+.rp-color-swatch:hover {
+  transform: scale(1.3);
+}
+
+.rp-color-swatch.gold { background: #B88635; }
+.rp-color-swatch.crimson { background: #DC2626; }
+.rp-color-swatch.forest { background: #16A34A; }
+
+.rp-tb-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.12);
+  margin: 0 4px;
+}
+
+/* Inline Rich-Text ContentEditable Area */
+.rp-rich-editor {
+  width: 100%;
+  min-height: 110px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--color-navy-deep, #0B1F33);
+  outline: none;
+  box-sizing: border-box;
+  background: #FFFFFF;
+}
+
+/* Placeholder when editor is empty */
+.rp-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-muted, #829AB1);
+  pointer-events: none;
+}
+
+/* Formatting Elements Rendering Immediately in Editor and in Stream */
+.rp-rich-editor b,
+.rp-rich-editor strong,
+.rp-comment-body b,
+.rp-comment-body strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.rp-rich-editor i,
+.rp-rich-editor em,
+.rp-comment-body i,
+.rp-comment-body em {
+  font-style: italic;
+}
+
+.rp-rich-editor u,
+.rp-comment-body u {
+  text-decoration: underline;
+  text-decoration-color: var(--color-gold, #C89B3C);
+}
+
+.rp-rich-editor s,
+.rp-comment-body s {
+  text-decoration: line-through;
+}
+
+/* Lists Rendering with Immediate Numbers and Bullets */
+.rp-rich-editor ul,
+.rp-comment-body ul {
+  list-style-type: disc !important;
+  padding-left: 28px !important;
+  margin: 8px 0 !important;
+}
+
+.rp-rich-editor ol,
+.rp-comment-body ol {
+  list-style-type: decimal !important;
+  padding-left: 28px !important;
+  margin: 8px 0 !important;
+}
+
+.rp-rich-editor li,
+.rp-comment-body li {
+  display: list-item !important;
+  margin-bottom: 4px !important;
+  line-height: 1.6 !important;
+}
+
+/* Blockquote Formatting */
+.rp-rich-editor blockquote,
+.rp-comment-body blockquote {
+  border-left: 4px solid var(--color-gold, #C89B3C);
+  background: #FCFBF7;
+  padding: 8px 14px;
+  margin: 10px 0;
+  color: var(--color-text-muted, #627D98);
+  font-style: italic;
+  border-radius: 0 6px 6px 0;
+}
+
+/* Code Formatting */
+.rp-rich-editor code,
+.rp-comment-body code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13.5px;
+  background: #F1EFEA;
+  color: #B83232;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.rp-rich-editor pre,
+.rp-comment-body pre {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13.5px;
+  background: #F4F1EA;
+  color: var(--color-navy-deep, #0B1F33);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, #E8DCCB);
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+/* Permitted Comment Link & In-Editor Link */
+.rp-rich-editor a,
+.rp-comment-link {
+  color: var(--color-gold-warm, #B88635);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  transition: color 0.15s ease;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.rp-rich-editor a:hover,
+.rp-comment-link:hover {
+  color: var(--color-gold, #C89B3C);
+}
+
+/* WordPress-Style Inline Link Popover */
+.rp-link-popover {
+  background: #FFFFFF;
+  border-bottom: 1.5px solid var(--color-border, #E8DCCB);
+  padding: 10px 14px;
+  box-shadow: 0 4px 14px rgba(11, 31, 51, 0.08);
+  animation: rpLinkPopoverFade 0.18s ease-out;
+  position: relative;
+  z-index: 10;
+}
+
+@keyframes rpLinkPopoverFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rp-link-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rp-link-popover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-link-title-icon {
+  font-size: 13px;
+}
+
+.rp-link-popover-close {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: var(--color-text-muted, #627D98);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.rp-link-popover-close:hover {
+  background: #EFE8D8;
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-link-popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rp-link-popover-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .rp-link-popover-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rp-link-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rp-link-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #627D98);
+}
+
+.rp-link-req {
+  color: #DC2626;
+}
+
+.rp-link-opt {
+  font-weight: 400;
+  font-size: 10.5px;
+  color: #9AA5B1;
+}
+
+.rp-link-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rp-link-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--color-navy-deep, #0B1F33);
+  background: #FFFDF8;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.rp-link-input:focus {
+  background: #FFFFFF;
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 2px rgba(200, 155, 60, 0.2);
+}
+
+.rp-link-preview-btn {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  font-size: 11px;
+  text-decoration: none;
+  color: var(--color-gold-warm, #B88635);
+  background: #FAF5EC;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.rp-link-preview-btn:hover {
+  background: var(--color-gold, #C89B3C);
+  color: #FFFFFF;
+}
+
+.rp-link-popover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.rp-link-btn-unlink {
+  color: #DC2626 !important;
+  border-color: rgba(220, 38, 38, 0.3) !important;
+}
+
+.rp-link-btn-unlink:hover {
+  background: #FEF2F2 !important;
+  border-color: #DC2626 !important;
+}
+
+/* Permitted Comment Images */
+.rp-comment-img {
+  display: block;
+  max-width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border, #E8DCCB);
+  box-shadow: 0 2px 10px rgba(16, 42, 67, 0.08);
+  margin: 10px 0;
+}
+
+/* Comment Form Footer */
 .rp-comment-form-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 12px;
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -271,7 +828,6 @@
   font-size: 14.5px;
   line-height: 1.65;
   color: #1F2D3D;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -307,10 +863,7 @@
 }
 
 .rp-comment-edit-box {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  margin-top: 10px;
 }
 
 .rp-comments-empty-state {
@@ -328,31 +881,26 @@
    5. Mobile Responsive Adaptations
    ========================================================================== */
 @media (max-width: 640px) {
-  .rp-reactions-container {
-    padding: 14px;
-    margin: 16px 0;
+  .rp-like-widget-row {
+    gap: 10px;
   }
 
-  .rp-reactions-bar {
-    gap: 6px;
+  .rp-like-btn.rp-heart-btn {
+    padding: 7px 15px;
+    font-size: 13px;
   }
 
-  .rp-reaction-pill {
-    padding: 5px 10px;
-    font-size: 12.5px;
+  .rp-emoji-picker {
+    padding: 4px 8px;
     gap: 4px;
   }
 
-  .rp-reaction-emoji {
-    font-size: 16px;
-  }
-
-  .rp-reaction-count {
-    font-size: 12px;
+  .rp-emoji-glyph {
+    font-size: 19px;
   }
 
   .rp-comments-container {
-    padding: 16px 14px;
+    padding: 16px 12px;
     margin: 16px 0;
   }
 
@@ -362,6 +910,34 @@
 
   .rp-comment-form-wrap {
     padding: 12px;
+  }
+
+  .rp-editor-toolbar {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .rp-tb-btn {
+    padding: 3px 5px;
+    font-size: 11px;
+    min-width: 24px;
+    height: 26px;
+  }
+
+  .rp-tb-select {
+    font-size: 11px;
+    padding: 2px 4px;
+  }
+
+  .rp-tb-divider {
+    height: 14px;
+    margin: 0 2px;
+  }
+
+  .rp-rich-editor {
+    min-height: 90px;
+    padding: 10px 12px;
+    font-size: 13.5px;
   }
 
   .rp-comment-card {
@@ -380,9 +956,818 @@
     width: 100%;
     justify-content: center;
   }
+}
 
-  .rp-comment-actions-bar {
+/* ==========================================================================
+   6. Instagram-Style Modern Novel Comments & Threaded Replies
+   ========================================================================== */
+.rp-ig-comments-card {
+  background: #FFFFFF;
+  border: 1px solid var(--color-border, #E8DCCB);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  margin: 32px 0 24px;
+  box-shadow: 0 4px 20px rgba(11, 31, 51, 0.04);
+}
+
+.rp-ig-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border, #F1ECE1);
+  margin-bottom: 20px;
+}
+
+.rp-ig-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-navy-deep, #0B1F33);
+  margin: 0;
+}
+
+.rp-ig-count-badge {
+  background: rgba(184, 134, 53, 0.12);
+  color: var(--color-gold-warm, #B88635);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 9999px;
+}
+
+/* Instagram-Style Input Form */
+.rp-ig-form-container {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 24px;
+  align-items: flex-start;
+}
+
+.rp-ig-user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--color-border, #E8DCCB);
+}
+
+.rp-ig-input-box {
+  flex: 1;
+  background: #FAF8F5;
+  border: 1px solid var(--color-border, #E2D9CC);
+  border-radius: 14px;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rp-ig-input-box:focus-within {
+  background: #FFFFFF;
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.14);
+}
+
+.rp-ig-textarea {
+  width: 100%;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--color-navy-deep, #0B1F33);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.rp-ig-textarea::placeholder {
+  color: #94A3B8;
+}
+
+.rp-ig-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.rp-ig-post-btn {
+  background: var(--color-gold-warm, #B88635);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rp-ig-post-btn:hover:not(:disabled) {
+  background: #976B23;
+  transform: translateY(-1px);
+}
+
+.rp-ig-post-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Guest prompt banner */
+.rp-ig-guest-prompt {
+  background: #FFFDF9;
+  border: 1px dashed var(--color-border, #E2D9CC);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+/* Comments Feed */
+.rp-ig-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rp-ig-comment-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.rp-ig-comment-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  position: relative;
+}
+
+.rp-ig-comment-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(11, 31, 51, 0.08);
+}
+
+.rp-ig-comment-bubble {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-ig-comment-text-wrap {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-navy-deep, #0B1F33);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.rp-ig-comment-author-name {
+  font-weight: 700;
+  color: var(--color-navy-deep, #0B1F33);
+  margin-right: 6px;
+  text-decoration: none;
+}
+
+.rp-ig-comment-author-name:hover {
+  color: var(--color-gold-warm, #B88635);
+}
+
+.rp-ig-role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  margin-right: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.rp-ig-role-badge.admin {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FCD34D;
+}
+
+.rp-ig-role-badge.author {
+  background: #EDE9FE;
+  color: #5B21B6;
+  border: 1px solid #DDD6FE;
+}
+
+/* Meta Bar: Timestamp, Likes, Reply, Edit, Delete */
+.rp-ig-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748B;
+  user-select: none;
+}
+
+.rp-ig-meta-time {
+  color: #94A3B8;
+  cursor: default;
+}
+
+.rp-ig-meta-likes {
+  font-weight: 600;
+  color: #475569;
+}
+
+.rp-ig-meta-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748B;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.rp-ig-meta-action:hover {
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-ig-meta-action.delete:hover {
+  color: #DC2626;
+}
+
+/* Like Heart Button on Right */
+.rp-ig-heart-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-top: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #94A3B8;
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.rp-ig-heart-btn:hover {
+  transform: scale(1.2);
+  color: #EF4444;
+}
+
+.rp-ig-heart-btn:active {
+  transform: scale(0.9);
+}
+
+.rp-ig-heart-btn.liked {
+  color: #E11D48;
+}
+
+.rp-ig-heart-btn.liked .rp-ig-heart-icon {
+  animation: rpIgHeartPop 0.3s ease;
+}
+
+@keyframes rpIgHeartPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+/* Nested Replies Container */
+.rp-ig-replies-container {
+  margin-left: 48px;
+  padding-left: 14px;
+  border-left: 2px solid var(--color-border, #EAE2D5);
+  margin-top: 10px;
+}
+
+.rp-ig-toggle-replies-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748B;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: color 0.15s ease;
+}
+
+.rp-ig-toggle-replies-btn:hover {
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-ig-toggle-dash {
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: #94A3B8;
+}
+
+.rp-ig-replies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.rp-ig-reply-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.rp-ig-reply-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(11, 31, 51, 0.08);
+}
+
+/* Inline Reply Input Box */
+.rp-ig-inline-reply-box {
+  margin-top: 10px;
+  margin-left: 48px;
+  background: #FAF8F5;
+  border: 1px solid var(--color-border, #E2D9CC);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: rpIgFadeIn 0.2s ease-out;
+}
+
+@keyframes rpIgFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rp-ig-replying-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(184, 134, 53, 0.12);
+  color: var(--color-gold-warm, #B88635);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  align-self: flex-start;
+}
+
+.rp-ig-replying-cancel {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.rp-ig-replying-cancel:hover {
+  color: #DC2626;
+}
+
+.rp-ig-reply-textarea {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--color-navy-deep, #0B1F33);
+  outline: none;
+  resize: vertical;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+/* Inline Edit Box */
+.rp-ig-edit-box {
+  margin-top: 8px;
+  background: #FFFFFF;
+  border: 1px solid var(--color-gold, #C89B3C);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rp-ig-edit-textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 60px;
+  color: var(--color-navy-deep, #0B1F33);
+  box-sizing: border-box;
+}
+
+/* Empty State */
+.rp-ig-empty-state {
+  text-align: center;
+  padding: 40px 16px;
+  color: #64748B;
+}
+
+.rp-ig-empty-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.rp-ig-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-navy-deep, #0B1F33);
+  margin-bottom: 4px;
+}
+
+.rp-ig-empty-desc {
+  font-size: 13px;
+  color: #94A3B8;
+  margin: 0;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 640px) {
+  .rp-ig-comments-card {
+    padding: 16px 12px;
+    margin: 20px 0 16px;
+  }
+
+  .rp-ig-replies-container {
+    margin-left: 20px;
+    padding-left: 10px;
+  }
+
+  .rp-ig-inline-reply-box {
+    margin-left: 20px;
+  }
+
+  .rp-ig-meta-bar {
+    gap: 10px;
     flex-wrap: wrap;
-    gap: 8px;
+  }
+
+  .rp-comment-toolbar {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .rp-tb-select {
+    height: 26px;
+    font-size: 11px;
+    padding: 0 4px;
+  }
+
+  .rp-tb-btn {
+    min-width: 24px;
+    height: 26px;
+    padding: 0 4px;
+    font-size: 12px;
   }
 }
+
+/* ==========================================================================
+   Compact Rich-Text Novel Comment Editor & Formatting Toolbar
+   ========================================================================== */
+.rp-comment-editor-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #FFFFFF;
+  border: 1.5px solid var(--color-border, #E2D9CC);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(11, 31, 51, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rp-comment-editor-box:focus-within {
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.15);
+}
+
+/* Compact Formatting Toolbar Aligned Above Editor */
+.rp-comment-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px 10px;
+  background: #F8F9FA;
+  border-bottom: 1px solid var(--color-border, #E8DFD2);
+  user-select: none;
+}
+
+.rp-tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rp-tb-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: #CBD5E1;
+  margin: 0 4px;
+}
+
+.rp-tb-select {
+  height: 28px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--color-navy-deep, #0B1F33);
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rp-tb-select:hover {
+  border-color: var(--color-gold, #C89B3C);
+}
+
+.rp-tb-select:focus {
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 2px rgba(200, 155, 60, 0.2);
+}
+
+.rp-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #334155;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.rp-tb-btn:hover {
+  background: #E2E8F0;
+  color: var(--color-navy-deep, #0B1F33);
+  border-color: #CBD5E1;
+}
+
+.rp-tb-btn:active {
+  background: #CBD5E1;
+  transform: scale(0.95);
+}
+
+.rp-tb-case-btn {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.rp-gif-badge {
+  display: inline-block;
+  background: #0F172A;
+  color: #F8FAFC;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 4px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+.rp-tb-gif-btn:hover .rp-gif-badge {
+  background: var(--color-gold-warm, #B88635);
+}
+
+.rp-tb-clear-btn:hover {
+  color: #DC2626;
+}
+
+/* Comment Emoji Picker Popover */
+.rp-comment-emoji-tray {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #FFFFFF;
+  border: 1.5px solid var(--color-gold, #C89B3C);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(11, 31, 51, 0.15);
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  z-index: 150;
+  animation: rpIgFadeIn 0.15s ease;
+}
+
+.rp-comment-emoji-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.rp-comment-emoji-item:hover {
+  transform: scale(1.25);
+  background: #F1F5F9;
+}
+
+/* Attachment Preview Tray */
+.rp-attachment-tray {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #FAF8F5;
+  border-bottom: 1px dashed var(--color-border, #E2D9CC);
+}
+
+.rp-attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFFFFF;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border, #E2D9CC);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.rp-attachment-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+}
+
+.rp-attachment-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.rp-attachment-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-navy-deep, #0B1F33);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-attachment-meta {
+  font-size: 11px;
+  color: #64748B;
+}
+
+.rp-attachment-remove-btn {
+  background: #FEE2E2;
+  border: 1px solid #FCA5A5;
+  color: #DC2626;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+}
+
+.rp-attachment-remove-btn:hover {
+  background: #DC2626;
+  color: #FFFFFF;
+}
+
+/* ContentEditable Editor Area */
+.rp-rich-editor {
+  min-height: 85px;
+  max-height: 350px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--color-navy-deep, #0B1F33);
+  outline: none;
+  background: #FFFFFF;
+  box-sizing: border-box;
+}
+
+.rp-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+.rp-rich-editor h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-rich-editor h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 6px 0 4px;
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.rp-rich-editor p {
+  margin: 4px 0;
+}
+
+.rp-editor-tip {
+  font-size: 11.5px;
+  color: #94A3B8;
+}
+
+/* ==========================================================================
+   Reply Rich-Text Editor Styling
+   ========================================================================== */
+.rp-reply-editor-box {
+  background: #FFFFFF;
+  border: 1.5px solid var(--color-border, #E2D9CC);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(11, 31, 51, 0.04);
+}
+
+.rp-reply-editor-box:focus-within {
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 2.5px rgba(200, 155, 60, 0.15);
+}
+
+.rp-reply-rich-editor {
+  min-height: 55px;
+  max-height: 220px;
+  font-size: 13.5px;
+  padding: 8px 12px;
+}
+
+.rp-reply-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .rp-ig-inline-reply-box {
+    margin-left: 12px;
+    padding: 8px;
+  }
+  .rp-reply-actions-bar {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .rp-reply-actions-bar .rp-editor-tip {
+    align-self: flex-start;
+  }
+}
+

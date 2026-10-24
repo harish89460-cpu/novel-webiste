@@ -8,10 +8,11 @@
 html {
   font-size: 16px;
   scroll-behavior: smooth;
+  scroll-padding-top: 84px;
   -webkit-text-size-adjust: 100%;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   box-sizing: border-box;
 }
 
@@ -26,7 +27,7 @@ body {
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow-x: clip;
   box-sizing: border-box;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -40,13 +41,19 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Global Tamil Typography & Unicode Rendering */
+html[lang="ta"] *,
+[lang="ta"] *,
+.tamil-text,
+.tamil-text * {
+  letter-spacing: 0 !important;
+}
+
 html[lang="ta"] body,
 html[lang="ta"] input,
 html[lang="ta"] button,
 html[lang="ta"] select,
 html[lang="ta"] textarea {
   font-family: var(--font-tamil), var(--font-ui);
-  letter-spacing: normal;
 }
 
 html[lang="ta"] h1,
@@ -57,7 +64,6 @@ html[lang="ta"] h5,
 html[lang="ta"] h6 {
   font-family: var(--font-tamil), var(--font-serif);
   line-height: 1.35;
-  letter-spacing: normal;
 }
 
 .tamil-text {
@@ -79,15 +85,32 @@ a {
   transition: color var(--transition-fast);
 }
 
-img {
+/* Isolation: Protect WordPress Admin Bar and wpForo */
+#wpadminbar,
+#wpadminbar * {
+  box-sizing: content-box;
+}
+
+:where(body:not(.wp-admin) img:not(#wpadminbar img, .novel-card-img, .novel-detail-cover-img, .admin-novel-thumb, .admin-compact-thumb)) {
   max-width: 100%;
   height: auto;
   display: block;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
-button, input, textarea, select {
+/* Ensure WordPress custom logo image and theme logos never overflow or distort */
+img.custom-logo,
+.brand-logo,
+.custom-logo {
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+
+body:not(.wp-admin) button:not(#wpadminbar button, #wpadminbar a, #wpforo button, #wpforo input),
+body:not(.wp-admin) input:not(#wpadminbar input, #wpforo input),
+body:not(.wp-admin) textarea:not(#wpforo textarea),
+body:not(.wp-admin) select:not(#wpforo select) {
   font: inherit;
   color: inherit;
   background: none;
@@ -95,7 +118,7 @@ button, input, textarea, select {
   outline: none;
 }
 
-button {
+body:not(.wp-admin) button:not(#wpadminbar button) {
   cursor: pointer;
 }
 

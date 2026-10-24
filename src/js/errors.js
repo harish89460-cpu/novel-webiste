@@ -1,7 +1,5 @@
 // Error Handling System, Route Loading Controller, & Skeleton Loaders
 
-import { t, getLanguage } from './i18n.js';
-
 let progressInterval = null;
 
 /**
@@ -109,15 +107,11 @@ export function renderMembersSkeleton(count = 8) {
  * 3. Centralized Comprehensive Error Views
  */
 export function renderErrorView(container, options = {}) {
-  const isTa = getLanguage() === 'ta';
   const {
     code = '500',
     title = '',
-    titleTa = '',
     message = '',
-    messageTa = '',
     tip = '',
-    tipTa = '',
     icon = '⚠️',
     primaryAction = null,
     secondaryAction = null,
@@ -130,82 +124,64 @@ export function renderErrorView(container, options = {}) {
       icon: '🔍',
       codeLabel: '404 — NOT FOUND',
       defTitle: 'Page Not Found',
-      defTitleTa: 'பக்கம் காணப்படவில்லை',
       defMsg: "The page or novel chapter you are looking for doesn't exist or may have been moved.",
-      defMsgTa: 'நீங்கள் தேடும் பக்கம் அல்லது நாவல் அத்தியாயம் பயன்பாட்டில் இல்லை அல்லது மாற்றப்பட்டுள்ளது.',
       defTip: 'Check the link address or browse our complete novel library to discover stories.',
-      defTipTa: 'முகவரியைச் சரிபார்க்கவும் அல்லது முழு நாவல்கள் பட்டியலைப் பார்வையிடவும்.',
-      prim: { text: isTa ? 'முகப்புக்குச் செல்' : 'Go Home', href: '#home' },
-      sec: { text: isTa ? 'நாவல்கள் பட்டியல்' : 'Return to Novels', href: '#novels' }
+      prim: { text: 'Go Home', href: '#home' },
+      sec: { text: 'Return to Novels', href: '#novels' }
     },
     '403': {
       icon: '🔒',
       codeLabel: '403 — ACCESS RESTRICTED',
       defTitle: 'Members Only Area',
-      defTitleTa: 'உறுப்பினர்களுக்கு மட்டுமேயான பகுதி',
       defMsg: 'This content is reserved for registered community members. Guests can read the latest chapter for free.',
-      defMsgTa: 'இந்த பகுதி பதிவு செய்த வாசகர்களுக்கு மட்டுமே. விருந்தினர்கள் தினசரி புதிய அத்தியாயத்தை இலவசமாக வாசிக்கலாம்.',
       defTip: 'Log in with your existing account or join free in less than 30 seconds.',
-      defTipTa: 'உங்கள் கணக்கில் உள்நுழையவும் அல்லது இலவசமாக புதிய கணக்கு தொடங்கவும்.',
-      prim: { text: isTa ? 'உள்நுழைக' : 'Log In', onClick: "openAuthModal('login')" },
-      sec: { text: isTa ? 'இலவச பதிவு' : 'Register Free', onClick: "openAuthModal('register')" }
+      prim: { text: 'Log In', onClick: "openAuthModal('login')" },
+      sec: { text: 'Register Free', onClick: "openAuthModal('register')" }
     },
     '500': {
       icon: '⚙️',
       codeLabel: '500 — SERVER ERROR',
       defTitle: 'Something Went Wrong',
-      defTitleTa: 'சேவையக பிழை ஏற்பட்டது',
       defMsg: 'Our literary servers encountered an unexpected issue while preparing this page.',
-      defMsgTa: 'இந்தப் பக்கத்தை ஏற்றும் போது சேவையகத்தில் எதிர்பாராத பிழை ஏற்பட்டது.',
       defTip: 'We have logged this issue. Please try reloading the page in a moment.',
-      defTipTa: 'சிறிது நேரத்தில் மீண்டும் முயற்சி செய்யவும்.',
-      prim: { text: isTa ? 'மீண்டும் முயற்சி செய்' : 'Try Again', isRetry: true },
-      sec: { text: isTa ? 'முகப்புக்குச் செல்' : 'Go Home', href: '#home' }
+      prim: { text: 'Try Again', isRetry: true },
+      sec: { text: 'Go Home', href: '#home' }
     },
     'offline': {
       icon: '📡',
       codeLabel: 'CONNECTION ERROR',
       defTitle: 'Network Connection Lost',
-      defTitleTa: 'இணைய இணைப்பு துண்டிக்கப்பட்டது',
       defMsg: 'Unable to reach the server. Please check your internet connection and try again.',
-      defMsgTa: 'சேவையகத்துடன் இணைக்க முடியவில்லை. உங்கள் இணைய இணைப்பைச் சரிபார்க்கவும்.',
       defTip: 'Ensure your device has an active Wi-Fi or mobile data connection.',
-      defTipTa: 'உங்கள் சாதனம் இணையத்துடன் இணைக்கப்பட்டுள்ளதை உறுதி செய்யவும்.',
-      prim: { text: isTa ? 'மீண்டும் முயற்சி செய்' : 'Try Again', isRetry: true },
-      sec: { text: isTa ? 'முகப்புக்குச் செல்' : 'Go Home', href: '#home' }
+      prim: { text: 'Try Again', isRetry: true },
+      sec: { text: 'Go Home', href: '#home' }
     },
     'session_expired': {
       icon: '⌛',
       codeLabel: 'SESSION EXPIRED',
       defTitle: 'Your Session Has Expired',
-      defTitleTa: 'உங்கள் அமர்வு முடிந்தது',
       defMsg: 'For your account security, your session has expired. Please log in again to continue reading.',
-      defMsgTa: 'பாதுகாப்பு கருதி உங்கள் அமர்வு முடிந்தது. தொடர்ந்து வாசிக்க மீண்டும் உள்நுழையவும்.',
       defTip: 'Your reading progress and bookmarks remain safely saved.',
-      defTipTa: 'உங்கள் வாசிப்பு நிலையும் புக்மார்க்குகளும் பாதுகாப்பாக உள்ளன.',
-      prim: { text: isTa ? 'மீண்டும் உள்நுழைக' : 'Log In Again', onClick: "openAuthModal('login')" },
-      sec: { text: isTa ? 'முகப்புக்குச் செல்' : 'Go Home', href: '#home' }
+      prim: { text: 'Log In Again', onClick: "openAuthModal('login')" },
+      sec: { text: 'Go Home', href: '#home' }
     },
     'chapter_error': {
       icon: '📖⚠️',
       codeLabel: 'CHAPTER ERROR',
       defTitle: 'Unable to Load Chapter',
-      defTitleTa: 'அத்தியாயத்தை ஏற்ற முடியவில்லை',
       defMsg: "We couldn't retrieve the chapter content from the novel database right now.",
-      defMsgTa: 'நாவல் தரவுத்தளத்திலிருந்து இந்த அத்தியாயத்தை தற்போது பெற முடியவில்லை.',
       defTip: 'Try reloading the chapter or return to the novel details page.',
-      defTipTa: 'மீண்டும் ஏற்ற முயற்சிக்கவும் அல்லது நாவல் பக்கத்திற்குத் திரும்பவும்.',
-      prim: { text: isTa ? 'மீண்டும் முயற்சி செய்' : 'Try Again', isRetry: true },
-      sec: { text: isTa ? 'அனைத்து அத்தியாயங்கள்' : 'Return to Novels', href: '#novels' }
+      prim: { text: 'Try Again', isRetry: true },
+      sec: { text: 'Return to Novels', href: '#novels' }
     }
   };
 
   const currentCfg = configs[code] || configs['500'];
 
   const displayIcon = icon || currentCfg.icon;
-  const displayTitle = isTa ? (titleTa || currentCfg.defTitleTa) : (title || currentCfg.defTitle);
-  const displayMsg = isTa ? (messageTa || currentCfg.defMsgTa) : (message || currentCfg.defMsg);
-  const displayTip = isTa ? (tipTa || currentCfg.defTipTa) : (tip || currentCfg.defTip);
+  const displayTitle = title || currentCfg.defTitle;
+  const displayMsg = message || currentCfg.defMsg;
+  const displayTip = tip || currentCfg.defTip;
   const primBtn = primaryAction || currentCfg.prim;
   const secBtn = secondaryAction || currentCfg.sec;
 
@@ -266,11 +242,11 @@ export function renderAccessDenied(container, redirectHash = null) {
   renderErrorView(container, {
     code: '403',
     primaryAction: {
-      text: getLanguage() === 'ta' ? 'உள்நுழைக' : 'Log In',
+      text: 'Log In',
       onClick: `sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash}'); openAuthModal('login');`
     },
     secondaryAction: {
-      text: getLanguage() === 'ta' ? 'இலவச பதிவு' : 'Register Free',
+      text: 'Register Free',
       onClick: `sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash}'); openAuthModal('register');`
     }
   });
@@ -293,7 +269,7 @@ export function renderChapterError(container, novelId, chNum, retryFn = null) {
     code: 'chapter_error',
     retryFn,
     secondaryAction: {
-      text: getLanguage() === 'ta' ? 'அத்தியாயங்கள் பட்டியல்' : 'Chapter List',
+      text: 'Chapter List',
       href: `#novel?id=${encodeURIComponent(novelId)}`
     }
   });
@@ -323,7 +299,8 @@ export async function apiFetch(url, options = {}, timeoutMs = 8500) {
     clearTimeout(timeoutId);
 
     // 401 Unauthorized / Token Expired
-    if (response.status === 401) {
+    const isAuthRoute = url.includes('/login') || url.includes('/register') || url.includes('/forgot-password');
+    if (response.status === 401 && !isAuthRoute) {
       if (token) {
         localStorage.removeItem('rp_auth_token');
         window.CURRENT_USER = null;

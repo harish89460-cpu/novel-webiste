@@ -16,18 +16,23 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 ### 💬 Reader Engagement & Emoji Reactions
 - **Dynamic Comments:** Registered users can post and edit comments on novels and individual chapters; guests can browse freely.
 - **Interactive Emoji Reactions:** Real-time reactions (❤️, 👍, 😂, 😢, 😍, 🔥) with personal reaction toggling and duplicate prevention.
-- **Database Backed:** All comments and reactions are persisted in local SQLite storage.
+### 💬 Reader Engagement & Emoji Reactions
+- **Dynamic Comments:** Registered users can post and edit comments on novels and individual chapters; guests can browse freely.
+- **Interactive Emoji Reactions:** Real-time reactions (❤️, 👍, 😂, 😢, 😍, 🔥) with personal reaction toggling and duplicate prevention.
+- **SQL Database Backed:** All comments, reactions, likes, reading progress, and topics are persisted in a relational MySQL database.
 
 ### 🌐 Dual-Language Support (தமிழ் & English)
 - Instant, seamless language toggle across all pages, navigation, forum topics, and reading controls without page reloads.
 
 ### 🏛️ Literary Forum & Member Community
-- **Community Forum:** Category streams, topic threads, reader reviews, and author interactions.
+- **Community Forum:** Category streams, topic threads, reader reviews, and author interactions persisted in SQL.
 - **Member Directory:** Authentic registered member list, activity statuses (online/offline indicators), and privacy controls.
 - **User Profiles:** Custom avatars, biography editing, and activity tracking.
 
 ### 🔐 Secure Authentication & Password Recovery
 - Session token authentication with scrypt/crypto password hashing.
+- Parameterized SQL queries preventing SQL injection across all endpoints.
+- Role-based authorization for administrative and editorial functions.
 - Password recovery via automated 6-digit OTP email verification with resend cooldowns and countdown timers.
 
 ### 📱 Responsive Design & Visual Excellence
@@ -41,16 +46,17 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 
 - **Frontend:** Vanilla JavaScript (ES Modules), Modern CSS3 (Variables, Flexbox, CSS Grid), HTML5
 - **Bundler & Dev Server:** Vite 6
-- **Backend Server:** Node.js (v24), native `node:sqlite` (`DatabaseSync`), `nodemailer`
-- **CMS Integration:** Custom WordPress Theme (`wp-content/themes/rp-novels`)
-- **Database:** Local SQLite (`database.sqlite`)
+- **Backend Application Server:** Consolidated Node.js server with Connect / HTTP API middleware
+- **Database Backend:** Relational MySQL 8.0+ (`mysql2/promise`) with versioned migrations
+- **Email Service:** Nodemailer SMTP Integration for OTP Password Reset
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v20 or higher recommended, Node 24 for native `node:sqlite`)
+- Node.js (v20 or higher)
+- MySQL Server 8.0+
 - npm
 
 ### Installation
@@ -71,17 +77,34 @@ A premium, elegant Tamil literary novel community and digital reading platform d
    ```bash
    cp .env.example .env
    ```
-   Add your SMTP credentials for password reset OTP delivery (optional for local testing).
+   Configure your MySQL database credentials:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=your_password
+   DB_NAME=rp_novels_db
+   ```
 
-4. **Start the Development Server:**
+4. **Run Database Migrations:**
+   ```bash
+   npm run migrate
+   ```
+
+5. **Start the Development Server:**
    ```bash
    npm run dev
    ```
    Open `http://localhost:3000` in your browser.
 
-5. **Build for Production:**
+6. **Build for Production:**
    ```bash
    npm run build
+   ```
+
+7. **Run Standalone Production Server:**
+   ```bash
+   npm start
    ```
 
 ---
@@ -98,12 +121,19 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 ├── vite.config.js               # Vite configuration and API proxy
 ├── .env.example                 # Environment variables template
 ├── .gitignore                   # Excluded dependencies, builds, and secrets
-├── server/                      # Node.js backend API & SQLite database layer
-│   ├── api.js                   # API route handlers (auth, comments, members)
+├── server/                      # Consolidated Node.js backend API & MySQL database layer
+│   ├── api.js                   # REST API routing & RBAC middleware
+│   ├── auth.js                  # Authentication, sessions, profiles, and OTP reset
 │   ├── comments.js              # Comments & emoji reaction controller
-│   ├── db.js                    # Native SQLite schema and seed initialization
+│   ├── content.js               # Chapter reading evaluation & content security
+│   ├── db.js                    # MySQL connection pool, query helpers, and data access
 │   ├── email.js                 # Nodemailer SMTP OTP service
-│   └── index.js                 # Standalone backend server entry
+│   ├── migrate.js               # Database migration runner with tracking
+│   ├── migrations/              # Versioned SQL migrations (schema & genuine seed)
+│   │   ├── 001_initial_schema.sql
+│   │   └── 002_seed_genuine_data.sql
+│   ├── novels.js                # MySQL CRUD for novels, chapters, and homepage sections
+│   └── server.js                # Consolidated standalone Node server
 ├── src/                         # Frontend application source
 │   ├── main.js                  # App bootstrap and global error boundaries
 │   ├── css/                     # Centralized design system & modular stylesheets
@@ -122,7 +152,8 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 │       ├── app.js               # Main application router and view renderers
 │       ├── auth.js              # Authentication, user state, and OTP
 │       ├── comments.js          # Comment posting, reaction toggling, and UI
-│       ├── data.js              # Novel catalogue, chapters, and initial data
+│       ├── content-service.js   # Dynamic SQL API client service
+│       ├── data.js              # Static fallback and author metadata
 │       ├── errors.js            # Error boundaries, skeletons, and network alerts
 │       ├── forum.js             # Forum interaction controller
 │       ├── i18n.js              # English/Tamil translation dictionary & switcher
@@ -130,8 +161,6 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 │       ├── notifications.js     # User notifications controller
 │       ├── reader.js            # Chapter reader engine (themes, font sizes)
 │       └── search.js            # Live global modal search
-└── wp-content/                  # WordPress theme implementation
-    └── themes/rp-novels/        # RP Novels WordPress theme
 ```
 
 ---

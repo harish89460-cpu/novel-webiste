@@ -1,80 +1,144 @@
-// Content Reading Access & WordPress Integration Architecture
-// Manages reading availability for novels and chapters
-// Guest reading restrictions removed for all text chapters (Novels, Episodes, Completed stories)
-// Independent audio availability settings preserved
+// Content Reading Access Layer for Rudhra Prarthana Novels
+// Dynamic MySQL Chapter/Episode Content Delivery with Access Evaluation and Draft Protection
 
-import { getDb } from './db.js';
+import { queryOne } from './db.js';
+import { checkAndPublishDueEpisodes } from './episodes.js';
+import { generateNovelSlug } from './novels.js';
 
 /**
- * Retrieve novel chapter content with access evaluation
- * Architecture designed for future WordPress REST API / Admin Dashboard integration:
- * In a future WordPress setup, this function can effortlessly interface with:
- * - WP Custom Post Types ('novel', 'chapter')
- * - WP Post Meta ('_rp_access_level', '_rp_is_audio', '_rp_wp_post_id')
- * - WP Publication Status ('publish', 'draft', 'private')
+ * Retrieve novel chapter content with access evaluation from MySQL
  */
-export function getChapterContent({ novelId, chNum, user }) {
-  const db = getDb();
-  const num = parseInt(chNum || '1', 10);
-  const isAuthenticated = user && user.role !== 'Guest';
+export async function getChapterContent({ novelId, chNum, user }) {
+  // Always trigger scheduler to check if any scheduled episodes are now due
+  await checkAndPublishDueEpisodes();
 
-  const record = db.prepare(`
-    SELECT is_guest_allowed, is_audio, title, title_ta, content
-    FROM reading_access
-    WHERE novel_id = ? AND chapter_num = ?;
-  `).get(novelId, num);
+  const chStr = String(chNum || '1').trim();
+  const isAuthenticated = Boolean(user && user.id);
+  const isAdmin = Boolean(user && (user.isAdmin || (user.role && ['admin', 'administrator', 'editor'].includes(user.role.toLowerCase()))));
 
-  // 1. Audio Novel Protection: Preserve independent audio availability settings
-  if (record && record.is_audio === 1) {
+  let cleanNovelId = String(novelId || '').trim();
+  try {
+    cleanNovelId = decodeURIComponent(cleanNovelId);
+  } catch {}
+
+  const genSlug = generateNovelSlug(cleanNovelId);
+  // Resolve novel ID if slug, title, or encoded ID was provided
+  const novelRow = await queryOne(
+    `SELECT id FROM novels 
+     WHERE id = ? 
+        OR id = ? 
+        OR LOWER(id) = LOWER(?) 
+        OR title = ? 
+        OR (id = ? AND ? != '')
+     LIMIT 1`,
+    [novelId, cleanNovelId, cleanNovelId, cleanNovelId, genSlug, genSlug]
+  );
+  const targetNovelId = novelRow ? novelRow.id : cleanNovelId;
+
+  let chapter = await queryOne(`
+    SELECT id, novel_id, parent_id, chapter_num, episode_number, title, title_ta, content,
+           is_guest_allowed, is_audio, word_count, read_time, release_date,
+           status, scheduled_at, timezone, published_at
+    FROM chapters
+    WHERE novel_id = ? AND (chapter_num = ? OR episode_number = ? OR CAST(chapter_num AS CHAR) = ?);
+  `, [targetNovelId, chStr, chStr, chStr]);
+
+  // If chStr is default '1' or '0' but episodes start with sub-episodes (e.g. 1.1), resolve first published episode
+  if (!chapter && (chStr === '1' || chStr === '0' || chStr === '')) {
+    chapter = await queryOne(`
+      SELECT id, novel_id, parent_id, chapter_num, episode_number, title, title_ta, content,
+             is_guest_allowed, is_audio, word_count, read_time, release_date,
+             status, scheduled_at, timezone, published_at
+      FROM chapters
+      WHERE novel_id = ? AND status = 'published'
+      ORDER BY sort_order ASC, id ASC
+      LIMIT 1;
+    `, [targetNovelId]);
+  }
+
+  if (!chapter) {
+    return {
+      allowed: false,
+      restricted: false,
+      notFound: true,
+      message: 'Chapter not found.',
+      novelId: targetNovelId,
+      chapterNum: chStr
+    };
+  }
+
+  // 1. Draft & Scheduled Content Protection:
+  // Scheduled and Draft episodes are strictly private and hidden from public until publication time
+  if (chapter.status !== 'published') {
+    if (!isAdmin) {
+      return {
+        allowed: false,
+        restricted: true,
+        novelId,
+        chapterNum: chStr,
+        status: chapter.status,
+        message: chapter.status === 'scheduled' 
+          ? 'This episode is scheduled for future release and is not yet available.' 
+          : 'This episode is currently in draft mode and is not publicly visible.',
+        reason: 'unpublished_content'
+      };
+    }
+  }
+
+  // 2. Audio Novel Protection: Members-only for full audio stories
+  if (chapter.is_audio === 1) {
     if (!isAuthenticated) {
       return {
         allowed: false,
         restricted: true,
         isAudio: true,
         novelId,
-        chapterNum: num,
+        chapterNum: chStr,
         message: 'Please log in to listen to full audio novels.',
-        messageTa: 'முழு ஒலி நாவல்களைக் கேட்க உள்நுழையவும்.',
         reason: 'audio_restricted_for_guest',
-        redirectHash: `#reader?novel=${encodeURIComponent(novelId)}&ch=${num}`
+        redirectHash: `#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(chStr)}`
       };
     }
   }
 
-  // 2. Text Chapters & Episodes:
-  // Guests can freely read all available novels, daily updates, previous episodes, and completed stories
-  const defaultSampleStory = `காலை நேரத்து மெல்லிய குளிர் காற்று ஜன்னல் வழியே வீசிக் கொண்டிருக்க, வர்ஷினி கையில் காபி கோப்பையுடன் அமைதியாக நின்றிருந்தாள். மனதிற்குள் ஆயிரம் எண்ணங்கள் அலைமோதினாலும், முகத்தில் அமைதியை மட்டுமே காட்ட பழகியிருந்தாள்.\n\nஅவளது வாழ்க்கையின் மிக முக்கியமான திருப்புமுனை இன்றுதான் நிகழவிருக்கிறது என்பதை விதியின் திட்டம் உணர்த்தியிருக்கவில்லை. தூரத்தில் கேட்ட ரயிலின் சத்தம், அவளது பழைய நினைவுகளை மீட்டெடுத்தது.\n\n"வர்ஷினி... கிளம்பலையா?" என்ற அம்மாவின் பாசமான குரல் அவளை நிகழ்காலத்திற்கு இழுத்து வந்தது. ஒரு மெல்லிய புன்னகையுடன் அவள் தலையசைத்தாள். வாழ்க்கைப் பயணத்தின் அடுத்த அத்தியாயம் இப்போதுதான் தொடங்குகிறது.`;
-
-  const content = record?.content || defaultSampleStory;
-  const title = record?.title || `Chapter ${num}`;
-  const titleTa = record?.title_ta || `அத்தியாயம் ${num}`;
+  // 3. Text Chapters & Episodes:
+  const content = chapter.content || '';
+  const title = chapter.title || `Episode ${chStr}`;
 
   return {
     allowed: true,
     restricted: false,
+    id: chapter.id,
     novelId,
-    chapterNum: num,
+    parentId: chapter.parent_id,
+    chapterNum: chapter.chapter_num,
+    episodeNumber: chapter.episode_number || chapter.chapter_num,
     title,
-    titleTa,
+    titleTa: chapter.title_ta || title,
     content,
-    isAudio: record?.is_audio === 1,
-    isGuest: !isAuthenticated
+    isAudio: chapter.is_audio === 1,
+    isGuest: !isAuthenticated,
+    wordCount: chapter.word_count || '',
+    readTime: chapter.read_time || '8 mins',
+    releaseDate: chapter.release_date || '',
+    status: chapter.status,
+    scheduledAt: chapter.scheduled_at,
+    publishedAt: chapter.published_at,
+    isAdminPreview: isAdmin && chapter.status !== 'published'
   };
 }
 
 /**
  * Retrieve Audio Story Access
- * Preserves independent audio settings configured for members
  */
-export function getAudioAccess({ audioId, user }) {
-  const isAuthenticated = user && user.role !== 'Guest';
+export async function getAudioAccess({ audioId, user }) {
+  const isAuthenticated = Boolean(user && user.id);
 
   if (isAuthenticated) {
     return {
       allowed: true,
       audioId,
       title: 'Maaya Nadhi Theeram (Full Audio Story)',
-      titleTa: 'மாய நதி தீரம் (முழு ஒலி நாவல்)',
       duration: '4h 25m',
       audioUrl: 'https://www.youtube.com/@rudhraprarthanaaudionovels'
     };
@@ -85,7 +149,6 @@ export function getAudioAccess({ audioId, user }) {
     restricted: true,
     audioId,
     message: 'Please log in to listen to full audio stories.',
-    messageTa: 'முழு ஆடியோ கதைகளையும் கேட்க உள்நுழையவும்.',
     reason: 'audio_restricted_for_guest',
     redirectHash: `#audio?id=${encodeURIComponent(audioId || 'maaya-nadhi-theeram')}`
   };
