@@ -6,8 +6,8 @@ USE rp_novels_db;
 -- 1. Seed Genuine Users (Admin & Author)
 INSERT INTO users (id, username, email, password_hash, salt, role)
 VALUES 
-  (2, 'rudhra_author', 'rudhra@rpnovels.com', '86a12240413a04fdf68a8f6efb3df2d2caed73dfbf0e63ec12efa28c1a44a52ff2832e6570903dec821af9374544edbc9fc7c87092fac14e65ac77190978a8f5', 'b60edbcbf0109167cb4a6ea61afca0de', 'Admin'),
-  (8, 'harish', 'harish89460@gmail.com', 'f1e812a4bc07b437c19dc866d2b6e4b66ae5baa216fbb74015dda1e2e12078e10cd2f06673ecd162e425b9d2eeac6fcfcb1a32fba603f472b5a140eda7c04326', 'e29af6f5d5d3abccdcb551381e726f27', 'Admin')
+  (2, 'rudhra_author', 'rudhra@rpnovels.com', '86a12240413a04fdf68a8f6efb3df2d2caed73dfbf0e63ec12efa28c1a44a52ff2832e6570903dec821af9374544edbc9fc7c87092fac14e65ac77190978a8f5', 'b60edbcbf0109167cb4a6ea61afca0de', 'Author'),
+  (22, 'digitalmark', 'digitalmarkservices.in@gmail.com', '54c55dfaa04c8651a37cce1fa8828f0962383c27e8a939463b2f5bf9468088f1da457be2831f13b6ebc7f215f9b177d9c666f7f6ecfa0e527f311c1d859fa3b1', 'd32c938d827f805a9f60bfca9d25ea17', 'Admin')
 ON DUPLICATE KEY UPDATE 
   role = VALUES(role),
   email = VALUES(email);

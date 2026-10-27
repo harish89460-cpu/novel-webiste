@@ -300,8 +300,11 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   // Update last_login timestamp
   await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?;', [user.id]);
 
-  // Create reader session in MySQL
-  const token = await createSession(user.id, 'reader');
+  const isAdmin = (user.role || '').toLowerCase() === 'admin' && user.email === 'digitalmarkservices.in@gmail.com';
+  const sessionType = isAdmin ? 'author' : 'reader';
+
+  // Create session in MySQL
+  const token = await createSession(user.id, sessionType);
 
   // Set user online
   await query(`
@@ -328,13 +331,13 @@ export async function loginUser({ username, email, identifier, password } = {}) 
       displayName: profile?.display_name || user.username,
       avatar: sanitizeAvatar(profile?.avatar),
       bio: profile?.bio || '',
-      title: profile?.title || 'Member',
+      title: profile?.title || (isAdmin ? 'Administrator' : 'Member'),
       joinedDate: profile?.joined_date || '',
       activityStatusEnabled: profile?.activity_status_enabled !== 0,
       isOnline: true,
-      isAdmin: false,
-      isAuthorSession: false,
-      sessionType: 'reader'
+      isAdmin,
+      isAuthorSession: isAdmin,
+      sessionType
     }
   };
 }
@@ -386,8 +389,8 @@ export async function loginAuthor({ username, password }) {
 
   // Identify role: Admin vs Writer
   const role = (user.role || '').toLowerCase();
-  const isAdminRole = role === 'admin' || role === 'administrator' || role === 'author';
-  const isAuthorizedAdmin = isAdminRole && (user.email === 'digitalmarkservices.in@gmail.com' || user.email === 'rudhra@rpnovels.com' || user.username === 'rudhra_author');
+  const isAdminRole = role === 'admin' || role === 'administrator';
+  const isAuthorizedAdmin = isAdminRole && user.email === 'digitalmarkservices.in@gmail.com';
   const isWriter = role === 'writer';
 
   if (!isAuthorizedAdmin && !isWriter) {
@@ -516,8 +519,8 @@ export async function getUserByToken(token) {
   }
 
   const role = (row.role || '').toLowerCase();
-  const isAdminRole = role === 'admin' || role === 'administrator' || role === 'author';
-  const isAuthorizedAccount = row.email === 'digitalmarkservices.in@gmail.com' || row.email === 'rudhra@rpnovels.com' || row.username === 'rudhra_author';
+  const isAdminRole = role === 'admin' || role === 'administrator';
+  const isAuthorizedAccount = row.email === 'digitalmarkservices.in@gmail.com';
   const isAuthorSession = row.session_type === 'author' && isAdminRole && isAuthorizedAccount;
   const isAdmin = isAuthorSession;
   const isWriter = role === 'writer' && (row.session_type === 'writer' || row.session_type === 'author');
