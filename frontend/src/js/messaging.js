@@ -475,11 +475,11 @@ function renderDrawerStructure() {
         <div class="wa-header-avatar-wrap" title="${myName}">
           <img src="${myAvatar}" class="wa-header-avatar" alt="${myName}" onerror="this.src='/profile.png'">
         </div>
-        <div class="wa-header-title">Chats</div>
+        <div class="wa-header-title">Messages</div>
       </div>
 
       <div class="wa-header-actions">
-        <!-- Chat Availability Switch (WhatsApp Dark style) -->
+        <!-- Chat Availability Switch (Website brand style) -->
         <label class="wa-header-toggle" title="Chat Available: Toggle incoming messaging availability">
           <input type="checkbox" id="chat-global-toggle-input" ${globalChatAvailable ? 'checked' : ''} 
                  onchange="toggleChatAvailability(this.checked)">
@@ -489,7 +489,7 @@ function renderDrawerStructure() {
 
         <!-- New Chat Button -->
         <button type="button" class="wa-icon-btn" onclick="openNewChatModal()" title="New chat" aria-label="New chat">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9"></path>
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
           </svg>
@@ -498,7 +498,7 @@ function renderDrawerStructure() {
         <!-- 3-Dots Menu Button -->
         <div style="position:relative;">
           <button type="button" class="wa-icon-btn" onclick="toggleHeaderMenu(event)" title="Menu" aria-label="Menu">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="2"></circle>
               <circle cx="12" cy="12" r="2"></circle>
               <circle cx="12" cy="19" r="2"></circle>
@@ -539,9 +539,9 @@ function renderDrawerStructure() {
       </div>
     </div>
 
-    <!-- Main WhatsApp Dynamic Area: Conversation List OR Active Conversation -->
+    <!-- Main Dynamic Area: Conversation List OR Active Conversation -->
     <div id="messages-main-area" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
-      <!-- Search or start a new chat (WhatsApp pill style) -->
+      <!-- Search or start a new chat (Pill style) -->
       <div class="wa-search-section">
         <div class="wa-search-box">
           <span class="wa-search-icon">
@@ -585,13 +585,8 @@ function renderDrawerStructure() {
         </button>
       </div>
 
-      <!-- WhatsApp Conversation Items Scrollable List -->
+      <!-- Conversation Items Scrollable List -->
       <div class="wa-threads-container" id="threads-list-content"></div>
-
-      <!-- WhatsApp Web Desktop Encrypted Footer Banner -->
-      <div class="wa-footer-banner">
-        <span>🔒 Your personal messages are end-to-end encrypted</span>
-      </div>
     </div>
   `;
 }
@@ -656,7 +651,7 @@ function renderConversationsList(list) {
 
   if (filtered.length === 0) {
     let emptyIcon = `
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#C89B3C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
       </svg>
     `;
@@ -664,7 +659,7 @@ function renderConversationsList(list) {
     let emptyDesc = 'You have no active conversations matching this filter.';
     if (currentChatFilter === 'unread') {
       emptyIcon = `
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#00A884" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#C89B3C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="18 6 7 17 2 12"></polyline>
           <polyline points="22 10 14.5 17.5 13 16"></polyline>
         </svg>
@@ -673,7 +668,7 @@ function renderConversationsList(list) {
       emptyDesc = 'You are all caught up on all your conversations.';
     } else if (currentChatFilter === 'favourites') {
       emptyIcon = `
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="#EAB308" stroke="#CA8A04" stroke-width="1.2">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="#E4C27A" stroke="#C89B3C" stroke-width="1.3">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
         </svg>
       `;
@@ -681,7 +676,7 @@ function renderConversationsList(list) {
       emptyDesc = 'Hover over any chat and select "Pin chat" to add it here.';
     } else if (currentChatFilter === 'groups') {
       emptyIcon = `
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#6B4935" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
           <circle cx="9" cy="7" r="4"></circle>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
@@ -692,7 +687,7 @@ function renderConversationsList(list) {
       emptyDesc = 'Group conversations will appear here.';
     } else if (query) {
       emptyIcon = `
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#756B62" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
@@ -706,7 +701,7 @@ function renderConversationsList(list) {
         <div class="chat-empty-icon">${emptyIcon}</div>
         <div class="chat-empty-title">${emptyTitle}</div>
         <div class="chat-empty-desc">${emptyDesc}</div>
-        <button class="btn-wa-green" onclick="openNewChatModal()">
+        <button class="btn btn-gold btn-sm" onclick="openNewChatModal()" style="margin-top:16px;">
           Start a new chat
         </button>
       </div>
