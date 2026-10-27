@@ -1,7 +1,6 @@
 // Main Application Engine & Client Router
 
 import {
-  getHomepageContent,
   getSidebarPosts,
   getMembersList,
   getMemberProfile,
@@ -18,7 +17,7 @@ import {
   getGuestSessionId,
   getForumLiveStats
 } from './content-service.js';
-import { initReader, applyReaderMode, applyFontSize, showToast } from './reader.js';
+import { initReader, applyReaderMode, applyFontSize, showToast, setupReadingSessionTracker, stopReadingSessionTracker } from './reader.js';
 import { initForum, renderReactionButtons } from './forum.js';
 import { initMessaging, updateUnreadMessageBadge } from './messaging.js';
 import { initNotifications } from './notifications.js';
@@ -108,7 +107,7 @@ export async function renderAppView() {
   let hash = window.location.hash;
 
   // Direct pathname normalization for admin routes (e.g. /admin, /admin/dashboard, /admin/novels, /admin/login)
-  if ((!hash || hash === '#home' || hash === '#') && window.location.pathname.startsWith('/admin')) {
+  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms') && window.location.pathname.startsWith('/admin')) {
     const pathname = window.location.pathname.replace(/\/+$/, '');
     if (pathname === '/admin/login') {
       hash = '#admin-login';
@@ -124,17 +123,18 @@ export async function renderAppView() {
         scheduler: 'scheduler',
         settings: 'settings',
         overview: 'overview',
-        media: 'media'
+        media: 'media',
+        'writer-chats': 'writer-chats'
       };
       const tab = tabMap[sub] || 'overview';
       hash = `#admin?tab=${tab}`;
     }
   }
 
-  if (!hash || hash === '#' || hash === '') {
-    hash = '#forum';
-    if (window.location.hash !== '#forum') {
-      window.history.replaceState(null, '', '#forum');
+  if (!hash || hash === '#' || hash === '' || hash === '#home') {
+    hash = '#forms';
+    if (window.location.hash !== '#forms') {
+      window.history.replaceState(null, '', '#forms');
     }
   }
   const main = document.getElementById('main-content');
@@ -163,6 +163,10 @@ export async function renderAppView() {
 
   // Update active state in desktop & mobile navs
   updateNavActiveState(hash);
+
+  if (!hash.startsWith('#reader')) {
+    try { stopReadingSessionTracker(); } catch {}
+  }
 
   try {
     if (hash.startsWith('#admin-login')) {
@@ -196,8 +200,10 @@ export async function renderAppView() {
       await renderNovelDetailView(main, hash);
     } else if (hash.startsWith('#novels')) {
       await renderNovelLibraryView(main, hash);
-    } else if (hash.startsWith('#forum')) {
+    } else if (hash.startsWith('#forum') || hash.startsWith('#forms')) {
       await renderForumView(main, hash);
+    } else if (hash.startsWith('#content?') || hash.startsWith('#content/')) {
+      await renderContentReadingView(main, hash);
     } else if (hash.startsWith('#topic?')) {
       await renderTopicView(main, hash);
     } else if (hash.startsWith('#members')) {
@@ -208,8 +214,9 @@ export async function renderAppView() {
       renderAboutView(main);
     } else if (hash.startsWith('#contact')) {
       renderContactView(main);
-    } else if (hash === '#home') {
-      await renderHomeView(main);
+    } else if (hash === '#home' || hash.startsWith('#home')) {
+      window.location.hash = '#forms';
+      return;
     } else {
       // 404 Page Not Found for unrecognized routes
       renderNotFound(main);
@@ -235,11 +242,17 @@ export async function renderAppView() {
 }
 
 function updateNavActiveState(hash) {
-  let path = hash ? hash.split('?')[0] : '#forum';
-  if (path === '#' || path === '') path = '#forum';
+  let path = hash ? hash.split('?')[0] : '#forms';
+  if (path === '#' || path === '' || path === '#home') path = '#forms';
+  const isForumOrForms = path === '#forum' || path === '#forms' || path.startsWith('#topic');
   document.querySelectorAll('.nav-link, .drawer-nav-item').forEach(link => {
     const href = link.getAttribute('href');
-    if (href === path) {
+    const dataNav = link.getAttribute('data-nav');
+    if (dataNav === 'home' && (path === '#forms' || path === '#home')) {
+      link.classList.add('active');
+    } else if (dataNav === 'forms' && (path === '#forms' || path === '#home')) {
+      link.classList.remove('active');
+    } else if (href === path || (isForumOrForms && (href === '#forum' || href === '#forms' || href === '#home') && dataNav !== 'forms')) {
       link.classList.add('active');
     } else {
       link.classList.remove('active');
@@ -247,424 +260,7 @@ function updateNavActiveState(hash) {
   });
 }
 
-// 1. HOME VIEW
-async function renderHomeView(container) {
-  let homeData = null;
-  try {
-    homeData = await getHomepageContent();
-  } catch (err) {
-    console.warn('[Home View] Failed to fetch homepage data:', err);
-  }
-
-  // Ordered sections from MySQL, strictly respecting saved priority
-  const orderedSections = homeData?.orderedSections || [];
-
-  container.innerHTML = `
-    <!-- Hero Section Framed with Desktop/Mobile Artwork -->
-    <section class="hero-section">
-      <div class="hero-content-frame">
-        <div class="hero-badge">
-          <span>WELCOME</span>
-        </div>
-
-        <h1 class="hero-title">
-          ${t('hero_brand')}
-        </h1>
-
-        <div class="hero-divider">
-          <span class="hero-divider-line"></span>
-          <span class="hero-divider-glyph">🪶</span>
-          <span class="hero-divider-line"></span>
-        </div>
-
-        <p class="hero-subtitle">
-          ${t('hero_desc')}
-        </p>
-
-        <div class="hero-actions">
-          <a href="#novels" class="btn btn-primary btn-lg">
-            <span>${t('hero_btn_explore')}</span>
-            <span>➔</span>
-          </a>
-          <a href="#forum" class="btn btn-outline btn-lg" style="background:rgba(255,255,255,0.8);">
-            <span>${t('hero_btn_community')}</span>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Dynamic Admin-Controlled Homepage Sections Container -->
-    <div id="homepage-dynamic-sections-container">
-      ${orderedSections.map((sec, idx) => renderDynamicHomepageSection(sec, idx)).join('')}
-    </div>
-  `;
-}
-
-/**
- * Dispatcher to render each homepage section using safe, reusable components
- */
-function renderDynamicHomepageSection(sec, idx) {
-  if (!sec || sec.visible === false || sec.isVisible === false) return '';
-
-  const isAltBg = idx % 2 === 1;
-  const bgClass = isAltBg ? 'section-bg-alt' : '';
-
-  switch (sec.sectionType) {
-    case 'featured':
-      return renderFeaturedSectionComponent(sec, bgClass);
-    case 'continue_reading':
-      return renderContinueReadingSectionComponent(sec, bgClass);
-    case 'audio':
-      return renderAudioSectionComponent(sec, bgClass);
-    case 'trending':
-      return renderTrendingSectionComponent(sec, bgClass);
-    case 'completed':
-      return renderCompletedSectionComponent(sec, bgClass);
-    case 'latest':
-      return renderLatestSectionComponent(sec, bgClass);
-    case 'curated':
-      return renderCuratedSectionComponent(sec, bgClass);
-    case 'forum':
-      return renderForumSectionComponent(sec, bgClass);
-    case 'author_spotlight':
-      return renderAuthorSpotlightSectionComponent(sec, bgClass);
-    case 'community_cta':
-      return renderCommunityCtaSectionComponent(sec);
-    default:
-      return renderCuratedSectionComponent(sec, bgClass);
-  }
-}
-
-function renderFeaturedSectionComponent(sec, bgClass) {
-  const novels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || t('ongoing_subtitle');
-  const title = sec.title || t('ongoing_title');
-  const moreLink = sec.viewAllLink || '#novels';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <a href="${escapeHtml(moreLink)}" class="section-link">${t('ongoing_more')} ➔</a>
-        </div>
-        ${novels.length > 0 ? `
-          <div class="novel-grid novel-grid-4">
-            ${novels.map(n => renderNovelCard(n)).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">📚</div>
-            <p style="font-size:15px; margin:0;">No featured ongoing novels currently releasing.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderContinueReadingSectionComponent(sec, bgClass) {
-  const novels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || t('continue_reading_subtitle');
-  const title = sec.title || t('continue_reading_title');
-  const moreLink = sec.viewAllLink || '#novels?status=ongoing';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <a href="${escapeHtml(moreLink)}" class="section-link">${t('continue_reading_more')} ➔</a>
-        </div>
-        ${novels.length > 0 ? `
-          <div class="novel-grid">
-            ${novels.map(n => renderNovelCard(n, 'continue')).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">📖</div>
-            <p style="font-size:15px; margin:0;">No reading progress found. Pick up a novel below to begin reading.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderAudioSectionComponent(sec, bgClass) {
-  const audioNovels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || 'Listen & Enjoy';
-  const title = sec.title || 'Audio Novels';
-  const moreLink = sec.viewAllLink || '#audio';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <div style="display:flex; align-items:center; gap:16px;">
-            <a href="${escapeHtml(moreLink)}" class="section-more-link" style="color:var(--color-navy-deep); font-weight:600; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
-              <span>View All Audio Novels →</span>
-            </a>
-            <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="section-more-link" style="color:var(--color-gold-warm); font-weight:600; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
-              <span>▶ YouTube Channel</span>
-            </a>
-          </div>
-        </div>
-        ${audioNovels.length > 0 ? `
-          <div class="audio-novels-grid">
-            ${audioNovels.map(audio => renderAudioNovelCard(audio)).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">🎧</div>
-            <p style="font-size:15px; margin:0;">No audio novels currently scheduled.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderTrendingSectionComponent(sec, bgClass) {
-  const trendingNovels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || t('trending_subtitle');
-  const title = sec.title || t('trending_title');
-  const moreLink = sec.viewAllLink || '#novels';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          ${sec.viewAllLink ? `<a href="${escapeHtml(moreLink)}" class="section-link">View All ➔</a>` : ''}
-        </div>
-        ${trendingNovels.length > 0 ? `
-          <div class="trending-list">
-            ${trendingNovels.map((n, idx) => {
-              const rank = n.trendingRank || n.rank || (idx + 1);
-              const formattedRank = String(rank).padStart(2, '0');
-              const cover = n.cover || '/default-cover.jpg';
-              const nTitle = n.title || '';
-              const link = n.link || ('#novel?id=' + (n.id || ''));
-              return `
-                <div class="trending-item">
-                  <div class="trending-rank">${formattedRank}</div>
-                  <img src="${cover}" class="trending-thumb" alt="${escapeHtml(nTitle)}" loading="lazy" onerror="this.onerror=null;this.src='/default-cover.jpg';">
-                  <div class="trending-title">${escapeHtml(nTitle)}</div>
-                  ${(n.views || n.rating) ? `
-                    <div class="trending-stats">
-                      ${n.views ? `<span>👁 ${n.views}</span>` : ''}
-                      ${n.rating ? `<span>★ ${n.rating}</span>` : ''}
-                    </div>
-                  ` : ''}
-                  <a href="${link}" class="btn btn-outline btn-sm" style="margin-top:12px;">${t('btn_read_more')}</a>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">🔥</div>
-            <p style="font-size:15px; margin:0;">Trending novels will appear here as readers engage.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderCompletedSectionComponent(sec, bgClass) {
-  const completedNovels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || t('completed_subtitle');
-  const title = sec.title || t('completed_title');
-  const moreLink = sec.viewAllLink || '#novels?status=completed';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <a href="${escapeHtml(moreLink)}" class="section-link">${t('completed_more')} ➔</a>
-        </div>
-        ${completedNovels.length > 0 ? `
-          <div class="novel-grid">
-            ${completedNovels.map(n => renderNovelCard(n)).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">✨</div>
-            <p style="font-size:15px; margin:0;">No completed novels available at this time.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderLatestSectionComponent(sec, bgClass) {
-  const novels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || 'Fresh Updates';
-  const title = sec.title || 'Latest Novels';
-  const moreLink = sec.viewAllLink || '#novels';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <a href="${escapeHtml(moreLink)}" class="section-link">View All ➔</a>
-        </div>
-        ${novels.length > 0 ? `
-          <div class="novel-grid">
-            ${novels.map(n => renderNovelCard(n)).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">📚</div>
-            <p style="font-size:15px; margin:0;">No novels published yet.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderCuratedSectionComponent(sec, bgClass) {
-  const novels = sec.novels || sec.items || [];
-  const subtitle = sec.subtitle || 'Curated Selection';
-  const title = sec.title || 'Special Collection';
-  const moreLink = sec.viewAllLink || '#novels';
-  const isCompact = sec.displayStyle === 'compact_grid' || (sec.contentLimit && sec.contentLimit <= 4);
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          ${sec.viewAllLink ? `<a href="${escapeHtml(moreLink)}" class="section-link">View All ➔</a>` : ''}
-        </div>
-        ${novels.length > 0 ? `
-          <div class="novel-grid ${isCompact ? 'novel-grid-4' : ''}">
-            ${novels.map(n => renderNovelCard(n)).join('')}
-          </div>
-        ` : `
-          <div class="empty-section-message" style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:#ffffff; border:1px dashed var(--color-border); border-radius:var(--radius-lg);">
-            <div style="font-size:32px; margin-bottom:8px;">✨</div>
-            <p style="font-size:15px; margin:0;">No novels currently featured in this collection.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-}
-
-function renderForumSectionComponent(sec, bgClass) {
-  const homeTopics = sec.items || [];
-  const subtitle = sec.subtitle || t('forum_subtitle');
-  const title = sec.title || t('forum_title');
-  const moreLink = sec.viewAllLink || '#forum';
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="section-header">
-          <div class="section-heading-group">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="section-title">${escapeHtml(title)}</h2>
-          </div>
-          <a href="${escapeHtml(moreLink)}" class="section-link">Visit Forum ➔</a>
-        </div>
-
-        <div class="forum-layout" style="grid-template-columns: 1fr;">
-          ${homeTopics.length > 0 ? homeTopics.map(tData => `
-            <div class="topic-card">
-              <img src="${getAvatarUrl(tData.authorAvatar)}" class="topic-author-avatar" alt="${escapeHtml(tData.author)}" onerror="this.src='/profile.png'">
-              <div class="topic-main-info">
-                <a href="#topic?id=${encodeURIComponent(tData.id)}" class="topic-title-link">${escapeHtml(tData.title)}</a>
-                <div class="topic-meta-line">
-                  <span>${escapeHtml(tData.author)}</span>
-                  <span>•</span>
-                  <span>${formatLastSeen(tData.date)}</span>
-                </div>
-              </div>
-              <div class="topic-stats-bubble">
-                <span>💬 ${tData.repliesCount || 0} ${t('forum_replies')}</span>
-                <span>👁 ${tData.views || 0} ${t('forum_views')}</span>
-              </div>
-            </div>
-          `).join('') : `
-            <div style="text-align:center; padding:36px 20px; background:#FFFFFF; border-radius:12px; border:1px dashed var(--color-border); box-shadow:var(--shadow-sm);">
-              <div style="font-size:32px; margin-bottom:8px;">💬</div>
-              <h3 style="font-family:var(--font-serif); font-size:1.25rem; color:var(--color-navy-deep); margin:0 0 6px 0;">No forum discussions yet</h3>
-              <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 16px 0;">Join fellow readers and explore discussions in our community forum!</p>
-              <a href="#forum" class="btn btn-gold btn-sm">Explore Community Forum ➔</a>
-            </div>
-          `}
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderAuthorSpotlightSectionComponent(sec, bgClass) {
-  const subtitle = sec.subtitle || t('author_subtitle');
-  const title = sec.title || t('author_role');
-  return `
-    <section class="section ${bgClass}" id="section-${escapeHtml(sec.sectionKey)}">
-      <div class="container">
-        <div class="author-spotlight">
-          <div class="author-photo-wrap">
-            <img src="${SITE_DATA.author.avatar}" class="author-photo" alt="${SITE_DATA.author.name}">
-            <div class="author-badge">👑 ${escapeHtml(title)}</div>
-          </div>
-          <div class="author-info">
-            <span class="section-subtitle">${escapeHtml(subtitle)}</span>
-            <h2 class="author-name">${SITE_DATA.author.name}</h2>
-            <p class="author-bio">${SITE_DATA.author.bio}</p>
-            <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
-              <a href="#member?id=rudhra" class="btn btn-gold btn-sm">${t('author_profile_btn')}</a>
-              <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Pratilipi</a>
-              <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="btn btn-outline btn-sm">YouTube</a>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderCommunityCtaSectionComponent(sec) {
-  const subtitle = sec.subtitle || t('community_subtitle');
-  const title = sec.title || t('community_title');
-  return `
-    <section class="section" id="section-${escapeHtml(sec.sectionKey)}" style="background:linear-gradient(135deg, var(--color-navy-deep), var(--color-navy-royal)); color:#FFFFFF; text-align:center;">
-      <div class="container" style="max-width:760px;">
-        <span style="font-size:13px; color:var(--color-gold-light); font-weight:700; text-transform:uppercase; letter-spacing:2px;">${escapeHtml(subtitle)}</span>
-        <h2 style="font-family:var(--font-serif); font-size:2.4rem; color:#FFFFFF; margin:12px 0 16px;">${escapeHtml(title)}</h2>
-        <p style="color:var(--color-parchment); font-size:1.05rem; line-height:1.7; margin-bottom:28px;">
-          ${t('community_desc')}
-        </p>
-        <button class="btn btn-gold btn-lg" onclick="openAuthModal('register')">${t('community_btn')}</button>
-      </div>
-    </section>
-  `;
-}
-
-// 2. NOVEL LIBRARY VIEW
+// 1. NOVEL LIBRARY VIEW
 async function renderNovelLibraryView(container, hash) {
   const urlParams = new URLSearchParams(hash.split('?')[1] || '');
   const initialCategory = urlParams.get('category') || 'All';
@@ -760,9 +356,193 @@ async function renderNovelDetailView(container, hash) {
   }
 
   const chapters = novel.chapters || [];
-  const firstChapterNum = chapters.length > 0 
-    ? (chapters[0].chapterNum || chapters[0].episodeNumber || String(chapters[0].num || '1')) 
+  const selectedChapterParam = urlParams.get('chapter') || urlParams.get('chapterId');
+
+  // Build hierarchical mapping
+  const novelTitle = novel.title || 'Novel';
+  const childrenByParent = new Map();
+  for (const ch of chapters) {
+    if (ch.parentId) {
+      const pId = Number(ch.parentId);
+      if (!childrenByParent.has(pId)) childrenByParent.set(pId, []);
+      childrenByParent.get(pId).push(ch);
+    }
+  }
+
+  const roots = chapters.filter(c => !c.parentId);
+  const hasHierarchy = roots.length > 0 && Array.from(childrenByParent.values()).some(arr => arr.length > 0);
+
+  function getDisplayTitle(item, defaultPrefix, num) {
+    const tVal = (item.title || '').trim();
+    if (tVal && !/^Episode\s+[\d\.]+/i.test(tVal)) {
+      return tVal;
+    }
+    return `${novelTitle} (${num})`;
+  }
+
+  // Find first readable episode (leaf episode, not navigation container)
+  const readableEpisodes = chapters.filter(c => !chapters.some(child => Number(child.parentId) === Number(c.id)));
+  const firstEpisode = readableEpisodes.length > 0 ? readableEpisodes[0] : (chapters[0] || null);
+  const firstChapterNum = firstEpisode 
+    ? (firstEpisode.chapterNum || firstEpisode.episodeNumber || String(firstEpisode.num || '1')) 
     : null;
+
+  // -------------------------------------------------------------
+  // DEDICATED CHAPTER VIEW: When a specific chapter is selected
+  // -------------------------------------------------------------
+  if (selectedChapterParam && hasHierarchy) {
+    const targetRoot = roots.find(r => 
+      String(r.chapterNum || r.episodeNumber || r.num) === String(selectedChapterParam) ||
+      String(r.id) === String(selectedChapterParam)
+    ) || chapters.find(c => 
+      String(c.chapterNum || c.episodeNumber || c.num) === String(selectedChapterParam)
+    ) || roots[0];
+
+    const targetRootNum = targetRoot ? (targetRoot.chapterNum || targetRoot.episodeNumber || targetRoot.num) : selectedChapterParam;
+    const targetRootTitle = targetRoot ? getDisplayTitle(targetRoot, 'Chapter', targetRootNum) : `Chapter ${targetRootNum}`;
+    const directEpisodes = targetRoot ? (childrenByParent.get(Number(targetRoot.id)) || []) : [];
+
+    container.innerHTML = `
+      <div class="container section">
+        <!-- Breadcrumb Navigation -->
+        <nav class="breadcrumb-bar" style="margin-bottom:20px; font-size:13px; color:var(--color-text-muted); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <a href="#forms" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">Home</a>
+          <span>›</span>
+          <a href="#novels" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">Novels</a>
+          <span>›</span>
+          <a href="#novel?id=${encodeURIComponent(novel.id)}" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">${escapeHtml(novel.title)}</a>
+          <span>›</span>
+          <span style="color:var(--color-navy-deep); font-weight:700;">Chapter ${escapeHtml(String(targetRootNum))}</span>
+        </nav>
+
+        <!-- Back Button & Chapter Title Header -->
+        <div style="background:var(--color-card-bg, #FFF); border:1px solid var(--color-border); border-radius:12px; padding:24px; margin-bottom:28px; box-shadow:0 2px 10px rgba(0,0,0,0.03);">
+          <div style="margin-bottom:14px;">
+            <a href="#novel?id=${encodeURIComponent(novel.id)}" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+              ← Back to All Chapters
+            </a>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+            <span style="font-size:12px; font-weight:800; color:var(--color-navy-deep); background:var(--color-gold); padding:4px 10px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px;">
+              Chapter ${escapeHtml(String(targetRootNum))}
+            </span>
+            <h1 style="font-size:24px; font-weight:700; color:var(--color-navy-deep); margin:0;">
+              ${escapeHtml(targetRootTitle)}
+            </h1>
+          </div>
+          <div style="font-size:13px; color:var(--color-text-muted);">
+            <span>Novel: <strong style="color:var(--color-navy-deep);">${escapeHtml(novel.title)}</strong></span>
+            ${novel.author ? `<span style="margin-left:14px;">Author: <strong style="color:var(--color-navy-deep);">${escapeHtml(novel.author)}</strong></span>` : ''}
+            <span style="margin-left:14px;">Total Episodes: <strong>${directEpisodes.length}</strong></span>
+          </div>
+        </div>
+
+        <!-- Hierarchical Episodes & Sub-episodes List (Belonging ONLY to this chapter) -->
+        <div class="section-header" style="margin-bottom:16px;">
+          <div class="section-heading-group">
+            <span class="section-subtitle">Chapter Episodes</span>
+            <h3 class="section-title">Episodes (${directEpisodes.length})</h3>
+          </div>
+        </div>
+
+        <div class="chapter-episodes-container" style="display:flex; flex-direction:column; gap:12px; margin-bottom:40px;">
+          ${(() => {
+            if (directEpisodes.length === 0) {
+              return `
+                <div style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:var(--color-card-bg); border-radius:var(--radius-md); border:1px dashed var(--color-border);">
+                  <div style="font-size:32px; margin-bottom:8px;">📖</div>
+                  <p style="font-size:15px; margin:0;">No episodes have been released under Chapter ${escapeHtml(String(targetRootNum))} yet.</p>
+                </div>
+              `;
+            }
+
+            return directEpisodes.map(ep => {
+              const epNum = ep.episodeNumber || ep.chapterNum || ep.num;
+              const epTitle = getDisplayTitle(ep, 'Episode', epNum);
+              const epParam = encodeURIComponent(ep.chapterNum || ep.episodeNumber || String(ep.num));
+              const subSubs = childrenByParent.get(Number(ep.id)) || [];
+
+              return `
+                <div class="chapter-group-card" style="background:var(--color-card-bg, #FFF); border:1px solid var(--color-border); border-radius:10px; overflow:hidden;">
+                  <!-- Episode Item -->
+                  <div class="chapter-list-item episode-row" style="background:#FFFDF8; border-left:4px solid var(--color-navy-deep); padding:14px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-size:11px; font-weight:700; color:#FFF; background:var(--color-navy-deep); padding:3px 8px; border-radius:4px;">
+                          Episode ${escapeHtml(String(epNum))}
+                        </span>
+                        <span style="font-weight:700; font-size:15px; color:var(--color-navy-deep); word-break:break-word;">
+                          ${escapeHtml(epTitle)}
+                        </span>
+                      </div>
+                      <div style="font-size:12px; color:var(--color-text-muted); margin-top:4px;">
+                        ${ep.date ? `<span>📅 ${escapeHtml(ep.date)}</span>` : ''}
+                        ${ep.readTime ? `<span style="margin-left:8px;">⏱ ${escapeHtml(ep.readTime)}</span>` : ''}
+                        ${ep.words ? `<span style="margin-left:8px;">📖 ${escapeHtml(ep.words)} words</span>` : ''}
+                      </div>
+                    </div>
+                    <div>
+                      <a href="#reader?novel=${encodeURIComponent(novel.id)}&ch=${epParam}" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:4px; font-weight:700;">
+                        Read Episode ➔
+                      </a>
+                    </div>
+                  </div>
+
+                  <!-- Nested Sub-Episodes under this Episode -->
+                  ${subSubs.length > 0 ? `
+                    <div style="padding:10px 18px; background:#FAFAFA; border-top:1px solid var(--color-border); display:flex; flex-direction:column; gap:8px;">
+                      ${subSubs.map(ss => {
+                        const ssNum = ss.episodeNumber || ss.chapterNum || ss.num;
+                        const ssTitle = getDisplayTitle(ss, 'Sub-Ep', ssNum);
+                        const ssParam = encodeURIComponent(ss.chapterNum || ss.episodeNumber || String(ss.num));
+                        return `
+                          <div class="chapter-list-item sub-episode-row" style="margin-left:20px; background:#FFF; border-left:3px solid var(--color-gold); padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                            <div>
+                              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <span style="font-size:10px; font-weight:700; color:var(--color-navy-deep); background:var(--color-gold); padding:2px 7px; border-radius:4px;">
+                                  Sub-Episode ${escapeHtml(String(ssNum))}
+                                </span>
+                                <span style="font-weight:600; font-size:13.5px; color:var(--color-navy-deep); word-break:break-word;">
+                                  ${escapeHtml(ssTitle)}
+                                </span>
+                              </div>
+                              <div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">
+                                ${ss.date ? `<span>📅 ${escapeHtml(ss.date)}</span>` : ''}
+                                ${ss.readTime ? `<span style="margin-left:8px;">⏱ ${escapeHtml(ss.readTime)}</span>` : ''}
+                                ${ss.words ? `<span style="margin-left:8px;">📖 ${escapeHtml(ss.words)} words</span>` : ''}
+                              </div>
+                            </div>
+                            <div>
+                              <a href="#reader?novel=${encodeURIComponent(novel.id)}&ch=${ssParam}" class="btn btn-outline btn-sm" style="font-size:12px; padding:4px 10px; font-weight:600;">
+                                Read Episode ➔
+                              </a>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('');
+          })()}
+        </div>
+
+        <!-- Novel Reactions & Community Discussion -->
+        <div id="novel-reactions-widget"></div>
+        <div id="novel-comments-widget"></div>
+      </div>
+    `;
+
+    renderReactionsWidget('novel-reactions-widget', 'chapter', `${novel.id}:${targetRootNum}`);
+    renderCommentsWidget('novel-comments-widget', novel.id, targetRootNum);
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // MAIN NOVEL VIEW: Shows only chapter headings (no episodes)
+  // -------------------------------------------------------------
+  const displayChapterCount = hasHierarchy ? roots.length : chapters.length;
 
   container.innerHTML = `
     <div class="container section">
@@ -810,45 +590,91 @@ async function renderNovelDetailView(container, hash) {
       <div class="section-header" style="border-top:1px solid var(--color-border); padding-top:var(--space-8);">
         <div class="section-heading-group">
           <span class="section-subtitle">${t('novel_chapters')}</span>
-          <h3 class="section-title">${t('novel_chapters')} (${chapters.length})</h3>
+          <h3 class="section-title">${t('novel_chapters')} (${displayChapterCount})</h3>
         </div>
       </div>
 
       <div style="display:flex; flex-direction:column; gap:12px;">
-        ${chapters.length > 0 ? chapters.map(ch => {
-          const isOngoing = novel.status === 'Ongoing';
-          const isSub = Boolean(ch.parentId || String(ch.num || '').includes('.'));
-          const epNumDisplay = ch.episodeNumber || ch.num;
+        ${(() => {
+          if (!chapters || chapters.length === 0) {
+            return `
+              <div style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:var(--color-card-bg); border-radius:var(--radius-md); border:1px dashed var(--color-border);">
+                <div style="font-size:32px; margin-bottom:8px;">📖</div>
+                <p style="font-size:15px; margin:0;">Episodes for this novel are currently being prepared and will be released soon.</p>
+              </div>
+            `;
+          }
 
-          const subBadge = isSub
-            ? `<span style="font-size:10px; font-weight:700; color:var(--color-gold-warm); background:#FAF5EC; border:1px solid var(--color-border); padding:1px 6px; border-radius:4px;">Sub-Ep ${escapeHtml(String(epNumDisplay))}</span>`
-            : '';
-
-          const chParam = encodeURIComponent(ch.chapterNum || ch.episodeNumber || String(ch.num));
-          const buttonHtml = `<a href="#reader?novel=${encodeURIComponent(novel.id)}&ch=${chParam}" class="btn btn-outline btn-sm">${t('btn_read_more')} ➔</a>`;
-
-          return `
-            <div class="chapter-list-item" style="${isSub ? 'margin-left:24px; border-left:3px solid var(--color-gold); background:#FFFDF8;' : ''}">
-              <div>
-                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                  ${subBadge}
-                  <span style="font-weight:700; color:var(--color-navy-deep); word-break:break-word;">${escapeHtml(ch.title || `Episode ${epNumDisplay}`)}</span>
+          if (!hasHierarchy) {
+            // Flat chapters listing (for legacy novels without hierarchy)
+            return chapters.map(ch => {
+              const numDisplay = ch.episodeNumber || ch.chapterNum || ch.num;
+              const chParam = encodeURIComponent(ch.chapterNum || ch.episodeNumber || String(ch.num));
+              const displayTitle = getDisplayTitle(ch, 'Chapter', numDisplay);
+              return `
+                <div class="chapter-list-item">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      <span style="font-size:10px; font-weight:800; color:var(--color-navy-deep); background:var(--color-gold); padding:2px 7px; border-radius:4px; text-transform:uppercase;">
+                        Chapter ${escapeHtml(String(numDisplay))}
+                      </span>
+                      <span style="font-weight:700; color:var(--color-navy-deep); word-break:break-word;">
+                        ${escapeHtml(displayTitle)}
+                      </span>
+                    </div>
+                    <div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">
+                      ${ch.date ? `<span>📅 ${escapeHtml(ch.date)}</span>` : ''}
+                      ${ch.readTime ? `<span style="margin-left:8px;">⏱ ${escapeHtml(ch.readTime)}</span>` : ''}
+                      ${ch.words ? `<span style="margin-left:8px;">📖 ${escapeHtml(ch.words)}</span>` : ''}
+                    </div>
+                  </div>
+                  <div>
+                    <a href="#reader?novel=${encodeURIComponent(novel.id)}&ch=${chParam}" class="btn btn-outline btn-sm">
+                      ${t('btn_read_more')} ➔
+                    </a>
+                  </div>
                 </div>
-                <div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">
-                  ${ch.date ? `<span>📅 ${escapeHtml(ch.date)}</span>` : ''}
-                  ${ch.readTime ? `<span style="margin-left:8px;">⏱ ${escapeHtml(ch.readTime)}</span>` : ''}
-                  ${ch.words ? `<span style="margin-left:8px;">📖 ${escapeHtml(ch.words)}</span>` : ''}
+              `;
+            }).join('');
+          }
+
+          // Hierarchical listing: ONLY Chapter cards on the novel page (No episodes, no reading button)
+          return roots.map(root => {
+            const rootNum = root.chapterNum || root.episodeNumber || root.num;
+            const rootTitle = getDisplayTitle(root, 'Chapter', rootNum);
+            const episodes = childrenByParent.get(Number(root.id)) || [];
+            const rootParam = encodeURIComponent(root.chapterNum || root.episodeNumber || String(root.num));
+
+            return `
+              <div class="chapter-list-item root-chapter-card" 
+                   style="background:#FFFDF8; border:1px solid var(--color-border); border-left:4px solid var(--color-gold); border-radius:8px; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;"
+                   onclick="window.location.hash='#novel?id=${encodeURIComponent(novel.id)}&chapter=${rootParam}'">
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:11px; font-weight:800; color:var(--color-navy-deep); background:var(--color-gold); padding:3px 8px; border-radius:4px; text-transform:uppercase;">
+                      Chapter ${escapeHtml(String(rootNum))}
+                    </span>
+                    <span style="font-size:15px; font-weight:700; color:var(--color-navy-deep); word-break:break-word;">
+                      ${escapeHtml(rootTitle)}
+                    </span>
+                  </div>
+                  <div style="font-size:12px; color:var(--color-text-muted); margin-top:4px;">
+                    <span>📖 ${episodes.length} ${episodes.length === 1 ? 'Episode' : 'Episodes'}</span>
+                    ${root.date ? `<span style="margin-left:12px;">📅 ${escapeHtml(root.date)}</span>` : ''}
+                  </div>
+                </div>
+                <div>
+                  <a href="#novel?id=${encodeURIComponent(novel.id)}&chapter=${rootParam}" 
+                     class="btn btn-outline btn-sm" 
+                     onclick="event.stopPropagation();"
+                     style="display:inline-flex; align-items:center; gap:4px; font-weight:700;">
+                    View Episodes (${episodes.length}) ➔
+                  </a>
                 </div>
               </div>
-              ${buttonHtml}
-            </div>
-          `;
-        }).join('') : `
-          <div style="padding:48px 24px; text-align:center; color:var(--color-text-muted); background:var(--color-card-bg); border-radius:var(--radius-md); border:1px dashed var(--color-border);">
-            <div style="font-size:32px; margin-bottom:8px;">📖</div>
-            <p style="font-size:15px; margin:0;">Episodes for this novel are currently being prepared and will be released soon.</p>
-          </div>
-        `}
+            `;
+          }).join('');
+        })()}
       </div>
 
       <!-- Novel Reactions & Community Discussion -->
@@ -880,25 +706,50 @@ async function renderReaderView(container, hash) {
   }
 
   const chapters = novel.chapters || [];
-  let currIndex = chapters.findIndex(c => String(c.num) === chRaw || String(c.chapterNum) === chRaw || String(c.episodeNumber) === chRaw);
-  if (currIndex === -1 && chRaw === '1' && chapters.length > 0) {
+  
+  // Identify container chapters that have child episodes (Episode-only reading enforcement)
+  const hasChildEpisodes = (chId) => chapters.some(c => Number(c.parentId) === Number(chId));
+
+  // If chRaw corresponds to a chapter container with child episodes, redirect to its first child episode
+  const matchedTarget = chapters.find(c => String(c.num) === chRaw || String(c.chapterNum) === chRaw || String(c.episodeNumber) === chRaw || String(c.id) === chRaw);
+  if (matchedTarget && hasChildEpisodes(matchedTarget.id)) {
+    const firstChild = chapters.find(c => Number(c.parentId) === Number(matchedTarget.id));
+    if (firstChild) {
+      const childNum = firstChild.chapterNum || firstChild.episodeNumber || String(firstChild.num);
+      window.location.replace(`#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(childNum)}`);
+      return;
+    } else {
+      window.location.replace(`#novel?id=${encodeURIComponent(novelId)}&chapter=${encodeURIComponent(chRaw)}`);
+      return;
+    }
+  }
+
+  // Filter readable episodes: items that are episodes or leaf chapters, excluding pure chapter containers
+  const readableEpisodes = chapters.filter(c => !hasChildEpisodes(c.id));
+  let currIndex = readableEpisodes.findIndex(c => String(c.num) === chRaw || String(c.chapterNum) === chRaw || String(c.episodeNumber) === chRaw);
+  if (currIndex === -1 && chRaw === '1' && readableEpisodes.length > 0) {
     currIndex = 0;
   }
-  const chapter = currIndex !== -1 ? chapters[currIndex] : {
+  const chapter = currIndex !== -1 ? readableEpisodes[currIndex] : (matchedTarget || {
     num: chRaw,
     chapterNum: chRaw,
     episodeNumber: chRaw,
     title: `Episode ${chRaw}`,
     date: 'Today',
     readTime: '8 mins'
-  };
+  });
   const chNum = chapter ? (chapter.chapterNum || chapter.episodeNumber || String(chapter.num || chRaw)) : chRaw;
 
-  const prevCh = currIndex > 0 ? (chapters[currIndex - 1].chapterNum || chapters[currIndex - 1].episodeNumber || String(chapters[currIndex - 1].num)) : null;
-  const nextCh = (currIndex !== -1 && currIndex < chapters.length - 1) ? (chapters[currIndex + 1].chapterNum || chapters[currIndex + 1].episodeNumber || String(chapters[currIndex + 1].num)) : null;
+  const prevCh = currIndex > 0 ? (readableEpisodes[currIndex - 1].chapterNum || readableEpisodes[currIndex - 1].episodeNumber || String(readableEpisodes[currIndex - 1].num)) : null;
+  const nextCh = (currIndex !== -1 && currIndex < readableEpisodes.length - 1) ? (readableEpisodes[currIndex + 1].chapterNum || readableEpisodes[currIndex + 1].episodeNumber || String(readableEpisodes[currIndex + 1].num)) : null;
 
   // Track reading progress automatically
   saveReadingProgress(novelId, chNum, 100);
+  try {
+    setupReadingSessionTracker(novelId, chNum);
+  } catch (e) {
+    console.warn('[Reader] Failed to start reading session tracker:', e);
+  }
 
   // Show Skeleton Loader while fetching chapter content
   container.innerHTML = renderReaderSkeleton();
@@ -1066,226 +917,375 @@ async function renderReaderView(container, hash) {
 
 // 5. FORUM COMMUNITY VIEW
 async function renderForumView(container, hash = '') {
-  const urlParams = new URLSearchParams(hash.split('?')[1] || '');
+  const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
   const currentCategoryId = urlParams.get('category');
+  const currentSubId = urlParams.get('sub') || urlParams.get('subId');
 
-  const [categoriesList, topicsData, sidebarData, liveStats] = await Promise.all([
-    getForumCategories(),
-    getForumTopics(currentCategoryId),
+  const token = localStorage.getItem('rp_auth_token');
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+  const [hierarchyData, sidebarData, liveStats] = await Promise.all([
+    fetch('/api/content/hierarchy', { headers }).then(r => r.json()).catch(() => ({ hierarchy: [] })),
     getSidebarPosts(),
     getForumLiveStats()
   ]);
 
-  const categories = Array.isArray(categoriesList) ? categoriesList : [];
-  const currentCategory = currentCategoryId ? categories.find(c => String(c.id) === String(currentCategoryId)) : null;
+  const hierarchy = Array.isArray(hierarchyData?.hierarchy) ? hierarchyData.hierarchy : [];
+  const currentCategory = currentCategoryId ? hierarchy.find(c => String(c.id) === String(currentCategoryId)) : null;
 
-  // Genuine counts directly from MySQL categories aggregate
-  const totalCategories = categories.length;
-  const totalTopics = categories.reduce((acc, c) => acc + (c.topicsCount || 0), 0);
-  const totalPosts = categories.reduce((acc, c) => acc + (c.postsCount || c.repliesCount || 0), 0);
+  // Check if current user is an authorized administrator
+  const isAdmin = Boolean(
+    window.CURRENT_USER && (
+      window.CURRENT_USER.isAdmin || 
+      ['admin', 'editor'].includes((window.CURRENT_USER.role || '').toLowerCase())
+    )
+  );
 
-  const activeCategoryTitle = currentCategory ? currentCategory.title : t('forum_title');
+  // ============================================================================
+  // A. DEDICATED SUBTITLE VIEW (e.g. #forms?sub=welcome-notes)
+  // ============================================================================
+  if (currentSubId) {
+    let currentSub = null;
+    let parentMain = null;
+
+    for (const cat of hierarchy) {
+      const found = (cat.subcategories || []).find(s => String(s.id) === String(currentSubId) || String(s.slug) === String(currentSubId));
+      if (found) {
+        currentSub = found;
+        parentMain = cat;
+        break;
+      }
+    }
+
+    // If subcategory links to a novel, redirect directly to the existing novel page
+    if (currentSub && currentSub.novelId) {
+      window.location.hash = `#novel?id=${encodeURIComponent(currentSub.novelId)}`;
+      return;
+    }
+
+    if (currentSub) {
+      const subArticles = currentSub.articles || [];
+
+      container.innerHTML = `
+        <div class="container forum-page">
+          <!-- Breadcrumbs -->
+          <nav class="forum-breadcrumbs" aria-label="Forum Breadcrumb">
+            <a href="#forms">Home</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms">Forms &amp; Community</a>
+            ${parentMain ? `
+              <span class="crumb-separator">›</span>
+              <a href="#forms">${escapeHtml(parentMain.title)}</a>
+            ` : ''}
+            <span class="crumb-separator">›</span>
+            <span class="crumb-current">${escapeHtml(currentSub.title)}</span>
+          </nav>
+
+          <!-- Subtitle Header Bar -->
+          <div class="forms-subpage-header-bar">
+            <div class="forms-subpage-left">
+              <a href="#forms" class="btn btn-outline btn-sm">« Back to Forms</a>
+              <div class="forms-subpage-icon-badge">${currentSub.icon || '📌'}</div>
+              <div>
+                <h1 class="forms-subpage-title">${escapeHtml(currentSub.title)}</h1>
+                <div class="forms-subpage-meta">
+                  <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}</span>
+                  <span>•</span>
+                  <span>${subArticles.length} Content Titles</span>
+                </div>
+              </div>
+            </div>
+
+            ${isAdmin ? `
+              <button type="button" class="btn btn-gold btn-sm" onclick="window.openFormsAddContentModal('${escapeQuotes(parentMain?.id || '')}', '${escapeQuotes(currentSub.id)}', '${escapeQuotes(currentSub.title)}')">
+                <span style="font-size:15px; font-weight:bold; margin-right:4px;">+</span> Add New Content
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="forum-layout">
+            <!-- Main Content Column -->
+            <div class="forum-main-col">
+              <div class="forms-subpage-articles-card">
+                <div class="forms-subpage-card-header">
+                  <h2 class="forms-subpage-card-title">Content Titles</h2>
+                  <span class="forms-subpage-card-hint">Click any title to open the full reading page</span>
+                </div>
+
+                <div class="forms-subpage-articles-list">
+                  ${subArticles.length > 0 ? subArticles.map(art => `
+                    <a href="${art.link}" class="forms-subpage-article-row">
+                      <div class="forms-subpage-row-main">
+                        <div class="forms-subpage-row-title">${escapeHtml(art.title)}</div>
+                        <div class="forms-subpage-row-meta">
+                          <span class="forms-article-tag">✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}</span>
+                          <span>📅 ${formatLastSeen(art.publishedAt)}</span>
+                          <span>💬 ${art.commentsCount || 0} comments</span>
+                        </div>
+                      </div>
+                      <div class="forms-subpage-row-arrow">
+                        <span>Read</span> ➔
+                      </div>
+                    </a>
+                  `).join('') : `
+                    <div class="forms-subpage-empty">
+                      <div style="font-size:32px; margin-bottom:8px;">📝</div>
+                      <div style="font-weight:600; color:#0B1F33; margin-bottom:4px;">No Content Titles Yet</div>
+                      <p style="font-size:13px; color:#64748B; margin:0 0 14px;">
+                        No reading content has been published in this section yet.
+                      </p>
+                      ${isAdmin ? `
+                        <button type="button" class="btn btn-gold btn-sm" onclick="window.openFormsAddContentModal('${escapeQuotes(parentMain?.id || '')}', '${escapeQuotes(currentSub.id)}', '${escapeQuotes(currentSub.title)}')">
+                          + Add New Content
+                        </button>
+                      ` : ''}
+                    </div>
+                  `}
+                </div>
+              </div>
+            </div>
+
+            <!-- Sidebar Panels -->
+            <aside class="forum-sidebar">
+              <!-- Latest Posts Panel -->
+              <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
+                <div class="forum-panel-header">
+                  <h3 id="sidebar-latest-posts-heading" class="forum-panel-title">
+                    <span>📝</span>
+                    <span>Latest Posts</span>
+                  </h3>
+                  <span class="forum-panel-badge">RECENT</span>
+                </div>
+                <div id="forum-latest-posts-list" class="forum-panel-list">
+                  ${renderSidebarPostItems(sidebarData?.latest)}
+                </div>
+              </section>
+
+              <!-- Members Online Panel -->
+              <section class="forum-panel forum-presence-panel" aria-labelledby="sidebar-members-online-heading">
+                <div class="forum-panel-header">
+                  <h3 id="sidebar-members-online-heading" class="forum-panel-title">
+                    <span class="presence-live-indicator" aria-hidden="true">
+                      <span class="presence-pulse-dot"></span>
+                    </span>
+                    <span>Members Online</span>
+                  </h3>
+                  <span class="forum-panel-badge" id="presence-status-badge">LIVE</span>
+                </div>
+
+                <div class="presence-stats-grid" id="presence-stats-grid">
+                  <div class="presence-stat-card">
+                    <div class="presence-stat-num" id="presence-members-count">-</div>
+                    <div class="presence-stat-label">Members</div>
+                  </div>
+                  <div class="presence-stat-card">
+                    <div class="presence-stat-num" id="presence-guests-count">-</div>
+                    <div class="presence-stat-label">Guests</div>
+                  </div>
+                  <div class="presence-stat-card presence-stat-total">
+                    <div class="presence-stat-num" id="presence-total-count">-</div>
+                    <div class="presence-stat-label">Total Online</div>
+                  </div>
+                </div>
+
+                <div class="presence-members-block">
+                  <div class="presence-subhead">
+                    <span>Active Members</span>
+                    <span class="presence-subhead-count" id="presence-visible-count"></span>
+                  </div>
+                  <div id="forum-online-members-list" class="presence-members-list">
+                    <div class="presence-loading-skeleton">Loading active members...</div>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </div>
+      `;
+
+      loadForumMembersOnline();
+      return;
+    }
+  }
+
+  // ============================================================================
+  // B. MAIN FORMS OVERVIEW PAGE
+  // ============================================================================
+  const activeCategoryTitle = currentCategory ? currentCategory.title : 'Forms & Reader Forum';
 
   container.innerHTML = `
     <div class="container forum-page">
       <!-- Breadcrumbs -->
       <nav class="forum-breadcrumbs" aria-label="Forum Breadcrumb">
-        <a href="#home">Home</a>
+        <a href="#forms">Home</a>
         <span class="crumb-separator">›</span>
         ${currentCategoryId ? `
-          <a href="#forum">Forum</a>
+          <a href="#forms">Forms &amp; Community</a>
           <span class="crumb-separator">›</span>
           <span class="crumb-current">${escapeHtml(currentCategory?.title || 'Category')}</span>
         ` : `
-          <span class="crumb-current">Forum & Community</span>
+          <span class="crumb-current">Forms &amp; Reader Community</span>
         `}
       </nav>
 
-      <div class="forum-header-bar">
-        <div>
-          ${currentCategoryId ? `
-            <a href="#forum" class="section-link" style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-weight:600;">
+      ${!currentCategoryId ? `
+        <!-- 1. Welcoming Hero Section -->
+        <section class="forms-hero-section" id="forms-hero-section" aria-label="Forms Welcome Hero">
+          <div class="forms-hero-overlay">
+            <div class="forms-hero-badge">
+              <span>WELCOME</span>
+            </div>
+
+            <h1 class="forms-hero-title">Rudhra Prarthana Novels</h1>
+
+            <div class="forms-hero-divider">
+              <span class="forms-hero-divider-line"></span>
+              <span class="forms-hero-divider-glyph">🪶</span>
+              <span class="forms-hero-divider-line"></span>
+            </div>
+
+            <p class="forms-hero-subtitle">
+              Touch-the-heart family novels, captivating romance, and a warm community for passionate readers.
+            </p>
+
+            <div class="forms-hero-actions">
+              <a href="#novels" class="btn btn-primary btn-lg forms-hero-btn-primary">
+                <span>Explore Novels</span>
+                <span>➔</span>
+              </a>
+              <a href="#forms" class="btn btn-outline btn-lg forms-hero-btn-outline" onclick="document.getElementById('forms-categories-root')?.scrollIntoView({ behavior: 'smooth' })">
+                <span>Join Reader Forum</span>
+              </a>
+            </div>
+          </div>
+        </section>
+      ` : `
+        <div class="forum-header-bar">
+          <div>
+            <a href="#forms" class="section-link" style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-weight:600;">
               « Back to All Categories
             </a>
-          ` : ''}
-          <span class="section-subtitle">${currentCategory ? (currentCategory.desc || t('forum_subtitle')) : t('forum_subtitle')}</span>
-          <h1 class="section-title">${escapeHtml(activeCategoryTitle)}</h1>
-        </div>
-
-        <div>
-          <div class="forum-live-stats-bar" id="forum-live-stats-bar" aria-label="Forum Live Statistics">
-            <div class="forum-stat-badge" title="Total registered member accounts">
-              <span class="forum-stat-icon">👥</span>
-              <div class="forum-stat-content">
-                <span class="forum-stat-val" id="forum-stat-members">${Number(liveStats?.totalMembers || 0)}</span>
-                <span class="forum-stat-lbl">Members</span>
+            <span class="section-subtitle">${currentCategory ? (currentCategory.description || t('forum_subtitle')) : t('forum_subtitle')}</span>
+            <h1 class="section-title">${escapeHtml(activeCategoryTitle)}</h1>
+          </div>
+          <div>
+            <div class="forum-live-stats-bar" id="forum-live-stats-bar" aria-label="Forum Live Statistics">
+              <div class="forum-stat-badge">
+                <span class="forum-stat-icon">👥</span>
+                <div class="forum-stat-content">
+                  <span class="forum-stat-val">${Number(liveStats?.totalMembers || 0)}</span>
+                  <span class="forum-stat-lbl">Members</span>
+                </div>
               </div>
-            </div>
-
-            <div class="forum-stat-badge" title="Total replies across all forum threads">
-              <span class="forum-stat-icon">💬</span>
-              <div class="forum-stat-content">
-                <span class="forum-stat-val" id="forum-stat-replies">${Number(liveStats?.totalReplies || 0)}</span>
-                <span class="forum-stat-lbl">Replies</span>
+              <div class="forum-stat-badge">
+                <span class="forum-stat-icon">💬</span>
+                <div class="forum-stat-content">
+                  <span class="forum-stat-val">${Number(liveStats?.totalReplies || 0)}</span>
+                  <span class="forum-stat-lbl">Replies</span>
+                </div>
               </div>
-            </div>
-
-            <div class="forum-stat-badge" title="Total unique guest visitors tracked">
-              <span class="forum-stat-icon">🌐</span>
-              <div class="forum-stat-content">
-                <span class="forum-stat-val" id="forum-stat-guests">${Number(liveStats?.totalGuests || 0)}</span>
-                <span class="forum-stat-lbl">Guests Visited</span>
+              <div class="forum-stat-badge">
+                <span class="forum-stat-icon">🌐</span>
+                <div class="forum-stat-content">
+                  <span class="forum-stat-val">${Number(liveStats?.totalGuests || 0)}</span>
+                  <span class="forum-stat-lbl">Guests Visited</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      `}
 
       <div class="forum-layout">
         <!-- Main Content Column -->
         <div class="forum-main-col">
-          ${currentCategoryId ? `
-            <!-- Category Discussion List View -->
-            <div class="category-header-banner" style="background:#FFFFFF; border:1px solid var(--color-border); border-radius:var(--radius-lg); padding:20px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
-              <div style="display:flex; align-items:center; gap:14px;">
-                <div class="category-icon-box" style="width:52px; height:52px; font-size:24px;">${currentCategory?.icon || '💬'}</div>
-                <div>
-                  <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:var(--color-navy-deep); margin:0 0 4px 0;">${escapeHtml(currentCategory?.title || 'Category')}</h2>
-                  <div style="font-size:12.5px; color:var(--color-text-muted);">${escapeHtml(currentCategory?.desc || '')}</div>
-                </div>
-              </div>
-              <div style="display:flex; align-items:center; gap:16px;">
-                <div style="display:flex; gap:14px; font-size:12px; color:var(--color-text-muted);">
-                  <span>Topics: <strong style="color:var(--color-navy-deep);">${currentCategory?.topicsCount || 0}</strong></span>
-                  <span>Replies: <strong style="color:var(--color-navy-deep);">${currentCategory?.repliesCount || 0}</strong></span>
-                </div>
-                <button type="button" class="btn btn-gold btn-sm" onclick="toggleNewTopicForm()">+ Start Discussion 💬</button>
-              </div>
-            </div>
+          <div class="forms-categories-container" id="forms-categories-root">
+            ${(currentCategoryId ? hierarchy.filter(c => c.id === currentCategoryId) : hierarchy).map(cat => {
+              const subs = cat.subcategories || [];
+              const novels = cat.novels || [];
 
-            <!-- Collapsible New Discussion Form -->
-            <div id="new-topic-form-container" class="new-topic-form-wrap" style="display:none;">
-              <h3 style="font-family:var(--font-serif); font-size:1.25rem; color:var(--color-navy-deep); margin-bottom:12px;">
-                Start a Discussion in ${escapeHtml(currentCategory?.title || 'this Category')}
-              </h3>
-              <input type="text" id="new-topic-title-input" class="form-input" placeholder="Discussion title..." style="width:100%; box-sizing:border-box; margin-bottom:12px; font-weight:600;">
-              <textarea id="new-topic-content-input" class="form-input" rows="4" placeholder="What would you like to discuss with fellow readers?" style="width:100%; box-sizing:border-box; resize:vertical; margin-bottom:14px;"></textarea>
-              <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="toggleNewTopicForm()">Cancel</button>
-                <button type="button" id="new-topic-submit-btn" class="btn btn-gold btn-sm" onclick="submitNewForumTopic('${escapeQuotes(currentCategoryId)}')">
-                  Publish Discussion 🚀
-                </button>
-              </div>
-            </div>
-
-            <div class="forum-topics-list">
-              ${topicsData.length > 0 ? topicsData.map(topic => `
-                <div class="topic-card">
-                  <img src="${getAvatarUrl(topic.authorAvatar)}" class="topic-author-avatar" alt="${escapeHtml(topic.author)}" onerror="this.src='/profile.png'">
-                  <div class="topic-main-info" style="flex:1; min-width:0;">
-                    <a href="#topic?id=${encodeURIComponent(topic.id)}" class="topic-title-link">${escapeHtml(topic.title)}</a>
-                    ${topic.excerpt ? `<div style="font-size:12px; color:var(--color-text-muted); margin:4px 0; line-height:1.4;">${escapeHtml(topic.excerpt)}</div>` : ''}
-                    <div class="topic-meta-line" style="font-size:11px; color:var(--color-text-muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                      <span>✍️ ${escapeHtml(topic.author)}</span>
-                      <span>•</span>
-                      <span>📅 ${formatLastSeen(topic.date)}</span>
-                      ${topic.lastAuthor ? `<span>• Last reply by <strong>${escapeHtml(topic.lastAuthor)}</strong></span>` : ''}
+              return `
+                <div class="forms-category-section" id="cat-sec-${escapeHtml(cat.id)}">
+                  <!-- Royal-Purple Header Bar -->
+                  <div class="forms-cat-header-bar" style="background: linear-gradient(90deg, #1A0B2E 0%, ${escapeHtml(cat.color || '#2E1065')} 60%, #3B0764 100%);">
+                    <div class="forms-cat-title-group">
+                      <div class="forms-cat-icon">${cat.icon || '💬'}</div>
+                      <div>
+                        <h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2>
+                        <div class="forms-cat-desc">${escapeHtml(cat.description || '')}</div>
+                      </div>
+                    </div>
+                    <div class="forms-cat-actions">
+                      <span class="forms-cat-pill">${subs.length > 0 ? `${subs.length} Sections` : `${novels.length} Novels`}</span>
                     </div>
                   </div>
-                  <div class="topic-stats-bubble" style="flex-shrink:0;">
-                    <span title="${topic.repliesCount} Replies">💬 ${topic.repliesCount}</span>
-                    <span title="${topic.views} Views">👁 ${topic.views}</span>
-                    ${(topic.reactionsCount || 0) > 0 ? `<span title="${topic.reactionsCount} Reactions">❤️ ${topic.reactionsCount}</span>` : ''}
-                  </div>
-                </div>
-              `).join('') : `
-                <div style="text-align:center; padding:48px 24px; background:#FFFFFF; border-radius:var(--radius-lg); border:1px dashed var(--color-border);">
-                  <div style="font-size:36px; margin-bottom:8px;">💬</div>
-                  <h3 style="font-family:var(--font-serif); color:var(--color-navy-deep); margin-bottom:6px;">No discussions yet in this category</h3>
-                  <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:16px;">Be the first reader to start a discussion in this topic!</p>
-                  <button type="button" class="btn btn-gold btn-sm" onclick="toggleNewTopicForm()">+ Start Discussion 💬</button>
-                </div>
-              `}
-            </div>
-          ` : `
-            <!-- All Categories Cards List -->
-            <div class="forum-categories-list">
-              ${categories.map(cat => `
-                <div class="forum-category-card" onclick="window.location.hash = '#forum?category=${encodeURIComponent(cat.id)}';">
-                  <div class="category-icon-box">${cat.icon || '💬'}</div>
-                  <div class="category-meta-info">
-                    <div class="category-title">${escapeHtml(cat.title)}</div>
-                    <div class="category-desc">${escapeHtml(cat.desc || cat.description || '')}</div>
-                    <div style="font-size:11px; color:var(--color-gold-warm); margin-top:4px;">
-                      Browse Category ➔
-                    </div>
-                  </div>
-                  <div class="category-stats-col">
-                    <div><strong>${cat.topicsCount || 0}</strong> ${t('forum_topics')}</div>
-                    <div><strong>${cat.postsCount || cat.repliesCount || 0}</strong> ${t('forum_replies')}</div>
-                  </div>
-                  <div class="category-latest-col">
-                    ${cat.latestTopicTitle ? `
-                      <img src="${getAvatarUrl(cat.lastActivityAvatar)}" class="category-latest-avatar" alt="${escapeHtml(cat.lastActivityAuthor || 'Member')}" onerror="this.src='/profile.png'">
-                      <div class="category-latest-info">
-                        <a href="#topic?id=${encodeURIComponent(cat.latestTopicId)}" class="category-latest-title" onclick="event.stopPropagation();" title="${escapeHtml(cat.latestTopicTitle)}">
-                          ${escapeHtml(cat.latestTopicTitle)}
+
+                  <!-- 1. Clickable Subcategories (Main Title -> Clickable Sub Titles -> Content Titles) -->
+                  ${subs.length > 0 ? subs.map(sub => {
+                    const subLink = sub.novelId 
+                      ? `#novel?id=${encodeURIComponent(sub.novelId)}`
+                      : `#forms?sub=${encodeURIComponent(sub.id)}`;
+
+                    return `
+                      <div class="forms-sub-section">
+                        <div class="forms-sub-header">
+                          <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)} section">
+                            <span class="forms-sub-icon">${sub.icon || '📌'}</span>
+                            <h3 class="forms-sub-title">${escapeHtml(sub.title)}</h3>
+                            <span class="forms-sub-link-arrow">➔</span>
+                          </a>
+                          <a href="${subLink}" class="forms-sub-badge-link">
+                            ${sub.articles?.length || 0} Notes »
+                          </a>
+                        </div>
+
+                        <div class="forms-articles-grid" style="margin-top:10px;">
+                          ${sub.articles && sub.articles.length > 0 ? sub.articles.map(art => `
+                            <a href="${art.link}" class="forms-article-card">
+                              <div class="forms-article-title">${escapeHtml(art.title)}</div>
+                              <div class="forms-article-meta">
+                                <span class="forms-article-tag">✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}</span>
+                                <span>📅 ${formatLastSeen(art.publishedAt)}</span>
+                                <span>💬 ${art.commentsCount || 0} comments</span>
+                              </div>
+                            </a>
+                          `).join('') : `
+                            <div style="font-size:12px; color:#94A3B8; padding:8px 0;">No published notes in this section yet.</div>
+                          `}
+                        </div>
+                      </div>
+                    `;
+                  }).join('') : ''}
+
+                  <!-- 2. Novels List (Ongoing Novels, Completed Novels, Short Stories, Audio Novels) -->
+                  ${novels.length > 0 ? `
+                    <div class="forms-novel-grid">
+                      ${novels.map(n => `
+                        <a href="${n.link}" class="forms-novel-card">
+                          <img src="${n.cover || '/default-cover.jpg'}" class="forms-novel-thumb" alt="${escapeHtml(n.title)}" onerror="this.src='/default-cover.jpg'">
+                          <div class="forms-novel-info">
+                            <div class="forms-novel-title">${escapeHtml(n.title)}</div>
+                            <div class="forms-novel-episode">📖 ${escapeHtml(n.latestEpisodeTitle || 'Latest Release')}</div>
+                            <div class="forms-novel-date">📅 ${escapeHtml(n.updatedDate || 'Recent')} • ✍️ ${escapeHtml(n.author || 'Rudhra Prarthana')}</div>
+                          </div>
+                          <div style="color:#B88635; font-size:16px;">➔</div>
                         </a>
-                        <span class="category-latest-meta">
-                          by <strong>${escapeHtml(cat.lastActivityAuthor || 'Member')}</strong> • ${formatLastSeen(cat.lastActivityAt)}
-                        </span>
-                      </div>
-                    ` : `
-                      <div style="font-size:11.5px; color:var(--color-text-muted); font-style:italic;">No discussions yet</div>
-                    `}
-                  </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+
+                  ${subs.length === 0 && novels.length === 0 ? `
+                    <div class="forms-cat-empty">
+                      <span>No discussions or notes in <strong>${escapeHtml(cat.title)}</strong> yet.</span>
+                    </div>
+                  ` : ''}
                 </div>
-              `).join('')}
-            </div>
-
-            <!-- Recent Discussions Across All Categories -->
-            <div style="margin-top:32px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:var(--color-navy-deep); margin:0;">
-                  Recent Community Discussions
-                </h3>
-              </div>
-
-              <div class="forum-topics-list">
-                ${topicsData.length > 0 ? topicsData.map(topic => `
-                  <div class="topic-card">
-                    <img src="${getAvatarUrl(topic.authorAvatar)}" class="topic-author-avatar" alt="${escapeHtml(topic.author)}" onerror="this.src='/profile.png'">
-                    <div class="topic-main-info" style="flex:1; min-width:0;">
-                      <a href="#topic?id=${encodeURIComponent(topic.id)}" class="topic-title-link">${escapeHtml(topic.title)}</a>
-                      ${topic.excerpt ? `<div style="font-size:12px; color:var(--color-text-muted); margin:4px 0; line-height:1.4;">${escapeHtml(topic.excerpt)}</div>` : ''}
-                      <div class="topic-meta-line" style="font-size:11px; color:var(--color-text-muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <a href="#forum?category=${encodeURIComponent(topic.categoryId)}" style="background:#FAF5EC; color:var(--color-gold-warm); padding:1px 6px; border-radius:4px; font-weight:600; border:1px solid #E8DCCB; text-decoration:none;">${escapeHtml(topic.categoryTitle)}</a>
-                        <span>✍️ ${escapeHtml(topic.author)}</span>
-                        <span>•</span>
-                        <span>📅 ${formatLastSeen(topic.date)}</span>
-                        ${topic.lastAuthor ? `<span>• Last reply by <strong>${escapeHtml(topic.lastAuthor)}</strong></span>` : ''}
-                      </div>
-                    </div>
-                    <div class="topic-stats-bubble" style="flex-shrink:0;">
-                      <span title="${topic.repliesCount} Replies">💬 ${topic.repliesCount}</span>
-                      <span title="${topic.views} Views">👁 ${topic.views}</span>
-                      ${(topic.reactionsCount || 0) > 0 ? `<span title="${topic.reactionsCount} Reactions">❤️ ${topic.reactionsCount}</span>` : ''}
-                    </div>
-                  </div>
-                `).join('') : `
-                  <div style="text-align:center; padding:40px 20px; background:#FFFFFF; border-radius:var(--radius-lg); border:1px dashed var(--color-border);">
-                    <div style="font-size:32px; margin-bottom:6px;">💬</div>
-                    <div style="font-weight:600; font-size:13.5px; color:var(--color-navy-deep); margin-bottom:4px;">No community discussions yet</div>
-                    <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">Share your thoughts and reviews directly on each novel or episode page!</div>
-                    <a href="#novels" class="btn btn-gold btn-sm">Browse Novels & Comment ➔</a>
-                  </div>
-                `}
-              </div>
-            </div>
-          `}
+              `;
+            }).join('')}
+          </div>
         </div>
 
-        <!-- Sidebar Panels (Warm Ivory & Gold) -->
+        <!-- Sidebar Panels -->
         <aside class="forum-sidebar">
           <!-- Latest Posts Panel -->
           <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
@@ -1315,7 +1315,7 @@ async function renderForumView(container, hash = '') {
             </div>
           </section>
 
-          <!-- Members Online Panel (Real-Time MySQL Activity) -->
+          <!-- Members Online Panel -->
           <section class="forum-panel forum-presence-panel" aria-labelledby="sidebar-members-online-heading">
             <div class="forum-panel-header">
               <h3 id="sidebar-members-online-heading" class="forum-panel-title">
@@ -1327,7 +1327,6 @@ async function renderForumView(container, hash = '') {
               <span class="forum-panel-badge" id="presence-status-badge">LIVE</span>
             </div>
 
-            <!-- Summary Stats Counter Grid -->
             <div class="presence-stats-grid" id="presence-stats-grid">
               <div class="presence-stat-card">
                 <div class="presence-stat-num" id="presence-members-count">-</div>
@@ -1343,7 +1342,6 @@ async function renderForumView(container, hash = '') {
               </div>
             </div>
 
-            <!-- Active Members List / Avatars / Names -->
             <div class="presence-members-block">
               <div class="presence-subhead">
                 <span>Active Members</span>
@@ -1359,7 +1357,6 @@ async function renderForumView(container, hash = '') {
     </div>
   `;
 
-  // Dynamically load real-time online members & guests from MySQL
   loadForumMembersOnline();
 
   // Periodic refresh for live statistics
@@ -1624,17 +1621,18 @@ async function renderTopicView(container, hash) {
   const urlParams = new URLSearchParams(hash.split('?')[1] || '');
   const topicId = urlParams.get('id');
   if (!topicId) {
-    renderNotFound(container);
+    window.location.hash = '#novels';
     return;
   }
 
   const topic = await getForumTopicById(topicId);
-  if (!topic) {
-    renderNotFound(container);
-    return;
-  }
+  const novelId = topic?.novelId || 'nenjam-marappadhillai';
+  const chParam = topic?.chapterNum ? `&ch=${encodeURIComponent(topic.chapterNum)}` : '';
+  window.location.hash = `#novel?id=${encodeURIComponent(novelId)}${chParam}#comments`;
+  return;
+}
 
-  window.renderTopicView = () => renderTopicView(container, hash);
+async function _legacyRenderTopicView(container, hash) {
 
   const backLink = topic.categoryId ? `#forum?category=${encodeURIComponent(topic.categoryId)}` : '#forum';
 
@@ -1642,7 +1640,7 @@ async function renderTopicView(container, hash) {
     <div class="container section">
       <!-- Breadcrumbs -->
       <nav class="forum-breadcrumbs" aria-label="Thread Breadcrumb">
-        <a href="#home">Home</a>
+        <a href="#forms">Home</a>
         <span class="crumb-separator">›</span>
         <a href="#forum">Forum</a>
         <span class="crumb-separator">›</span>
@@ -1841,14 +1839,31 @@ async function renderMembersView(container) {
 
     let statusBadge = '';
     let avatarDot = '';
+    let readingBox = '';
     if (!m.statusHidden) {
       if (m.isOnline) {
-        statusBadge = `<div class="status-indicator online"><span class="status-dot green"></span> Online Now</div>`;
+        statusBadge = `<div class="status-indicator online"><span class="status-dot green"></span> Active now</div>`;
         avatarDot = `<span class="status-dot green" style="position:absolute; bottom:2px; right:2px; border:2px solid #FFFFFF;"></span>`;
       } else if (m.lastSeen) {
-        statusBadge = `<div class="status-indicator offline">⏱ Last seen: ${formatLastSeen(m.lastSeen)}</div>`;
+        statusBadge = `<div class="status-indicator offline">⏱ Last active ${escapeHtml(m.lastSeenText || formatLastSeen(m.lastSeen))}</div>`;
       } else {
-        statusBadge = `<div class="status-indicator offline"><span class="status-dot" style="background:#94a3b8;"></span> Offline</div>`;
+        statusBadge = `<div class="status-indicator offline"><span class="status-dot" style="background:#94a3b8;"></span> Member</div>`;
+      }
+
+      if (m.currentReading) {
+        readingBox = `
+          <div class="member-reading-activity active-read">
+            <div class="reading-line"><span class="reading-icon">📖</span> <span class="reading-lbl">Reading:</span> <strong class="reading-val" title="${escapeHtml(m.currentReading.novelTitle)}">${escapeHtml(m.currentReading.novelTitle)}</strong></div>
+            <div class="reading-line"><span class="reading-icon">⏱</span> <span class="reading-lbl">Reading for:</span> <span class="reading-val">${escapeHtml(m.currentReading.duration)}</span></div>
+          </div>
+        `;
+      } else if (m.lastRead) {
+        readingBox = `
+          <div class="member-reading-activity last-read">
+            <div class="reading-line"><span class="reading-icon">📚</span> <span class="reading-lbl">Last read:</span> <strong class="reading-val" title="${escapeHtml(m.lastRead.novelTitle)}">${escapeHtml(m.lastRead.novelTitle)}</strong></div>
+            <div class="reading-line"><span class="reading-icon">🕒</span> <span class="reading-lbl">Last read:</span> <span class="reading-val">${escapeHtml(m.lastRead.lastReadAgo || 'Recently')}</span></div>
+          </div>
+        `;
       }
     }
 
@@ -1862,6 +1877,7 @@ async function renderMembersView(container) {
             <span class="member-role-title">${escapeHtml(m.title || 'Member')}</span>
             <div class="member-status-box">
               ${statusBadge}
+              ${readingBox}
             </div>
             <div class="member-stats-row">
               <div class="member-stat-box">
@@ -1947,6 +1963,30 @@ async function renderMemberProfileView(container, hash) {
 
   // Setup Global profile editing and photo upload state
   window._pendingAvatarAction = undefined;
+
+  window.handleProfileChatToggle = async (checked) => {
+    try {
+      const res = await apiFetch('/api/chat/settings', {
+        method: 'POST',
+        body: JSON.stringify({ is_chat_available: checked ? 1 : 0 })
+      });
+      if (res && res.success) {
+        if (window.CURRENT_USER) window.CURRENT_USER.isChatAvailable = checked;
+        const lbl = document.getElementById('profile-chat-status-label');
+        if (lbl) {
+          lbl.textContent = checked ? 'Available' : 'Paused';
+          lbl.className = `activity-status-badge ${checked ? 'enabled' : 'hidden'}`;
+        }
+        showToast(checked ? 'Chat is now Available! Members can message you.' : 'Chat is now Paused. Direct messages are blocked.');
+      } else {
+        throw new Error(res?.error || 'Failed to update chat setting');
+      }
+    } catch (err) {
+      showToast('Error updating chat setting: ' + err.message);
+      const chk = document.getElementById('profile-chat-toggle');
+      if (chk) chk.checked = !checked;
+    }
+  };
 
   window.toggleProfileEditCard = () => {
     const card = document.getElementById('edit-profile-card');
@@ -2073,6 +2113,7 @@ async function renderMemberProfileView(container, hash) {
                   🚪 Logout
                 </button>
               ` : `
+                <button class="btn btn-gold btn-sm" onclick="openDirectChatWithUser(${JSON.stringify(member.id)})" title="Send a private message to this member">💬 Message</button>
                 <button class="btn btn-outline btn-sm" onclick="showToast('Following member!')">➕ Follow</button>
               `}
             </div>
@@ -2091,15 +2132,38 @@ async function renderMemberProfileView(container, hash) {
               ${!member.statusHidden ? `
                 <span class="profile-chip status">
                   ${member.isOnline
-                    ? `<span class="status-indicator online"><span class="status-dot green"></span> Online Now</span>`
+                    ? `<span class="status-indicator online"><span class="status-dot green"></span> Active now</span>`
                     : (member.lastSeen
-                      ? `<span class="status-indicator offline">⏱ Last seen: ${formatLastSeen(member.lastSeen)}</span>`
-                      : `<span class="status-indicator offline"><span class="status-dot" style="background:#94a3b8;"></span> Offline</span>`
+                      ? `<span class="status-indicator offline">⏱ Last active ${escapeHtml(member.lastSeenText || formatLastSeen(member.lastSeen))}</span>`
+                      : `<span class="status-indicator offline"><span class="status-dot" style="background:#94a3b8;"></span> Member</span>`
                     )
                   }
                 </span>
               ` : ''}
             </div>
+
+            <!-- Compact Member Reading Activity (Active Status Protected) -->
+            ${(!member.statusHidden && (member.currentReading || member.lastRead)) ? `
+              <div class="profile-reading-activity-wrap">
+                ${member.currentReading ? `
+                  <div class="profile-reading-chip reading-now">
+                    <div class="reading-chip-badge"><span class="status-dot green"></span> Reading Now</div>
+                    <div class="reading-chip-body">
+                      <div class="reading-chip-row"><span class="chip-lbl">Reading:</span> <strong class="chip-title">${escapeHtml(member.currentReading.novelTitle)}${member.currentReading.chapterNum ? ` (${member.currentReading.chapterNum})` : ''}</strong></div>
+                      <div class="reading-chip-row"><span class="chip-lbl">Reading for:</span> <span class="chip-duration">${escapeHtml(member.currentReading.duration)}</span></div>
+                    </div>
+                  </div>
+                ` : `
+                  <div class="profile-reading-chip last-read">
+                    <div class="reading-chip-badge">📚 Recent Activity</div>
+                    <div class="reading-chip-body">
+                      <div class="reading-chip-row"><span class="chip-lbl">Last read:</span> <strong class="chip-title">${escapeHtml(member.lastRead.novelTitle)}${member.lastRead.chapterNum ? ` (${member.lastRead.chapterNum})` : ''}</strong></div>
+                      <div class="reading-chip-row"><span class="chip-lbl">Last read time:</span> <span class="chip-duration">${escapeHtml(member.lastRead.lastReadAgo || 'Recently')}</span></div>
+                    </div>
+                  </div>
+                `}
+              </div>
+            ` : ''}
           </div>
 
           <!-- Activity Status Privacy Control (For Current User only) -->
@@ -2109,18 +2173,43 @@ async function renderMemberProfileView(container, hash) {
                 <span class="activity-status-icon">${isActEnabled ? '🟢' : '🔒'}</span>
                 <div>
                   <div class="activity-status-title-row">
-                    <span class="activity-status-title">Activity Status</span>
+                    <span class="activity-status-title">Active Status</span>
                     <span id="activity-status-label" class="activity-status-badge ${isActEnabled ? 'enabled' : 'hidden'}">
                       ${isActEnabled ? 'Enabled' : 'Hidden'}
                     </span>
                   </div>
-                  <p class="activity-status-desc">
-                    When enabled, other readers can see when you are online and your last-seen time. When hidden, your online status remains private.
+                  <p id="activity-status-desc-text" class="activity-status-desc">
+                    ${isActEnabled
+                      ? 'When enabled, other readers can see when you are online, your reading duration, and your current or last read story.'
+                      : 'When hidden, your online status, current story, duration, and last-read activity remain completely private.'
+                    }
                   </p>
                 </div>
               </div>
-              <label class="switch" aria-label="Toggle Activity Status">
+              <label class="switch" aria-label="Toggle Active Status">
                 <input type="checkbox" id="profile-activity-toggle" ${isActEnabled ? 'checked' : ''} onchange="toggleActivityStatus(this.checked)">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <!-- Global Chat Availability Setting -->
+            <div class="activity-status-card" style="margin-top:12px;">
+              <div class="activity-status-info">
+                <span class="activity-status-icon">💬</span>
+                <div>
+                  <div class="activity-status-title-row">
+                    <span class="activity-status-title">Chat Availability</span>
+                    <span id="profile-chat-status-label" class="activity-status-badge ${window.CURRENT_USER?.isChatAvailable !== false ? 'enabled' : 'hidden'}">
+                      ${window.CURRENT_USER?.isChatAvailable !== false ? 'Available' : 'Paused'}
+                    </span>
+                  </div>
+                  <p class="activity-status-desc">
+                    When enabled, other eligible members and authors can send you direct private messages. When paused, new incoming messages are blocked.
+                  </p>
+                </div>
+              </div>
+              <label class="switch" aria-label="Toggle Chat Availability">
+                <input type="checkbox" id="profile-chat-toggle" ${window.CURRENT_USER?.isChatAvailable !== false ? 'checked' : ''} onchange="handleProfileChatToggle(this.checked)">
                 <span class="slider round"></span>
               </label>
             </div>
@@ -2868,10 +2957,10 @@ window.showContentRestrictionModal = ({ title, message, redirectHash } = {}) => 
         Guests can read the latest daily update of each novel for free. Previous chapters, completed stories, and full audio stories are reserved for registered members.
       </p>
       <div style="display:flex; flex-direction:column; gap:10px;">
-        <button class="btn btn-gold btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#home'}'); openAuthModal('login');">
+        <button class="btn btn-gold btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forms'}'); openAuthModal('login');">
           🔑 ${t('btn_login')}
         </button>
-        <button class="btn btn-outline btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#home'}'); openAuthModal('register');">
+        <button class="btn btn-outline btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forms'}'); openAuthModal('register');">
           ✨ ${t('btn_register')}
         </button>
         <button class="btn btn-outline btn-sm" style="border:none; margin-top:6px; color:var(--color-text-muted);" onclick="document.getElementById('content-restriction-modal')?.remove();">
@@ -2885,3 +2974,383 @@ window.showContentRestrictionModal = ({ title, message, redirectHash } = {}) => 
 
 
 
+
+
+// ============================================================================
+// DEDICATED CONTENT READING VIEW (Main Title -> Sub Title -> Content Title -> Reading Content)
+// ============================================================================
+async function renderContentReadingView(container, hash) {
+  const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+  const slug = urlParams.get('slug') || urlParams.get('id') || (hash.includes('/') ? hash.split('/')[1] : '');
+
+  container.innerHTML = `
+    <div class="content-reading-wrap">
+      <div style="text-align:center; padding:60px 20px; color:#64748B;">
+        <div style="width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading reading content...</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const token = localStorage.getItem('rp_auth_token');
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const res = await fetch(`/api/content/articles/${encodeURIComponent(slug)}`, { headers });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      const errCode = data.code || 'UNAVAILABLE';
+      let errTitle = 'Content Temporarily Unavailable';
+      let errDesc = data.error || 'This content is not accessible at this moment.';
+      let icon = '🔒';
+
+      if (errCode === 'FORBIDDEN') {
+        errTitle = 'Access Restricted';
+        icon = '🚫';
+      } else if (errCode === 'DISABLED') {
+        errTitle = 'Temporarily Disabled';
+        icon = '⏸️';
+      } else if (errCode === 'UNPUBLISHED') {
+        errTitle = 'Unpublished Content';
+        icon = '📝';
+      }
+
+      container.innerHTML = `
+        <div class="content-reading-wrap">
+          <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
+            <a href="#forms">Home</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms">Forms</a>
+            <span class="crumb-separator">›</span>
+            <span class="crumb-current">Unavailable</span>
+          </nav>
+
+          <div class="content-restricted-alert">
+            <div style="font-size:42px; margin-bottom:12px;">${icon}</div>
+            <h2 style="font-family:var(--font-serif); color:#9A3412; margin:0 0 8px;">${escapeHtml(errTitle)}</h2>
+            <p style="color:#7C2D12; font-size:14px; margin-bottom:20px; line-height:1.6;">
+              ${escapeHtml(errDesc)}
+            </p>
+            <div style="display:flex; justify-content:center; gap:12px;">
+              <a href="#forms" class="btn btn-primary btn-sm">« Return to Forms &amp; Community</a>
+              <a href="#novels" class="btn btn-outline btn-sm">Explore Novels</a>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const art = data.article;
+    const authorAvatar = art.authorAvatar || '/profile.png';
+    const commentsCount = Number(art.commentsCount || 0);
+
+    container.innerHTML = `
+      <div class="content-reading-wrap">
+        <!-- Breadcrumbs & Back Bar -->
+        <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
+          <a href="#forms">Home</a>
+          <span class="crumb-separator">›</span>
+          <a href="#forms">Forms</a>
+          <span class="crumb-separator">›</span>
+          <a href="#forms">${escapeHtml(art.mainCategoryTitle)}</a>
+          <span class="crumb-separator">›</span>
+          <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
+        </nav>
+
+        <div class="content-reading-back-bar">
+          <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}" class="content-back-btn">
+            <span>«</span> Back to ${escapeHtml(art.subCategoryTitle)}
+          </a>
+          <div style="font-size:12px; color:#64748B;">
+            Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+          </div>
+        </div>
+
+        <!-- Main Reading Article Card -->
+        <article class="content-reading-card">
+          <div class="content-reading-badge">
+            <span>🌸</span>
+            <span>${escapeHtml(art.mainCategoryTitle)} › ${escapeHtml(art.subCategoryTitle)}</span>
+          </div>
+
+          <h1 class="content-reading-headline">${escapeHtml(art.title)}</h1>
+
+          <div class="content-reading-meta-bar">
+            <div class="content-author-chip">
+              <img src="${authorAvatar}" class="content-author-avatar" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
+              <div>
+                <div class="content-author-name">
+                  ${escapeHtml(art.authorName)}
+                  <span class="forms-role-badge" style="margin-left:6px;">Official Author</span>
+                </div>
+                <div class="content-author-sub">
+                  <span>Rudhra Prarthana Literary Platform</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
+              <span title="Views">👁️ ${art.viewsCount} reads</span>
+              <span>•</span>
+              <span title="Comments">💬 ${commentsCount} comments</span>
+            </div>
+          </div>
+
+          <!-- Formatted Reading Content -->
+          <div class="content-reading-body">
+            ${art.content}
+          </div>
+        </article>
+
+        <!-- Dedicated Comments Card -->
+        <section class="content-reading-comments-card" id="article-comments-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #F1ECE4; padding-bottom:12px;">
+            <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:#1A0B2E; margin:0;">
+              💬 Reader Thoughts &amp; Discussion (<span id="article-comments-counter">${commentsCount}</span>)
+            </h3>
+          </div>
+
+          <!-- Comment Input Form -->
+          <div style="margin-bottom:28px;">
+            ${window.IS_LOGGED_IN ? `
+              <form id="article-comment-form" onsubmit="window.submitArticleComment(event, ${art.id})">
+                <textarea id="article-comment-input" rows="3" class="form-input" 
+                          style="width:100%; border-radius:10px; border:1px solid #E2E8F0; padding:12px; font-family:inherit; resize:vertical; margin-bottom:10px;"
+                          placeholder="Share your thoughts on this note with author Rudhra Prarthana and fellow members..."></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:12px; color:#64748B;">Polite and warm reader camaraderie is welcomed.</span>
+                  <button type="submit" id="article-comment-submit-btn" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+                    <span>Post Comment</span>
+                  </button>
+                </div>
+              </form>
+            ` : `
+              <div style="background:#FAF7F2; border:1px dashed #C89B3C; border-radius:10px; padding:18px; text-align:center;">
+                <p style="margin:0 0 10px 0; font-size:13.5px; color:#1A0B2E;">Log in to participate in the conversation and share your feedback.</p>
+                <button type="button" class="btn btn-gold btn-sm" onclick="openAuthModal('login')">Log In to Comment</button>
+              </div>
+            `}
+          </div>
+
+          <!-- Comments List Container -->
+          <div id="article-comments-container">
+            <div style="text-align:center; padding:20px; color:#64748B;">Loading comments...</div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    // Load comments
+    window.loadArticleComments(art.id);
+  } catch (err) {
+    console.error('Error rendering content reading view:', err);
+    container.innerHTML = `
+      <div class="content-reading-wrap">
+        <div class="content-restricted-alert">
+          <h2>Failed to Load Content</h2>
+          <p>${escapeHtml(err.message)}</p>
+          <a href="#forms" class="btn btn-primary btn-sm">Return to Forms</a>
+        </div>
+      </div>
+    `;
+  }
+}
+
+window.loadArticleComments = async (articleId) => {
+  const container = document.getElementById('article-comments-container');
+  if (!container) return;
+  try {
+    const res = await fetch(`/api/content/articles/${articleId}/comments`);
+    const data = await res.json();
+    const comments = data.comments || [];
+    const counter = document.getElementById('article-comments-counter');
+    if (counter) counter.textContent = data.total || comments.length;
+
+    if (comments.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:32px 16px; color:#64748B; background:#FAF7F2; border-radius:10px;">
+          <div style="font-size:24px; margin-bottom:6px;">💬</div>
+          <div style="font-size:13.5px; font-weight:600; color:#1A0B2E;">No comments yet</div>
+          <div style="font-size:12px;">Be the first to share your thoughts on this note!</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = comments.map(c => `
+      <div class="comment-item" style="border-bottom:1px solid #F1ECE4; padding:16px 0;" id="comment-item-${c.id}">
+        <div style="display:flex; gap:12px; align-items:flex-start;">
+          <img src="${c.avatar || '/profile.png'}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png'" alt="">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <div>
+                <strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(c.author)}</strong>
+                ${c.role === 'author' || c.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
+              </div>
+              <span style="font-size:11.5px; color:#64748B;">${new Date(c.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div style="font-size:13px; color:#2D3748; line-height:1.6; margin-bottom:8px;">
+              ${escapeHtml(c.content)}
+            </div>
+            <div style="display:flex; gap:14px; font-size:11.5px;">
+              ${window.IS_LOGGED_IN ? `
+                <button type="button" onclick="window.toggleReplyForm(${c.id})" style="border:none; background:none; color:#6B21A8; font-weight:600; cursor:pointer; padding:0;">
+                  Reply
+                </button>
+              ` : ''}
+              ${(window.CURRENT_USER && (window.CURRENT_USER.id === c.userId || window.CURRENT_USER.isAdmin)) ? `
+                <button type="button" onclick="window.deleteArticleComment(${articleId}, ${c.id})" style="border:none; background:none; color:#DC2626; font-weight:600; cursor:pointer; padding:0;">
+                  Delete
+                </button>
+              ` : ''}
+            </div>
+
+            <!-- Inline reply form container -->
+            <div id="reply-form-${c.id}" style="display:none; margin-top:10px;">
+              <textarea id="reply-input-${c.id}" rows="2" class="form-input" style="width:100%; border-radius:8px; border:1px solid #CBD5E1; padding:8px; font-size:12.5px; margin-bottom:6px;" placeholder="Write a reply..."></textarea>
+              <div style="text-align:right; display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="window.toggleReplyForm(${c.id})">Cancel</button>
+                <button type="button" class="btn btn-gold btn-xs" onclick="window.submitArticleReply(${articleId}, ${c.id})">Submit Reply</button>
+              </div>
+            </div>
+
+            <!-- Nested Replies -->
+            ${(c.replies && c.replies.length > 0) ? `
+              <div style="margin-top:12px; margin-left:14px; border-left:2px solid #E9D5FF; padding-left:12px;">
+                ${c.replies.map(rep => `
+                  <div style="margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <strong style="color:#1A0B2E; font-size:12.5px;">${escapeHtml(rep.author)}</strong>
+                        ${rep.role === 'author' || rep.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
+                      </div>
+                      <span style="font-size:11px; color:#64748B;">${new Date(rep.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                    <div style="font-size:12.5px; color:#2D3748; line-height:1.5;">${escapeHtml(rep.content)}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to load article comments:', err);
+    container.innerHTML = `<div style="color:#DC2626; font-size:12px; text-align:center;">Failed to load comments: ${escapeHtml(err.message)}</div>`;
+  }
+};
+
+window.toggleReplyForm = (commentId) => {
+  const form = document.getElementById(`reply-form-${commentId}`);
+  if (form) {
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  }
+};
+
+window.submitArticleComment = async (e, articleId) => {
+  e.preventDefault();
+  const input = document.getElementById('article-comment-input');
+  const btn = document.getElementById('article-comment-submit-btn');
+  if (!input || !input.value.trim()) return;
+
+  const content = input.value.trim();
+  const token = localStorage.getItem('rp_auth_token');
+  if (!token) {
+    openAuthModal('login');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Posting...';
+  }
+
+  try {
+    const res = await fetch(`/api/content/articles/${articleId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      input.value = '';
+      if (typeof window.showToast === 'function') {
+        window.showToast('✅ Comment posted successfully!');
+      }
+      await window.loadArticleComments(articleId);
+    } else {
+      alert(data.error || 'Failed to post comment');
+    }
+  } catch (err) {
+    alert(err.message || 'Error submitting comment');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Post Comment';
+    }
+  }
+};
+
+window.submitArticleReply = async (articleId, parentId) => {
+  const input = document.getElementById(`reply-input-${parentId}`);
+  if (!input || !input.value.trim()) return;
+
+  const content = input.value.trim();
+  const token = localStorage.getItem('rp_auth_token');
+  if (!token) {
+    openAuthModal('login');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/content/articles/${articleId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content, parentId })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.toggleReplyForm(parentId);
+      if (typeof window.showToast === 'function') {
+        window.showToast('✅ Reply posted successfully!');
+      }
+      await window.loadArticleComments(articleId);
+    } else {
+      alert(data.error || 'Failed to post reply');
+    }
+  } catch (err) {
+    alert(err.message || 'Error submitting reply');
+  }
+};
+
+window.deleteArticleComment = async (articleId, commentId) => {
+  if (!confirm('Are you sure you want to delete this comment?')) return;
+  const token = localStorage.getItem('rp_auth_token');
+  if (!token) return;
+
+  try {
+    const res = await fetch(`/api/content/articles/${articleId}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Comment deleted.');
+      }
+      await window.loadArticleComments(articleId);
+    } else {
+      alert(data.error || 'Failed to delete comment');
+    }
+  } catch (err) {
+    alert(err.message || 'Error deleting comment');
+  }
+};

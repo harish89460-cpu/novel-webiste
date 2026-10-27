@@ -1,5 +1,10 @@
 import { defineConfig } from 'vite';
 import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fork } from 'node:child_process';
+
+let backendProcess = null;
 
 function backendPlugin() {
   return {
@@ -20,8 +25,34 @@ function backendPlugin() {
       if (!isRunning) {
         console.log(`[Vite] Starting backend server on port ${port}...`);
         try {
-          const { startServer } = await import('./server/server.js');
-          await startServer();
+          const serverCandidates = [
+            path.resolve(process.cwd(), 'backend/server.js'),
+            path.resolve(process.cwd(), '../backend/server.js'),
+            path.resolve(process.cwd(), 'server/server.js'),
+            path.resolve(process.cwd(), '../server/server.js')
+          ];
+          const serverScript = serverCandidates.find(p => fs.existsSync(p));
+          if (!serverScript) {
+            console.error('[Vite] Could not locate backend server script to auto-start.');
+            return;
+          }
+
+          backendProcess = fork(serverScript, [], {
+            cwd: path.dirname(serverScript),
+            stdio: 'inherit',
+            env: { ...process.env, PORT: String(port) }
+          });
+
+          const cleanup = () => {
+            if (backendProcess && !backendProcess.killed) {
+              backendProcess.kill();
+              backendProcess = null;
+            }
+          };
+
+          process.on('exit', cleanup);
+          process.on('SIGINT', () => { cleanup(); process.exit(); });
+          process.on('SIGTERM', () => { cleanup(); process.exit(); });
         } catch (err) {
           console.error('[Vite] Failed to auto-start backend server:', err.message);
         }

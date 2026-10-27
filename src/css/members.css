@@ -655,3 +655,151 @@ input:checked + .slider {
 input:checked + .slider:before {
   transform: translateX(16px);
 }
+
+/* ==========================================================================
+   Member Reading Activity & Duration Display Styles
+   Compact, elegant, and non-intrusive layout matching literary aesthetic
+   ========================================================================== */
+
+/* Member Cards in Directory (#members) */
+.member-status-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.member-reading-activity {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-align: left;
+  box-sizing: border-box;
+  margin-top: 4px;
+  transition: all var(--transition-fast, 0.2s ease);
+}
+
+.member-reading-activity.active-read {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  color: #065F46;
+}
+
+.member-reading-activity.last-read {
+  background: rgba(11, 31, 51, 0.04);
+  border: 1px solid rgba(200, 155, 60, 0.22);
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.member-reading-activity .reading-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-reading-activity .reading-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.member-reading-activity .reading-lbl {
+  color: var(--color-text-muted, #627D98);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.member-reading-activity .reading-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* Member Profile Page (#member?id=...) */
+.profile-reading-activity-wrap {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profile-reading-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 12.5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  max-width: 480px;
+  transition: all var(--transition-fast, 0.2s ease);
+}
+
+.profile-reading-chip.reading-now {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.09) 0%, rgba(5, 150, 105, 0.04) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #064E3B;
+}
+
+.profile-reading-chip.last-read {
+  background: linear-gradient(135deg, rgba(200, 155, 60, 0.08) 0%, rgba(11, 31, 51, 0.03) 100%);
+  border: 1px solid rgba(200, 155, 60, 0.28);
+  color: var(--color-navy-deep, #0B1F33);
+}
+
+.profile-reading-chip .reading-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.profile-reading-chip.reading-now .reading-chip-badge {
+  color: #059669;
+}
+
+.profile-reading-chip.last-read .reading-chip-badge {
+  color: var(--color-gold-warm, #B8860B);
+}
+
+.profile-reading-chip .reading-chip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.profile-reading-chip .reading-chip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.profile-reading-chip .chip-lbl {
+  color: var(--color-text-muted, #627D98);
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+.profile-reading-chip .chip-title {
+  color: var(--color-navy-deep, #0B1F33);
+  font-family: var(--font-serif, serif);
+  font-size: 13.5px;
+}
+
+.profile-reading-chip .chip-duration {
+  font-weight: 600;
+  color: var(--color-text-main, #1F2937);
+}

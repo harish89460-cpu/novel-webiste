@@ -12,6 +12,25 @@ CREATE TABLE `activity_status` (
   CONSTRAINT `fk_activity_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Table: admin_chat_audit_logs
+DROP TABLE IF EXISTS admin_chat_audit_logs;
+CREATE TABLE `admin_chat_audit_logs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `admin_id` int NOT NULL,
+  `writer_id` int NOT NULL,
+  `conversation_id` int NOT NULL,
+  `action` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'view_writer_history',
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `viewed_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_admin` (`admin_id`),
+  KEY `idx_audit_writer` (`writer_id`),
+  KEY `idx_audit_conv` (`conversation_id`),
+  CONSTRAINT `fk_audit_admin_user` FOREIGN KEY (`admin_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_audit_conv` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_audit_writer_user` FOREIGN KEY (`writer_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Table: audio_novels
 DROP TABLE IF EXISTS audio_novels;
 CREATE TABLE `audio_novels` (
@@ -75,6 +94,28 @@ CREATE TABLE `chapters` (
   CONSTRAINT `fk_chapters_novel` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Table: chat_locks
+DROP TABLE IF EXISTS chat_locks;
+CREATE TABLE `chat_locks` (
+  `user_id` int NOT NULL,
+  `target_user_id` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`,`target_user_id`),
+  KEY `idx_chat_lock_target` (`target_user_id`),
+  CONSTRAINT `fk_chat_lock_target` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_chat_lock_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: chat_settings
+DROP TABLE IF EXISTS chat_settings;
+CREATE TABLE `chat_settings` (
+  `user_id` int NOT NULL,
+  `is_chat_available` tinyint(1) NOT NULL DEFAULT '1',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `fk_chat_settings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Table: comments
 DROP TABLE IF EXISTS comments;
 CREATE TABLE `comments` (
@@ -93,6 +134,32 @@ CREATE TABLE `comments` (
   CONSTRAINT `fk_comments_novel` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_comments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=96 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: conversation_participants
+DROP TABLE IF EXISTS conversation_participants;
+CREATE TABLE `conversation_participants` (
+  `conversation_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `last_read_at` timestamp NULL DEFAULT NULL,
+  `unread_count` int NOT NULL DEFAULT '0',
+  `joined_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`conversation_id`,`user_id`),
+  KEY `idx_cp_user` (`user_id`,`conversation_id`),
+  CONSTRAINT `fk_cp_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_cp_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: conversations
+DROP TABLE IF EXISTS conversations;
+CREATE TABLE `conversations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `last_message_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_conv_updated` (`updated_at`),
+  KEY `idx_conv_last_msg` (`last_message_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: forum_categories
 DROP TABLE IF EXISTS forum_categories;
@@ -226,6 +293,23 @@ CREATE TABLE `media` (
   KEY `idx_media_created` (`created_at` DESC)
 ) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Table: messages
+DROP TABLE IF EXISTS messages;
+CREATE TABLE `messages` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `conversation_id` int NOT NULL,
+  `sender_id` int NOT NULL,
+  `content` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT '0',
+  `read_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_messages_conv` (`conversation_id`,`created_at`),
+  KEY `idx_messages_sender` (`sender_id`),
+  CONSTRAINT `fk_messages_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_messages_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Table: notification_preferences
 DROP TABLE IF EXISTS notification_preferences;
 CREATE TABLE `notification_preferences` (
@@ -322,7 +406,7 @@ CREATE TABLE `password_resets` (
   KEY `idx_resets_email` (`email`),
   KEY `idx_resets_token` (`reset_token`),
   CONSTRAINT `fk_resets_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: profiles
 DROP TABLE IF EXISTS profiles;
@@ -460,7 +544,7 @@ CREATE TABLE `users` (
   KEY `idx_users_username` (`username`),
   KEY `idx_users_email` (`email`),
   KEY `idx_users_role` (`role`)
-) ENGINE=InnoDB AUTO_INCREMENT=39 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: writer_audit_logs
 DROP TABLE IF EXISTS writer_audit_logs;
@@ -478,6 +562,6 @@ CREATE TABLE `writer_audit_logs` (
   KEY `idx_audit_created` (`created_at`),
   CONSTRAINT `fk_audit_actor` FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_audit_writer` FOREIGN KEY (`writer_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=35 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=37 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

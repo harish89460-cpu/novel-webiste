@@ -206,7 +206,7 @@
       </button>
 
       <!-- 2. Logo Branding (Center/Left on Mobile, Left on Desktop) -->
-      <a href="#home" class="brand-link" id="rp-brand-link" title="Rudhra Prarthana Novels Home">
+      <a href="#forms" class="brand-link" id="rp-brand-link" title="Rudhra Prarthana Novels">
         <span class="brand-logo-wrap">
           <img src="/images/logo.png" alt="Rudhra Prarthana Novels Logo" class="brand-logo custom-logo" width="44" height="44">
         </span>
@@ -218,9 +218,9 @@
 
       <!-- 3. Desktop Navigation (Hidden on Mobile) -->
       <nav class="nav-desktop" aria-label="Main Navigation">
-        <a href="#home" class="nav-link">Home</a>
-        <a href="#forum" class="nav-link active">
-          Forum <span class="nav-link-badge">New</span>
+        <a href="#forms" class="nav-link" data-nav="home">Home</a>
+        <a href="#forms" class="nav-link" data-nav="forms">
+          Forms <span class="nav-link-badge">New</span>
         </a>
         <a href="#audio" class="nav-link">Audio Novels</a>
         <a href="#novels?category=Ongoing" class="nav-link">What's New</a>
@@ -263,6 +263,16 @@
           </div>
         </div>
 
+        <!-- Private Chat / Messages Icon -->
+        <div style="position:relative;">
+          <button class="action-btn" id="header-messages-btn" onclick="openMessagesDrawer()" title="Messages & Chat" aria-label="Messages & Chat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span class="action-badge" id="inbox-badge" style="display:none;">0</span>
+          </button>
+        </div>
+
         <!-- Dynamic Desktop User Auth / Profile Area (Hidden on Mobile) -->
         <div id="header-auth-container" style="display:flex; align-items:center; gap:8px;"></div>
       </div>
@@ -283,10 +293,14 @@
       </div>
 
       <nav class="drawer-nav">
-        <a href="#home" class="drawer-nav-item" onclick="closeMobileDrawer()">Home</a>
+        <a href="#forms" class="drawer-nav-item" data-nav="home" onclick="closeMobileDrawer()">Home</a>
+        <a href="#messages" class="drawer-nav-item" id="drawer-messages-item" onclick="closeMobileDrawer(); openMessagesDrawer(); return false;">
+          <span>✉️ Messages</span>
+          <span class="action-badge" id="drawer-inbox-badge" style="display:none; margin-left:auto;">0</span>
+        </a>
         <a href="#audio" class="drawer-nav-item" onclick="closeMobileDrawer()">Audio Novels</a>
         <a href="#novels" class="drawer-nav-item" onclick="closeMobileDrawer()">Novel Library</a>
-        <a href="#forum" class="drawer-nav-item active" onclick="closeMobileDrawer()">Forum</a>
+        <a href="#forms" class="drawer-nav-item" data-nav="forms" onclick="closeMobileDrawer()">Forms</a>
         <a href="#members" class="drawer-nav-item" onclick="closeMobileDrawer()">Members</a>
         <a href="#contact" class="drawer-nav-item" onclick="closeMobileDrawer()">Contact</a>
         <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="drawer-nav-item" onclick="closeMobileDrawer()">Pratilipi</a>
@@ -301,52 +315,49 @@
   <!-- Main View Container (Dynamically rendered by Router) -->
   <main id="main-content" class="main-content"></main>
 
-  <!-- Site Footer (Premium Navy) -->
-  <footer class="site-footer">
+  <!-- Site Footer (Compact Royal Purple Theme with Gold Accents) -->
+  <footer class="site-footer" id="rp-site-footer">
     <div class="container">
-      <div class="footer-grid">
-        <!-- Brand Info -->
-        <div class="footer-brand">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <img src="/images/logo.png" class="brand-logo" alt="Logo">
-            <span class="brand-name">Rudhra Prarthana Novels</span>
+      <div class="footer-compact-wrap">
+        <div class="footer-main-row">
+          <!-- 1. Clickable RP Novels Logo & Brand Title (Redirects to Forms Page) -->
+          <div class="footer-brand-box">
+            <a href="#forum" class="footer-logo-link" id="footer-rp-logo-link" title="Rudhra Prarthana Novels Forms" aria-label="Rudhra Prarthana Novels Forms">
+              <img src="/images/logo.png" class="brand-logo footer-logo-img" alt="Rudhra Prarthana Novels Logo" width="32" height="32">
+            </a>
+            <div class="footer-brand-meta">
+              <a href="#forum" class="footer-brand-title" title="Rudhra Prarthana Novels Forms">Rudhra Prarthana Novels</a>
+              <span class="footer-brand-tagline">Heart-touching Tamil romance &amp; family dramas</span>
+            </div>
           </div>
-          <p class="footer-desc">
-            Heart-touching family dramas, captivating romance, and a warm community for passionate Tamil novel readers.
-          </p>
-          <div class="footer-socials">
-            <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="social-icon-btn" title="Rudhra Prarthana Audio Novels YouTube Channel">▶</a>
-            <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="social-icon-btn" title="Rudhra Prarthana Pratilipi Profile">📖</a>
-            <a href="https://facebook.com" target="_blank" class="social-icon-btn" title="Facebook">f</a>
-            <a href="https://instagram.com" target="_blank" class="social-icon-btn" title="Instagram">📸</a>
+
+          <!-- 2. Existing Footer Links (Privacy Policy, Disclaimer, Terms & Conditions, Contact Us, Copyright) -->
+          <nav class="footer-nav-links" aria-label="Footer Navigation">
+            <a href="#contact" class="footer-link-item">Privacy Policy</a>
+            <span class="footer-link-sep" aria-hidden="true">•</span>
+            <a href="#contact" class="footer-link-item">Disclaimer</a>
+            <span class="footer-link-sep" aria-hidden="true">•</span>
+            <a href="#contact" class="footer-link-item">Terms &amp; Conditions</a>
+            <span class="footer-link-sep" aria-hidden="true">•</span>
+            <a href="#contact" class="footer-link-item">Contact Us</a>
+            <span class="footer-link-sep" aria-hidden="true">•</span>
+            <a href="#contact" class="footer-link-item">Copyright</a>
+          </nav>
+
+          <!-- 3. Social & Community Icons -->
+          <div class="footer-right-actions">
+            <a href="https://www.youtube.com/@rudhraprarthanaaudionovels" target="_blank" rel="noopener" class="footer-social-btn" title="YouTube Channel" aria-label="YouTube">▶</a>
+            <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="footer-social-btn" title="Pratilipi Profile" aria-label="Pratilipi">📖</a>
+            <a href="https://facebook.com" target="_blank" rel="noopener" class="footer-social-btn" title="Facebook" aria-label="Facebook">f</a>
+            <a href="https://instagram.com" target="_blank" rel="noopener" class="footer-social-btn" title="Instagram" aria-label="Instagram">📸</a>
           </div>
         </div>
 
-
-        <!-- Legal Links -->
-        <div>
-          <h4 class="footer-title">Legal & Policies</h4>
-          <div class="footer-links">
-            <a href="#contact" class="footer-link">Privacy Policy</a>
-            <a href="#contact" class="footer-link">Terms of Service</a>
-            <a href="#contact" class="footer-link">Copyright Notice</a>
-            <a href="#contact" class="footer-link">Disclaimer</a>
-          </div>
+        <!-- 4. Footer Bottom (Copyright Bar) -->
+        <div class="footer-bottom-bar">
+          <div>© 2026 Rudhra Prarthana Novels. All Rights Reserved.</div>
+          <div style="color: rgba(212, 175, 55, 0.75);">Designed with literary elegance for novel lovers.</div>
         </div>
-
-        <!-- Community Summary -->
-        <div>
-          <h4 class="footer-title">Community</h4>
-          <p class="footer-community-desc" style="font-size:13px; color:var(--color-parchment); line-height:1.6; margin-bottom:14px;">
-            Join our reader forum to share reviews, chapter predictions, and converse directly with author Rudhra Prarthana.
-          </p>
-          <button class="btn btn-gold btn-sm footer-join-btn" onclick="openAuthModal('register')">Join Free Today</button>
-        </div>
-      </div>
-
-      <div class="footer-bottom">
-        <div>© 2026 Rudhra Prarthana Novels. All Rights Reserved.</div>
-        <div style="font-size:11px; color:rgba(255,255,255,0.5);">Designed with literary elegance for novel lovers.</div>
       </div>
     </div>
   </footer>

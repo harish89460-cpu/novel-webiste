@@ -4,6 +4,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import {
   registerUser,
   loginUser,
@@ -19,6 +22,23 @@ import {
   resendPasswordResetOtp,
   completePasswordReset
 } from './auth.js';
+import {
+  getUserChatSettings,
+  updateUserChatSettings,
+  toggleChatLock,
+  toggleConversationLock,
+  getOrCreateConversation,
+  getUserConversations,
+  getConversationMessages,
+  sendMessage,
+  editMessage,
+  unsendMessage,
+  getTotalUnreadChatCount,
+  getEligibleChatUsers,
+  getAdminWritersList,
+  getAdminWriterConversations,
+  getAdminWriterChatHistory
+} from './chat.js';
 import { getChapterContent, getAudioAccess } from './content.js';
 import {
   getComments,
@@ -27,7 +47,8 @@ import {
   deleteComment,
   toggleCommentLike,
   getReactions,
-  toggleReaction
+  toggleReaction,
+  fetchLinkPreview
 } from './comments.js';
 import {
   getAllNovels,
@@ -36,8 +57,7 @@ import {
   getHomepageData,
   updateNovel,
   createNovel,
-  deleteNovel,
-  updateSectionVisibility
+  deleteNovel
 } from './novels.js';
 import {
   getSidebarPostsFromDb,
@@ -46,6 +66,11 @@ import {
   addForumReplyToDb,
   createForumTopicInDb,
   getForumCategoriesFromDb,
+  createForumCategoryInDb,
+  updateForumCategoryInDb,
+  deleteForumCategoryInDb,
+  updateForumTopicInDb,
+  deleteForumTopicInDb,
   getReadingProgressFromDb,
   saveReadingProgressToDb,
   getLikesFromDb,
@@ -85,14 +110,7 @@ import {
   uploadMediaAsset,
   deleteMediaAsset,
   getSiteSettings,
-  updateSiteSettings,
-  getAdminHomepageSections,
-  createAdminHomepageSection,
-  updateAdminHomepageSection,
-  reorderAdminHomepageSections,
-  toggleAdminHomepageSectionVisibility,
-  deleteAdminHomepageSection,
-  resetAdminHomepageSectionsOrder
+  updateSiteSettings
 } from './admin.js';
 import {
   getAllAudioNovels,
@@ -117,6 +135,50 @@ import {
   getWriterAuditLogs,
   getWriterWorkspaceData
 } from './writers.js';
+import {
+  startReadingSession,
+  heartbeatReadingSession,
+  pauseOrStopReadingSession,
+  getMemberReadingActivity,
+  getAllMembersReadingDirectory
+} from './reading-activity.js';
+import {
+  getMembersList,
+  getMemberDetails,
+  createMemberAccount,
+  updateMemberDetails,
+  adminResetMemberPassword,
+  temporarilyBlockMember,
+  unblockMember,
+  permanentlyDeleteMember,
+  getMemberPermissions,
+  updateMemberPermissions,
+  toggleMemberStatus,
+  revokeMemberSessions,
+  getAdminAuditLogs
+} from './admin-members.js';
+import {
+  getContentHierarchy,
+  getContentArticle,
+  getContentComments,
+  addContentComment,
+  deleteContentComment,
+  createMainCategory,
+  updateMainCategory,
+  toggleMainCategoryStatus,
+  deleteMainCategory,
+  createSubCategory,
+  updateSubCategory,
+  toggleSubCategoryStatus,
+  deleteSubCategory,
+  createContentArticle,
+  updateContentArticle,
+  toggleContentArticleStatus,
+  deleteContentArticle,
+  getContentAccessRules,
+  addContentAccessRule,
+  removeContentAccessRule
+} from './forms-content.js';
 
 function readJsonBody(req, maxBytes = 55 * 1024 * 1024) {
   return new Promise((resolve) => {
@@ -253,7 +315,8 @@ export async function apiMiddleware(req, res, next) {
     const body = await readJsonBody(req);
     const result = await loginUser(body);
     if (!result.success) {
-      return sendJson(res, result, 401);
+      const statusCode = (result.error && (result.error.includes('blocked') || result.error.includes('suspended') || result.error.includes('disabled'))) ? 403 : 401;
+      return sendJson(res, result, statusCode);
     }
     return sendJson(res, result, 200);
   }
@@ -414,15 +477,75 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
-  // 9. Members Directory with Activity Status (Privacy Protected)
+  // 8b. Real-Time Reading Session Tracking
+  if ((pathname === '/reading/session/start' || pathname === '/reading-session/start') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    }
+    const body = await readJsonBody(req);
+    const result = await startReadingSession({
+      userId: currentUser.id,
+      novelId: body.novelId,
+      chapterNum: body.chapterNum || body.chapterNumber,
+      tabId: body.tabId
+    });
+    return sendJson(res, result, result.success ? 200 : 400);
+  }
+
+  if ((pathname === '/reading/session/heartbeat' || pathname === '/reading-session/heartbeat') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    }
+    const body = await readJsonBody(req);
+    const result = await heartbeatReadingSession({
+      userId: currentUser.id,
+      novelId: body.novelId,
+      chapterNum: body.chapterNum || body.chapterNumber,
+      tabId: body.tabId,
+      secondsElapsed: body.secondsElapsed
+    });
+    return sendJson(res, result, result.success ? 200 : 400);
+  }
+
+  if ((pathname === '/reading/session/pause' || pathname === '/reading/session/stop' || pathname === '/reading-session/pause' || pathname === '/reading-session/stop') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    }
+    const body = await readJsonBody(req).catch(() => ({}));
+    const result = await pauseOrStopReadingSession({
+      userId: currentUser.id,
+      novelId: body?.novelId,
+      chapterNum: body?.chapterNum
+    });
+    return sendJson(res, result, 200);
+  }
+
+  // 9. Members Directory with Reading Activity and Online Status (Privacy Protected)
   if (pathname === '/members' && method === 'GET') {
     const viewerId = currentUser ? currentUser.id : null;
-    const members = await getAllMembersWithStatus(viewerId);
+    const members = await getAllMembersReadingDirectory(viewerId);
     return sendJson(res, { success: true, members }, 200);
   }
 
-  // 9a. Member Detail
-  if (pathname.startsWith('/members/') && method === 'GET') {
+  // 9a. Member Reading Activity Dedicated Endpoint (Privacy Protected)
+  if (pathname.startsWith('/members/') && pathname.endsWith('/reading-activity') && method === 'GET') {
+    let memberIdOrUsername = pathname.replace('/members/', '').replace('/reading-activity', '').trim();
+    if (memberIdOrUsername === 'me') {
+      if (!currentUser) {
+        return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+      }
+      memberIdOrUsername = String(currentUser.id);
+    }
+    const viewerId = currentUser ? currentUser.id : null;
+    const activity = await getMemberReadingActivity(memberIdOrUsername, viewerId);
+    if (!activity) {
+      return sendJson(res, { success: false, error: 'Member not found' }, 404);
+    }
+    return sendJson(res, { success: true, activity }, 200);
+  }
+
+  // 9b. Member Detail with Reading Activity (Privacy Protected)
+  if (pathname.startsWith('/members/') && method === 'GET' && !pathname.endsWith('/reading-activity')) {
     let memberIdOrUsername = pathname.replace('/members/', '').trim();
     if (memberIdOrUsername === 'me') {
       if (!currentUser) {
@@ -435,12 +558,9 @@ export async function apiMiddleware(req, res, next) {
       SELECT 
         u.id, u.username, u.role,
         p.display_name, p.avatar, p.bio, p.title, p.joined_date,
-        p.posts_count, p.topics_count, p.followers_count,
-        a.is_enabled AS activity_status_enabled,
-        a.is_online, a.last_seen
+        p.posts_count, p.topics_count, p.followers_count
       FROM users u
       LEFT JOIN profiles p ON u.id = p.user_id
-      LEFT JOIN activity_status a ON u.id = a.user_id
       WHERE u.id = ? OR LOWER(u.username) = LOWER(?);
     `, [memberIdOrUsername, memberIdOrUsername]);
 
@@ -448,8 +568,7 @@ export async function apiMiddleware(req, res, next) {
       return sendJson(res, { success: false, error: 'Member not found' }, 404);
     }
 
-    const isSelf = viewerId && viewerId === row.id;
-    const canShowStatus = Boolean(row.activity_status_enabled) || isSelf;
+    const activity = await getMemberReadingActivity(row.id, viewerId);
 
     return sendJson(res, {
       success: true,
@@ -465,8 +584,13 @@ export async function apiMiddleware(req, res, next) {
         posts: Number(row.posts_count || 0),
         topics: Number(row.topics_count || 0),
         followers: Number(row.followers_count || 0),
-        isOnline: canShowStatus ? Boolean(row.is_online) : null,
-        lastSeen: canShowStatus ? row.last_seen : null
+        activityStatusEnabled: activity?.activityStatusEnabled ?? true,
+        statusHidden: activity?.statusHidden ?? false,
+        isOnline: activity?.isOnline ?? null,
+        lastSeen: activity?.lastSeen ?? null,
+        lastSeenText: activity?.lastSeenText ?? null,
+        currentReading: activity?.currentReading ?? null,
+        lastRead: activity?.lastRead ?? null
       }
     }, 200);
   }
@@ -501,11 +625,80 @@ export async function apiMiddleware(req, res, next) {
 
   // 11. Audio Story Access & Protection
   if (pathname === '/content/audio' && method === 'GET') {
+    if (currentUser && currentUser.permissions && currentUser.permissions.can_access_audio === false) {
+      return sendJson(res, { allowed: false, error: 'Your audio novel access has been restricted by an administrator.' }, 403);
+    }
     const audioId = parsed.query.id || 'maaya-nadhi-theeram';
     const result = await getAudioAccess({ audioId, user: currentUser });
     if (!result.allowed) {
       return sendJson(res, result, 403);
     }
+    return sendJson(res, result, 200);
+  }
+
+  // 11b. Forms & Novel Content 3-Level Hierarchy
+  if (pathname === '/content/hierarchy' && method === 'GET') {
+    const result = await getContentHierarchy(currentUser);
+    return sendJson(res, result, 200);
+  }
+
+  // 11c. Get Single Content Article for Dedicated Reading Page
+  if (pathname.startsWith('/content/articles/') && !pathname.includes('/comments') && method === 'GET') {
+    const slugOrId = pathname.replace('/content/articles/', '').trim();
+    const result = await getContentArticle(slugOrId, currentUser);
+    if (!result.success) {
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : 403;
+      return sendJson(res, result, statusCode);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 11d. Comments for Content Article
+  if (pathname.startsWith('/content/articles/') && pathname.endsWith('/comments') && method === 'GET') {
+    const slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    const artRes = await getContentArticle(slugOrId, currentUser);
+    if (!artRes.success) {
+      return sendJson(res, artRes, artRes.code === 'NOT_FOUND' ? 404 : 403);
+    }
+    const result = await getContentComments(artRes.article.id);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/content/articles/') && pathname.endsWith('/comments') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Please log in to post a comment.', requireLogin: true }, 401);
+    }
+    if (currentUser.permissions && currentUser.permissions.can_comment === false) {
+      return sendJson(res, { success: false, error: 'Your commenting privileges have been restricted by an administrator.' }, 403);
+    }
+    const slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    const artRes = await getContentArticle(slugOrId, currentUser);
+    if (!artRes.success) {
+      return sendJson(res, artRes, artRes.code === 'NOT_FOUND' ? 404 : 403);
+    }
+    const body = await readJsonBody(req);
+    const result = await addContentComment({
+      contentId: artRes.article.id,
+      userId: currentUser.id,
+      parentId: body.parentId || body.parent_id || null,
+      content: body.content
+    });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/content/articles/') && pathname.includes('/comments/') && method === 'DELETE') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    }
+    const parts = pathname.split('/comments/');
+    const commentId = parseInt(parts[1], 10);
+    const result = await deleteContentComment({
+      commentId,
+      userId: currentUser.id,
+      isAdmin: Boolean(currentUser.isAdmin || ['admin', 'editor'].includes((currentUser.role || '').toLowerCase()))
+    });
+    if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
   }
 
@@ -516,12 +709,27 @@ export async function apiMiddleware(req, res, next) {
     if (!novelId) {
       return sendJson(res, { success: false, error: 'novel is required' }, 400);
     }
-    const page = parsed.query.page ? parseInt(parsed.query.page, 10) : null;
-    const limit = parsed.query.limit ? parseInt(parsed.query.limit, 10) : null;
-    const offset = parsed.query.offset !== undefined ? parseInt(parsed.query.offset, 10) : (page && limit ? (page - 1) * limit : null);
+    const page = parsed.query.page ? parseInt(parsed.query.page, 10) : 1;
+    const limit = parsed.query.limit ? parseInt(parsed.query.limit, 10) : 7;
+    const offset = parsed.query.offset !== undefined ? parseInt(parsed.query.offset, 10) : ((page - 1) * limit);
     const userId = currentUser ? currentUser.id : null;
-    const comments = await getComments({ novelId, chapterNum, userId, limit, offset });
-    return sendJson(res, { success: true, comments }, 200);
+    const comments = await getComments({ novelId, chapterNum, userId, limit, offset, page });
+    return sendJson(res, {
+      success: true,
+      comments,
+      pagination: comments.pagination || { page, limit, total: comments.length, totalPages: 1 },
+      total: comments.pagination ? comments.pagination.total : comments.length
+    }, 200);
+  }
+
+  // 12.5. Link Preview Metadata (Secure External URL Preview for Comments)
+  if (pathname === '/link-preview' && method === 'GET') {
+    const targetUrl = parsed.query.url;
+    if (!targetUrl) {
+      return sendJson(res, { success: false, error: 'url query parameter is required' }, 400);
+    }
+    const preview = await fetchLinkPreview(targetUrl);
+    return sendJson(res, preview, 200);
   }
 
   // 13. Comments: Add Comment or Nested Reply (Registered Users Only)
@@ -534,6 +742,9 @@ export async function apiMiddleware(req, res, next) {
   if (isPostCommentRoute) {
     if (!currentUser) {
       return sendJson(res, { success: false, error: 'Please log in to post a comment.', requireLogin: true }, 401);
+    }
+    if (currentUser.permissions && currentUser.permissions.can_comment === false) {
+      return sendJson(res, { success: false, error: 'Your commenting privileges have been restricted by an administrator.' }, 403);
     }
     const body = await readJsonBody(req);
     let novelId = body.novelId;
@@ -652,7 +863,7 @@ export async function apiMiddleware(req, res, next) {
     else if (mimeType.includes('gif')) ext = 'gif';
 
     const safeName = `comment-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
-    const uploadDir = path.resolve('public/uploads/comments');
+    const uploadDir = path.resolve(__dirname, 'uploads/comments');
 
     try {
       if (!fs.existsSync(uploadDir)) {
@@ -747,10 +958,9 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
-  // 21. Novels: Get Homepage Structured Content from SQL
+  // 21. Novels: Get Homepage Structured Content (Deprecated - Forms is now main landing page)
   if (pathname === '/novels/homepage' && method === 'GET') {
-    const data = await getHomepageData(currentUser);
-    return sendJson(res, data, 200);
+    return sendJson(res, { success: true, message: 'Forms is now the main landing page', sections: [], orderedSections: [] }, 200);
   }
 
   // 22. Novels: Get All Configured Novels
@@ -830,17 +1040,6 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
-  // 27. Novels: Update Section Visibility & Order (requires Admin or Editor role)
-  if (pathname === '/novels/sections/visibility' && (method === 'POST' || method === 'PUT')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const body = await readJsonBody(req);
-    if (!body.sectionKey) {
-      return sendJson(res, { success: false, error: 'sectionKey is required' }, 400);
-    }
-    const result = await updateSectionVisibility(body.sectionKey, body);
-    return sendJson(res, result, 200);
-  }
-
   // ========================================================
   // ADMIN & AUTHOR DASHBOARD DEDICATED REST API ENDPOINTS
   // Strictly protected: requires Admin or Editor authentication
@@ -882,13 +1081,13 @@ export async function apiMiddleware(req, res, next) {
   // A3. Admin Episodes: List by Novel with hierarchy tree
   if (pathname === '/admin/episodes' && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const novelId = parsed.query.novel;
+    const novelId = parsed.query.novel || parsed.query.novelId;
     if (!novelId) {
       return sendJson(res, { success: false, error: 'novel query param is required' }, 400);
     }
     const hierarchical = parsed.query.hierarchical !== 'false';
     const episodes = await getEpisodesByNovel(novelId, { includeAll: true, hierarchical });
-    return sendJson(res, { success: true, novelId, episodes }, 200);
+    return sendJson(res, { success: true, novelId, episodes, data: episodes }, 200);
   }
 
   // A4. Admin Episodes: Create New Episode or Nested Sub-Episode
@@ -1118,76 +1317,6 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // ==========================================
-  // HOMEPAGE SECTIONS MANAGEMENT (Admin Only)
-  // ==========================================
-  // List all homepage sections
-  if (pathname === '/admin/homepage-sections' && method === 'GET') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const result = await getAdminHomepageSections();
-    return sendJson(res, result, 200);
-  }
-
-  // Create new homepage section
-  if (pathname === '/admin/homepage-sections' && method === 'POST') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const body = await readJsonBody(req);
-    const result = await createAdminHomepageSection(body, currentUser);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 201);
-  }
-
-  // Reorder homepage sections (atomic transaction)
-  if (pathname === '/admin/homepage-sections/reorder' && (method === 'PUT' || method === 'POST')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const body = await readJsonBody(req);
-    const orders = Array.isArray(body) ? body : (body?.orders || []);
-    try {
-      const result = await reorderAdminHomepageSections(orders, currentUser);
-      if (!result.success) return sendJson(res, result, 400);
-      return sendJson(res, result, 200);
-    } catch (err) {
-      return sendJson(res, { success: false, error: err.message }, 500);
-    }
-  }
-
-  // Reset homepage sections to system default order
-  if (pathname === '/admin/homepage-sections/reset-order' && method === 'POST') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const result = await resetAdminHomepageSectionsOrder(currentUser);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 200);
-  }
-
-  // Toggle homepage section visibility
-  if (pathname.startsWith('/admin/homepage-sections/') && pathname.endsWith('/visibility') && (method === 'PATCH' || method === 'PUT')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const sectionKey = decodeURIComponent(pathname.replace('/admin/homepage-sections/', '').replace('/visibility', ''));
-    const body = await readJsonBody(req);
-    const isVisible = body.isVisible !== undefined ? body.isVisible : body.is_visible;
-    const result = await toggleAdminHomepageSectionVisibility(sectionKey, isVisible, currentUser);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 200);
-  }
-
-  // Update homepage section
-  if (pathname.startsWith('/admin/homepage-sections/') && !pathname.endsWith('/visibility') && !pathname.endsWith('/reorder') && !pathname.endsWith('/reset-order') && (method === 'PUT' || method === 'POST')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const sectionKey = decodeURIComponent(pathname.replace('/admin/homepage-sections/', ''));
-    const body = await readJsonBody(req);
-    const result = await updateAdminHomepageSection(sectionKey, body, currentUser);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 200);
-  }
-
-  // Delete custom homepage section
-  if (pathname.startsWith('/admin/homepage-sections/') && !pathname.endsWith('/visibility') && !pathname.endsWith('/reorder') && !pathname.endsWith('/reset-order') && method === 'DELETE') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const sectionKey = decodeURIComponent(pathname.replace('/admin/homepage-sections/', ''));
-    const result = await deleteAdminHomepageSection(sectionKey, currentUser);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 200);
-  }
-  // ==========================================
   // WRITER MANAGEMENT (Admin Authorized Only)
   // ==========================================
   // List all writer accounts
@@ -1272,6 +1401,230 @@ export async function apiMiddleware(req, res, next) {
     const result = await deleteWriterAccount({
       writerId,
       actorId: currentUser.id
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // ==========================================
+  // ADMIN MEMBER MANAGEMENT (Admin Authorized Only)
+  // ==========================================
+  // 1. List members with KPIs, filtering, sorting, and pagination
+  if (pathname === '/admin/members' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const result = await getMembersList(parsed.query);
+    return sendJson(res, result, 200);
+  }
+
+  // 2. Create new member account
+  if (pathname === '/admin/members' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await createMemberAccount({
+      ...body,
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 201);
+  }
+
+  // 3. Security Audit Logs
+  if ((pathname === '/admin/members/audit-logs' || pathname === '/admin/audit-logs') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const result = await getAdminAuditLogs(parsed.query);
+    return sendJson(res, result, 200);
+  }
+
+  // 4. Reset member password WITHOUT OTP (Admin-initiated)
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/reset-password') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/reset-password', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await adminResetMemberPassword({
+      memberId,
+      newPassword: body.newPassword || body.password,
+      confirmPassword: body.confirmPassword,
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 5. Change member account access status (active, blocked, suspended, disabled)
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/status') && (method === 'PUT' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/status', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await toggleMemberStatus({
+      memberId,
+      status: body.status,
+      reason: body.reason,
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 5a. Temporarily Block Member (with Duration, Reason, and Session Revocation)
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/block') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/block', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await temporarilyBlockMember({
+      memberId,
+      duration: body.duration || '24h',
+      customExpiry: body.customExpiry || null,
+      reason: body.reason || '',
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 5b. Unblock Member Early (Restore to Active)
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/unblock') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/unblock', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await unblockMember({
+      memberId,
+      reason: body.reason || '',
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 5c. Permanently Delete Member Account
+  if (
+    (pathname.startsWith('/admin/members/') && method === 'DELETE' && !pathname.includes('/permissions') && !pathname.includes('/status') && !pathname.includes('/reset-password') && !pathname.includes('/revoke-sessions') && !pathname.includes('/audit-logs')) ||
+    (pathname.startsWith('/admin/members/') && pathname.endsWith('/delete') && method === 'POST')
+  ) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/delete', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await permanentlyDeleteMember({
+      memberId,
+      confirmationText: body.confirmationText || body.confirm || body.confirmUsername || '',
+      reason: body.reason || '',
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 5d. Get Granular Feature Permissions
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/permissions') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/permissions', ''), 10);
+    const result = await getMemberPermissions(memberId);
+    if (!result) {
+      return sendJson(res, { success: false, error: 'Member not found' }, 404);
+    }
+    return sendJson(res, { success: true, ...result }, 200);
+  }
+
+  // 5e. Update Granular Feature Permissions
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/permissions') && (method === 'PUT' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/permissions', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await updateMemberPermissions({
+      memberId,
+      permissions: body.permissions || body,
+      revokeSessions: Boolean(body.revokeSessions),
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 6. Revoke all active sessions for member
+  if (pathname.startsWith('/admin/members/') && pathname.endsWith('/revoke-sessions') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', '').replace('/revoke-sessions', ''), 10);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await revokeMemberSessions({
+      memberId,
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
+    });
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // 7. Get single member details
+  if (pathname.startsWith('/admin/members/') && !pathname.includes('/status') && !pathname.includes('/reset-password') && !pathname.includes('/revoke-sessions') && !pathname.includes('/audit-logs') && !pathname.includes('/permissions') && !pathname.includes('/block') && !pathname.includes('/unblock') && !pathname.includes('/delete') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', ''), 10);
+    const member = await getMemberDetails(memberId);
+    if (!member) {
+      return sendJson(res, { success: false, error: 'Member account not found' }, 404);
+    }
+    return sendJson(res, { success: true, member }, 200);
+  }
+
+  // 8. Update member details
+  if (pathname.startsWith('/admin/members/') && !pathname.includes('/status') && !pathname.includes('/reset-password') && !pathname.includes('/revoke-sessions') && !pathname.includes('/audit-logs') && !pathname.includes('/permissions') && !pathname.includes('/block') && !pathname.includes('/unblock') && !pathname.includes('/delete') && (method === 'PUT' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const memberId = parseInt(pathname.replace('/admin/members/', ''), 10);
+    const body = await readJsonBody(req);
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await updateMemberDetails({
+      memberId,
+      ...body,
+      adminId: currentUser.id,
+      ipAddress,
+      userAgent
     });
     if (!result.success) {
       return sendJson(res, result, 400);
@@ -1494,15 +1847,239 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // 28. Forum / Community: Get Sidebar Posts (Latest & Trending)
-  if ((pathname === '/forum/posts' || pathname === '/posts/sidebar' || pathname === '/posts') && method === 'GET') {
+  if ((pathname === '/forum/posts' || pathname === '/api/forum/posts' || pathname === '/posts/sidebar' || pathname === '/posts') && method === 'GET') {
     const data = await getSidebarPostsFromDb();
     return sendJson(res, { success: true, ...data }, 200);
   }
 
-  // 29. Forum: Get Categories
-  if (pathname === '/forum/categories' && method === 'GET') {
-    const categories = await getForumCategoriesFromDb();
+  // 29. Forum: Get Categories (Public sees active only; admin can request all=1)
+  if ((pathname === '/forum/categories' || pathname === '/api/forum/categories') && method === 'GET') {
+    const includeAll = parsed.query.all === '1' || parsed.query.admin === '1';
+    const categories = await getForumCategoriesFromDb(includeAll);
     return sendJson(res, { success: true, categories }, 200);
+  }
+
+  // Admin Forum Categories Management
+  if (pathname === '/admin/forum/categories' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createForumCategoryInDb(body);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/forum/categories/') && method === 'PUT') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const catId = pathname.replace('/admin/forum/categories/', '').trim();
+    const body = await readJsonBody(req);
+    const result = await updateForumCategoryInDb(catId, body);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/forum/categories/') && method === 'DELETE') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const catId = pathname.replace('/admin/forum/categories/', '').trim();
+    const result = await deleteForumCategoryInDb(catId);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // =========================================================================
+  // ADMIN FORMS & CONTENT MANAGEMENT API (3-LEVEL HIERARCHY & ACCESS CONTROL)
+  // =========================================================================
+
+  // A. Main Titles (Main Categories)
+  if (pathname === '/admin/content/main-categories' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const categories = await query('SELECT * FROM forum_categories ORDER BY sort_order ASC, title ASC;');
+    return sendJson(res, { success: true, categories }, 200);
+  }
+
+  if (pathname === '/admin/content/main-categories' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createMainCategory({ ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/content/main-categories/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const catId = pathname.replace('/admin/content/main-categories/', '').replace('/status', '').replace('/toggle', '').trim();
+    const body = await readJsonBody(req);
+    const result = await toggleMainCategoryStatus({ id: catId, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/main-categories/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const catId = pathname.replace('/admin/content/main-categories/', '').trim();
+    const body = await readJsonBody(req);
+    const result = await updateMainCategory({ id: catId, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/main-categories/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const catId = pathname.replace('/admin/content/main-categories/', '').replace('/delete', '').trim();
+    const body = await readJsonBody(req);
+    const result = await deleteMainCategory({ id: catId, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // B. Sub Titles (Subcategories)
+  if (pathname === '/admin/content/subcategories' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const mainId = parsed.query.mainId;
+    let sql = 'SELECT s.*, m.title as main_category_title FROM content_subcategories s LEFT JOIN forum_categories m ON m.id = s.main_category_id';
+    const params = [];
+    if (mainId) {
+      sql += ' WHERE s.main_category_id = ?';
+      params.push(mainId);
+    }
+    sql += ' ORDER BY s.sort_order ASC, s.title ASC;';
+    const subcategories = await query(sql, params);
+    return sendJson(res, { success: true, subcategories }, 200);
+  }
+
+  if (pathname === '/admin/content/subcategories' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createSubCategory({ ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/content/subcategories/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const subId = pathname.replace('/admin/content/subcategories/', '').replace('/status', '').replace('/toggle', '').trim();
+    const body = await readJsonBody(req);
+    const result = await toggleSubCategoryStatus({ id: subId, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/subcategories/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const subId = pathname.replace('/admin/content/subcategories/', '').trim();
+    const body = await readJsonBody(req);
+    const result = await updateSubCategory({ id: subId, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/subcategories/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const subId = pathname.replace('/admin/content/subcategories/', '').replace('/delete', '').trim();
+    const body = await readJsonBody(req);
+    const result = await deleteSubCategory({ id: subId, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // C. Content Articles (Content Titles & Reading Content)
+  if (pathname === '/admin/content/articles' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const mainId = parsed.query.mainId;
+    const subId = parsed.query.subId;
+    const search = parsed.query.search ? `%${parsed.query.search.trim()}%` : null;
+    let sql = `
+      SELECT a.*, 
+             m.title as main_category_title,
+             s.title as sub_category_title
+      FROM content_articles a
+      LEFT JOIN forum_categories m ON m.id = a.main_category_id
+      LEFT JOIN content_subcategories s ON s.id = a.sub_category_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (mainId) {
+      sql += ' AND a.main_category_id = ?';
+      params.push(mainId);
+    }
+    if (subId) {
+      sql += ' AND a.sub_category_id = ?';
+      params.push(subId);
+    }
+    if (search) {
+      sql += ' AND (a.title LIKE ? OR a.summary LIKE ? OR a.content LIKE ?)';
+      params.push(search, search, search);
+    }
+    sql += ' ORDER BY a.sort_order ASC, a.id DESC;';
+    const articles = await query(sql, params);
+    return sendJson(res, { success: true, articles }, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/delete') && !pathname.endsWith('/toggle') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = pathname.replace('/admin/content/articles/', '').trim();
+    const result = await getContentArticle(id, currentUser);
+    if (!result.success) return sendJson(res, result, 404);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname === '/admin/content/articles' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createContentArticle({ ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/content/articles/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/status', '').replace('/toggle', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await toggleContentArticleStatus({ id, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/content/articles/', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await updateContentArticle({ id, ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/content/articles/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/delete', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await deleteContentArticle({ id, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // D. Fine-Grained Access Control Rules
+  if (pathname === '/admin/content/access-rules' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const targetType = parsed.query.targetType;
+    const targetId = parsed.query.targetId;
+    const result = await getContentAccessRules({ targetType, targetId });
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname === '/admin/content/access-rules' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await addContentAccessRule({ ...body, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/content/access-rules/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const ruleId = parseInt(pathname.replace('/admin/content/access-rules/', '').replace('/delete', ''), 10);
+    const result = await removeContentAccessRule({ ruleId, adminId: currentUser.id });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
   }
 
   // 29-Stats. Forum: Get Live Statistics (Members, Replies, Guests)
@@ -1520,16 +2097,57 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // 30. Forum: Get All Topics
-  if (pathname === '/forum/topics' && method === 'GET') {
+  if ((pathname === '/forum/topics' || pathname === '/api/forum/topics') && method === 'GET') {
     const categoryId = parsed.query.category || null;
-    const topics = await getForumTopicsFromDb(categoryId);
+    const isPrivileged = currentUser && (currentUser.isAdmin === true || currentUser.role === 'admin' || currentUser.role === 'editor');
+    const includeUnpublished = parsed.query.all === '1' && isPrivileged;
+    const topics = await getForumTopicsFromDb(categoryId, { includeUnpublished });
     return sendJson(res, { success: true, topics }, 200);
   }
 
-  // 31. Forum: Create New Topic (Requires Login)
+  // Admin Forum Topics Management
+  if (pathname === '/admin/forum/topics' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createForumTopicInDb({
+      categoryId: body.categoryId,
+      title: body.title,
+      authorId: currentUser.id,
+      content: body.content,
+      image: body.image || null,
+      isPublished: body.is_published !== undefined ? body.is_published : 1,
+      isPinned: body.is_pinned !== undefined ? body.is_pinned : 0,
+      sortOrder: body.sort_order || 0
+    });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  if (pathname.startsWith('/admin/forum/topics/') && method === 'PUT') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const topicId = pathname.replace('/admin/forum/topics/', '').trim();
+    const body = await readJsonBody(req);
+    const result = await updateForumTopicInDb(topicId, body);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  if (pathname.startsWith('/admin/forum/topics/') && method === 'DELETE') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const topicId = pathname.replace('/admin/forum/topics/', '').trim();
+    const permanent = parsed.query.permanent === '1';
+    const result = await deleteForumTopicInDb(topicId, permanent);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 31. Forum: Create New Topic (Regular logged-in members)
   if (pathname === '/forum/topics' && method === 'POST') {
     if (!currentUser) {
       return sendJson(res, { success: false, error: 'Please log in to create a topic.', requireLogin: true }, 401);
+    }
+    if (currentUser.permissions && currentUser.permissions.can_post_forum === false) {
+      return sendJson(res, { success: false, error: 'Your forum posting privileges have been restricted by an administrator.' }, 403);
     }
     const body = await readJsonBody(req);
     const result = await createForumTopicInDb({
@@ -1558,6 +2176,9 @@ export async function apiMiddleware(req, res, next) {
   if (pathname.startsWith('/forum/topics/') && pathname.endsWith('/reply') && method === 'POST') {
     if (!currentUser) {
       return sendJson(res, { success: false, error: 'Please log in to reply.', requireLogin: true }, 401);
+    }
+    if (currentUser.permissions && currentUser.permissions.can_post_forum === false) {
+      return sendJson(res, { success: false, error: 'Your forum posting privileges have been restricted by an administrator.' }, 403);
     }
     const topicId = pathname.replace('/forum/topics/', '').replace('/reply', '').trim();
     const body = await readJsonBody(req);
@@ -1750,6 +2371,226 @@ export async function apiMiddleware(req, res, next) {
     const writerId = parseInt(pathname.replace('/admin/writers/', ''), 10);
     const result = await deleteWriterAccount(writerId, currentUser.id, 2);
     if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // ==========================================
+  // ONE-TO-ONE REAL-TIME PRIVATE CHAT API (WhatsApp-like Suite)
+  // ==========================================
+
+  // 1. Upload Chat Media (Images, Photos, & Voice Notes)
+  if (pathname === '/chat/upload' && method === 'POST') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const body = await readJsonBody(req);
+    const base64Data = body.file || body.dataUrl || body.base64Data;
+
+    if (!base64Data || typeof base64Data !== 'string') {
+      return sendJson(res, { success: false, error: 'Valid file payload is required' }, 400);
+    }
+
+    const matches = base64Data.match(/^data:([a-zA-Z0-9\/+-]+);base64,(.+)$/i);
+    if (!matches) {
+      return sendJson(res, { success: false, error: 'Invalid file format. Must be a base64 data URI.' }, 400);
+    }
+
+    const mimeType = matches[1].toLowerCase();
+    const rawBase64 = matches[2];
+    const buffer = Buffer.from(rawBase64, 'base64');
+
+    let messageType = 'text';
+    let ext = 'bin';
+
+    if (mimeType.startsWith('image/')) {
+      messageType = 'image';
+      if (buffer.length > 8 * 1024 * 1024) {
+        return sendJson(res, { success: false, error: 'Image size exceeds maximum limit of 8MB.' }, 400);
+      }
+      if (mimeType.includes('png')) ext = 'png';
+      else if (mimeType.includes('webp')) ext = 'webp';
+      else if (mimeType.includes('gif')) ext = 'gif';
+      else ext = 'jpg';
+    } else if (mimeType.startsWith('audio/') || mimeType.includes('ogg') || mimeType.includes('webm')) {
+      messageType = 'audio';
+      if (buffer.length > 16 * 1024 * 1024) {
+        return sendJson(res, { success: false, error: 'Voice message size exceeds maximum limit of 16MB.' }, 400);
+      }
+      if (mimeType.includes('mp4') || mimeType.includes('m4a') || mimeType.includes('aac')) ext = 'm4a';
+      else if (mimeType.includes('wav')) ext = 'wav';
+      else if (mimeType.includes('mpeg') || mimeType.includes('mp3')) ext = 'mp3';
+      else if (mimeType.includes('ogg')) ext = 'ogg';
+      else ext = 'webm';
+    } else {
+      return sendJson(res, { success: false, error: 'Unsupported file type. Only images and audio voice notes are allowed.' }, 400);
+    }
+
+    const safeName = `chat-${messageType}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const uploadDir = path.resolve(__dirname, 'uploads/chat');
+
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(uploadDir, safeName), buffer);
+      return sendJson(res, {
+        success: true,
+        url: `/uploads/chat/${safeName}`,
+        messageType,
+        meta: body.meta || null
+      }, 200);
+    } catch (err) {
+      console.error('Failed to save chat upload:', err);
+      return sendJson(res, { success: false, error: 'Failed to save attachment on server.' }, 500);
+    }
+  }
+
+  // 2. Get List of User's Conversations
+  if (pathname === '/chat/conversations' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const result = await getUserConversations(currentUser.id);
+    return sendJson(res, result, 200);
+  }
+
+  // 3. Start / Get Conversation with Target User
+  if (pathname === '/chat/conversations' && method === 'POST') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    if (currentUser.permissions && currentUser.permissions.can_chat === false) {
+      return sendJson(res, { success: false, error: 'Your chat privileges have been restricted by an administrator.' }, 403);
+    }
+    const body = await readJsonBody(req);
+    if (!body.targetUserId) return sendJson(res, { success: false, error: 'targetUserId is required' }, 400);
+    const result = await getOrCreateConversation(currentUser.id, body.targetUserId);
+    return sendJson(res, result, result.success ? 200 : 400);
+  }
+
+  // 4. Conversation Lock / Unlock (Restricting / Restoring messaging)
+  if (pathname.startsWith('/chat/conversations/') && pathname.endsWith('/lock') && method === 'POST') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const convId = parseInt(pathname.replace('/chat/conversations/', '').replace('/lock', ''), 10);
+    if (isNaN(convId)) return sendJson(res, { success: false, error: 'Invalid conversation ID' }, 400);
+    const body = await readJsonBody(req);
+    const shouldLock = body.action !== undefined ? body.action === 'lock' : Boolean(body.lock);
+    const result = await toggleConversationLock(convId, currentUser.id, shouldLock, body.reason, currentUser.role);
+    if (!result.success) return sendJson(res, result, result.code === 'FORBIDDEN' ? 403 : 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 5. Get Conversation Message History
+  if (pathname.startsWith('/chat/conversations/') && !pathname.endsWith('/messages') && !pathname.endsWith('/lock') && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const convId = parseInt(pathname.replace('/chat/conversations/', ''), 10);
+    if (isNaN(convId)) return sendJson(res, { success: false, error: 'Invalid conversation ID' }, 400);
+    const limit = parsed.query.limit ? parseInt(parsed.query.limit, 10) : 80;
+    const beforeId = parsed.query.beforeId ? parseInt(parsed.query.beforeId, 10) : null;
+    const result = await getConversationMessages(convId, currentUser.id, { limit, beforeId });
+    if (!result.success) return sendJson(res, result, result.code === 'FORBIDDEN' ? 403 : 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 6. Send Message in Conversation (Text, Photo, or Voice note)
+  if (pathname.startsWith('/chat/conversations/') && pathname.endsWith('/messages') && method === 'POST') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    if (currentUser.permissions && currentUser.permissions.can_chat === false) {
+      return sendJson(res, { success: false, error: 'Your chat privileges have been restricted by an administrator.' }, 403);
+    }
+    const convId = parseInt(pathname.replace('/chat/conversations/', '').replace('/messages', ''), 10);
+    if (isNaN(convId)) return sendJson(res, { success: false, error: 'Invalid conversation ID' }, 400);
+    const body = await readJsonBody(req);
+    const result = await sendMessage(convId, currentUser.id, body);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  // 7. Edit Sent Message
+  if (pathname.startsWith('/chat/messages/') && method === 'PUT') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const msgId = parseInt(pathname.replace('/chat/messages/', ''), 10);
+    if (isNaN(msgId)) return sendJson(res, { success: false, error: 'Invalid message ID' }, 400);
+    const body = await readJsonBody(req);
+    const result = await editMessage(msgId, currentUser.id, body.content);
+    if (!result.success) return sendJson(res, result, result.code === 'FORBIDDEN' ? 403 : 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 8. Unsend / Delete Message
+  if (pathname.startsWith('/chat/messages/') && method === 'DELETE') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const msgId = parseInt(pathname.replace('/chat/messages/', ''), 10);
+    if (isNaN(msgId)) return sendJson(res, { success: false, error: 'Invalid message ID' }, 400);
+    const result = await unsendMessage(msgId, currentUser.id, currentUser.role);
+    if (!result.success) return sendJson(res, result, result.code === 'FORBIDDEN' ? 403 : 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 9. Total Unread Chat Count
+  if (pathname === '/chat/unread-count' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, totalUnread: 0 }, 401);
+    const totalUnread = await getTotalUnreadChatCount(currentUser.id);
+    return sendJson(res, { success: true, totalUnread }, 200);
+  }
+
+  // 10. Global Chat Availability Settings
+  if (pathname === '/chat/settings' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const result = await getUserChatSettings(currentUser.id);
+    return sendJson(res, { success: true, ...result }, 200);
+  }
+
+  if (pathname === '/chat/settings' && (method === 'POST' || method === 'PUT')) {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const body = await readJsonBody(req);
+    const isChatAvailable = body.isChatAvailable !== false && body.isChatAvailable !== 0 && body.isChatAvailable !== '0';
+    const result = await updateUserChatSettings(currentUser.id, isChatAvailable);
+    return sendJson(res, result, 200);
+  }
+
+  // 11. Individual Chat Lock / Unlock (User-to-User)
+  if (pathname === '/chat/lock' && method === 'POST') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const body = await readJsonBody(req);
+    if (!body.targetUserId) return sendJson(res, { success: false, error: 'targetUserId is required' }, 400);
+    const lock = body.action !== undefined ? body.action === 'lock' : Boolean(body.lock);
+    const result = await toggleChatLock(currentUser.id, body.targetUserId, lock);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 12. Search Eligible Users for Chat
+  if (pathname === '/chat/users' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const result = await getEligibleChatUsers(currentUser.id, parsed.query.search || '');
+    return sendJson(res, result, 200);
+  }
+
+  // ==========================================
+  // ADMINISTRATOR WRITER CHAT AUDIT API
+  // ==========================================
+
+  // A. Admin: List Writers with Chat Conversations
+  if (pathname === '/admin/writer-chats/writers' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const result = await getAdminWritersList(currentUser.id);
+    if (!result.success) return sendJson(res, result, 403);
+    return sendJson(res, result, 200);
+  }
+
+  // B. Admin: List Conversations for a specific Writer
+  if (pathname === '/admin/writer-chats/conversations' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const writerId = parseInt(parsed.query.writerId, 10);
+    if (isNaN(writerId)) return sendJson(res, { success: false, error: 'writerId query parameter is required' }, 400);
+    const result = await getAdminWriterConversations(currentUser.id, writerId);
+    if (!result.success) return sendJson(res, result, result.code === 'FORBIDDEN' ? 403 : 400);
+    return sendJson(res, result, 200);
+  }
+
+  // C. Admin: Inspect Writer Chat History (STRICT PRIVACY CHECK)
+  if (pathname === '/admin/writer-chats/history' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const conversationId = parseInt(parsed.query.conversationId, 10);
+    if (isNaN(conversationId)) return sendJson(res, { success: false, error: 'conversationId query parameter is required' }, 400);
+    const ipAddress = req.socket?.remoteAddress || req.headers['x-forwarded-for'];
+    const result = await getAdminWriterChatHistory(currentUser.id, conversationId, { ipAddress });
+    if (!result.success) return sendJson(res, result, result.code === 'PRIVACY_VIOLATION' || result.code === 'FORBIDDEN' ? 403 : 400);
     return sendJson(res, result, 200);
   }
 

@@ -95,7 +95,7 @@ export async function renderWriterDashboard(container, requestedTab) {
             ${escapeHtml(err.message || 'Please log in with your authorized Writer account.')}
           </p>
           <div style="display:flex; justify-content:center; gap:12px;">
-            <a href="#home" class="btn btn-outline">« Reader Home</a>
+            <a href="#forms" class="btn btn-outline">« Reader Home</a>
             <a href="#admin-login" class="btn btn-gold">Author & Writer Login »</a>
           </div>
         </div>
@@ -136,7 +136,7 @@ export async function renderWriterDashboard(container, requestedTab) {
           ${TAB_TITLES[writerState.activeTab] || 'Writer Dashboard'}
         </span>
 
-        <a href="#home" class="admin-mobile-site-btn" title="View Reader Site" style="color:#E2E8F0;">
+        <a href="#forms" class="admin-mobile-site-btn" title="View Reader Site" style="color:#E2E8F0;">
           ${ADMIN_ICONS.externalLink}
         </a>
       </header>
@@ -231,7 +231,7 @@ export async function renderWriterDashboard(container, requestedTab) {
 
           <!-- Sidebar Footer: 7. Community Site, 8. Sign Out -->
           <div class="writer-sidebar-footer">
-            <a href="#home" class="writer-footer-link" title="View Reader Site">
+            <a href="#forms" class="writer-footer-link" title="View Reader Site">
               ${ADMIN_ICONS.externalLink}
               <span>Community Site</span>
             </a>

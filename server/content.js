@@ -103,7 +103,7 @@ export async function getChapterContent({ novelId, chNum, user }) {
 
   // 3. Text Chapters & Episodes:
   const content = chapter.content || '';
-  const title = chapter.title || `Episode ${chStr}`;
+  const title = chapter.title || (novelRow?.title ? `${novelRow.title} (${chStr})` : `Episode ${chStr}`);
 
   return {
     allowed: true,

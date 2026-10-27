@@ -93,14 +93,14 @@ export function updateAuthorWriterHeader(isActive, member = null) {
  * Return streamlined essential navigation HTML for Author/Writer
  */
 function getAuthorNavHtml() {
-  const currentHash = window.location.hash || '#home';
-  const isHome = currentHash === '#home';
+  const currentHash = window.location.hash || '#forms';
+  const isHome = currentHash === '#home' || currentHash === '#forms' || currentHash === '#forum';
   const isNovels = currentHash.startsWith('#novel');
-  const isForum = currentHash.startsWith('#forum') || currentHash.startsWith('#topic');
+  const isForum = currentHash.startsWith('#forum') || currentHash.startsWith('#forms') || currentHash.startsWith('#topic');
   const isAudio = currentHash.startsWith('#audio');
 
   return `
-    <a href="#home" class="nav-link ${isHome ? 'active' : ''}">Home</a>
+    <a href="#forms" class="nav-link ${isHome ? 'active' : ''}">Home</a>
     <a href="#novels" class="nav-link ${isNovels ? 'active' : ''}">Novels</a>
     <a href="#forum" class="nav-link ${isForum ? 'active' : ''}">Forum</a>
     <a href="#audio" class="nav-link ${isAudio ? 'active' : ''}">Audio</a>

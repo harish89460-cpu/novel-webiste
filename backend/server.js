@@ -40,7 +40,8 @@ const MIME_TYPES = {
   '.m4a': 'audio/mp4',
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
-  '.ogg': 'audio/ogg'
+  '.ogg': 'audio/ogg',
+  '.webm': 'audio/webm'
 };
 
 function serveStatic(req, res, targetDir, fallbackToIndex = false) {
@@ -108,8 +109,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Direct Admin / Author / Writer Route Navigation (Serve index.html with strict no-cache headers)
+  // Direct pathname /home redirect to Forms landing page
   const cleanUrl = req.url.split('?')[0];
+  if (cleanUrl === '/home') {
+    res.writeHead(302, { 'Location': '/#forms' });
+    return res.end();
+  }
+
+  // Direct Admin / Author / Writer Route Navigation (Serve index.html with strict no-cache headers)
   if (cleanUrl === '/admin' || cleanUrl.startsWith('/admin/') || cleanUrl === '/dashboard' || cleanUrl === '/writer' || cleanUrl.startsWith('/writer/')) {
     const indexPath = fs.existsSync(distDir) ? path.join(distDir, 'index.html') : path.join(frontendDir, 'index.html');
     if (fs.existsSync(indexPath)) {

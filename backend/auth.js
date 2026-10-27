@@ -230,7 +230,7 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   }
 
   const user = await queryOne(`
-    SELECT id, username, email, password_hash, salt, role
+    SELECT id, username, email, password_hash, salt, role, status, blocked_until, block_reason
     FROM users
     WHERE LOWER(username) = ? OR LOWER(email) = ?;
   `, [cleanIdentifier, cleanIdentifier]);
@@ -243,6 +243,62 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   if (!valid) {
     return { success: false, error: 'Invalid username/email or password.' };
   }
+
+  // Account status validation & Automatic block expiration check
+  if (user.status === 'blocked') {
+    if (user.blocked_until) {
+      const now = new Date();
+      const expiresAt = new Date(user.blocked_until);
+      if (now >= expiresAt) {
+        // Timed block has expired, automatically restore access
+        await query(`
+          UPDATE users 
+          SET status = 'active', blocked_until = NULL, blocked_at = NULL, block_reason = NULL, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?;
+        `, [user.id]);
+        user.status = 'active';
+        user.blocked_until = null;
+      } else {
+        const remainingMs = expiresAt.getTime() - now.getTime();
+        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+        const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+        const durationText = remainingDays > 1 ? `${remainingDays} days` : `${remainingHours} hour(s)`;
+        const reasonText = user.block_reason ? ` Reason: ${user.block_reason}` : '';
+        return {
+          success: false,
+          error: `Your account has been temporarily blocked for ${durationText} (until ${expiresAt.toLocaleString()}).${reasonText}`
+        };
+      }
+    } else {
+      const reasonText = user.block_reason ? ` Reason: ${user.block_reason}` : '';
+      return {
+        success: false,
+        error: `Your account has been blocked by an administrator.${reasonText}`
+      };
+    }
+  }
+
+  if (user.status === 'suspended') {
+    const reasonText = user.block_reason ? ` Reason: ${user.block_reason}` : '';
+    return {
+      success: false,
+      error: `Your account has been suspended by an administrator.${reasonText}`
+    };
+  }
+
+  if (user.status === 'disabled') {
+    return {
+      success: false,
+      error: 'Your account has been disabled by an administrator. Please contact support.'
+    };
+  }
+
+  if (user.status === 'pending_deletion') {
+    return { success: false, error: 'This account is pending deletion and cannot be accessed.' };
+  }
+
+  // Update last_login timestamp
+  await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?;', [user.id]);
 
   // Create reader session in MySQL
   const token = await createSession(user.id, 'reader');
@@ -294,7 +350,7 @@ export async function loginAuthor({ username, password }) {
   }
 
   const user = await queryOne(`
-    SELECT id, username, email, password_hash, salt, role, status
+    SELECT id, username, email, password_hash, salt, role, status, blocked_until, block_reason
     FROM users
     WHERE LOWER(username) = ? OR LOWER(email) = ?;
   `, [cleanIdentifier, cleanIdentifier]);
@@ -308,9 +364,21 @@ export async function loginAuthor({ username, password }) {
     return { success: false, error: 'Invalid credentials.' };
   }
 
-  // Account status validation
+  // Account status validation & Automatic block expiration check
   if (user.status === 'blocked') {
-    return { success: false, error: 'Your account has been temporarily blocked by the administrator. Please contact support.' };
+    if (user.blocked_until && new Date() >= new Date(user.blocked_until)) {
+      await query(`
+        UPDATE users 
+        SET status = 'active', blocked_until = NULL, blocked_at = NULL, block_reason = NULL, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?;
+      `, [user.id]);
+      user.status = 'active';
+    } else {
+      return { success: false, error: 'Your account is blocked. Please contact the administrator.' };
+    }
+  }
+  if (['suspended', 'disabled'].includes(user.status)) {
+    return { success: false, error: 'Your account has been deactivated or suspended by the administrator. Please contact support.' };
   }
   if (user.status === 'pending_deletion') {
     return { success: false, error: 'This account is pending deletion and cannot be accessed.' };
@@ -411,7 +479,7 @@ export async function getUserByToken(token) {
 
   const row = await queryOne(`
     SELECT 
-      u.id, u.username, u.email, u.role, u.status,
+      u.id, u.username, u.email, u.role, u.status, u.blocked_until, u.block_reason, u.permissions,
       s.session_type,
       p.display_name, p.avatar, p.bio, p.title, p.joined_date,
       p.posts_count, p.topics_count, p.followers_count,
@@ -426,8 +494,24 @@ export async function getUserByToken(token) {
 
   if (!row) return null;
 
-  // Immediately invalidate session if account is blocked or pending deletion
-  if (row.status === 'blocked' || row.status === 'pending_deletion') {
+  // Check temporary block expiry
+  if (row.status === 'blocked' && row.blocked_until) {
+    if (new Date() >= new Date(row.blocked_until)) {
+      // Block has expired, auto-restore
+      await query(`
+        UPDATE users 
+        SET status = 'active', blocked_until = NULL, blocked_at = NULL, block_reason = NULL, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?;
+      `, [row.id]);
+      row.status = 'active';
+      row.blocked_until = null;
+    } else {
+      return null;
+    }
+  }
+
+  // Immediately invalidate session if account is blocked, suspended, disabled, or pending deletion
+  if (['blocked', 'suspended', 'disabled', 'pending_deletion'].includes(row.status)) {
     return null;
   }
 
@@ -437,6 +521,20 @@ export async function getUserByToken(token) {
   const isAuthorSession = row.session_type === 'author' && isAdminRole && isAuthorizedAccount;
   const isAdmin = isAuthorSession;
   const isWriter = role === 'writer' && (row.session_type === 'writer' || row.session_type === 'author');
+
+  let effectivePermissions = null;
+  try {
+    effectivePermissions = typeof row.permissions === 'string' ? JSON.parse(row.permissions) : row.permissions;
+  } catch {}
+  if (!effectivePermissions || typeof effectivePermissions !== 'object') {
+    effectivePermissions = {
+      can_comment: true,
+      can_post_forum: true,
+      can_chat: true,
+      can_access_audio: true,
+      can_publish_novels: isWriter || isAdmin
+    };
+  }
 
   return {
     id: row.id,
@@ -457,6 +555,7 @@ export async function getUserByToken(token) {
     isAdmin,
     isWriter,
     isAuthorSession,
+    permissions: effectivePermissions,
     sessionType: row.session_type || 'reader'
   };
 }

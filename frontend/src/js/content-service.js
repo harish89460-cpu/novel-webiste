@@ -649,5 +649,66 @@ export async function getForumLiveStats() {
   return { totalMembers: 0, totalReplies: 0, totalGuests: 0 };
 }
 
+/**
+ * Start or resume a verified reading session for the logged-in member
+ */
+export async function startReadingSession(novelId, chapterNum, tabId = null) {
+  try {
+    const res = await apiFetch('/api/reading/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ novelId, chapterNum, tabId })
+    });
+    return await res.json();
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
 
+/**
+ * Send heartbeat for active reading session
+ */
+export async function heartbeatReadingSession(novelId, chapterNum, tabId = null, secondsElapsed = 25) {
+  try {
+    const res = await apiFetch('/api/reading/session/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ novelId, chapterNum, tabId, secondsElapsed })
+    });
+    return await res.json();
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
 
+/**
+ * Pause or stop a reading session
+ */
+export async function pauseOrStopReadingSession(novelId = null, chapterNum = null) {
+  try {
+    const res = await apiFetch('/api/reading/session/pause', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ novelId, chapterNum })
+    });
+    return await res.json();
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Fetch a member's reading activity (privacy protected)
+ */
+export async function getMemberReadingActivity(memberIdOrUsername) {
+  try {
+    const res = await apiFetch(`/api/members/${encodeURIComponent(memberIdOrUsername)}/reading-activity`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.activity || null;
+    }
+  } catch (err) {
+    console.warn('[Content-Service] Failed to fetch member reading activity:', err.message);
+  }
+  return null;
+}

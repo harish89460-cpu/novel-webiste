@@ -1,6 +1,7 @@
 // Comments & Emoji Reactions Engine for Rudhra Prarthana Novels
 // Dynamic MySQL Persistence with Duplicate-Prevention and Role-Based Permissions
 
+import dns from 'node:dns';
 import { query, queryOne } from './db.js';
 import { generateNovelSlug } from './novels.js';
 import { createNotification } from './notifications.js';
@@ -172,7 +173,7 @@ export function formatFullDate(dateStr) {
 /**
  * Retrieve comments for a novel or chapter with Instagram-style nested threaded replies and likes
  */
-export async function getComments({ novelId, chapterNum = 0, userId = null, limit = null, offset = null }) {
+export async function getComments({ novelId, chapterNum = 0, userId = null, limit = null, offset = null, page = null }) {
   let cleanNovelId = String(novelId || '').trim();
   try {
     cleanNovelId = decodeURIComponent(cleanNovelId);
@@ -195,7 +196,8 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
   const isNovelLevel = !chRaw || chRaw === '0' || chRaw === 'novel' || chRaw === 'all';
   const chStr = isNovelLevel ? '0' : chRaw;
 
-  // Query comments with likes count and user liked status, sorted latest first
+  // Query comments in a single chronological sequence: oldest first (c.created_at ASC, c.id ASC)
+  // Joining parent comment details so reply context is preserved internally
   const sql = `
     SELECT 
       c.id, c.novel_id, c.chapter_num, c.user_id, c.parent_id, c.content, c.created_at, c.updated_at,
@@ -203,18 +205,24 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
       COALESCE(p.display_name, u.username) AS display_name,
       COALESCE(p.avatar, '/profile.png') AS avatar,
       p.title AS user_title,
+      parent_u.username AS parent_username,
+      COALESCE(parent_p.display_name, parent_u.username) AS parent_display_name,
+      parent_c.content AS parent_content,
       (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'comment' AND l.target_id = CAST(c.id AS CHAR)) AS likes_count
       ${userId ? `, (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'comment' AND l.target_id = CAST(c.id AS CHAR) AND l.user_id = ${parseInt(userId, 10)}) AS user_liked` : ', 0 AS user_liked'}
     FROM comments c
     JOIN users u ON c.user_id = u.id
     LEFT JOIN profiles p ON u.id = p.user_id
+    LEFT JOIN comments parent_c ON c.parent_id = parent_c.id
+    LEFT JOIN users parent_u ON parent_c.user_id = parent_u.id
+    LEFT JOIN profiles parent_p ON parent_u.id = parent_p.user_id
     WHERE (c.novel_id = ? OR c.novel_id = ? OR c.novel_id = ?) 
       AND (
         ${isNovelLevel 
           ? "(c.chapter_num = '0' OR c.chapter_num = '' OR c.chapter_num IS NULL)" 
           : "(c.chapter_num = ? OR CAST(c.chapter_num AS CHAR) = ?)"}
       )
-    ORDER BY c.created_at DESC;
+    ORDER BY c.created_at ASC, c.id ASC;
   `;
 
   const params = isNovelLevel
@@ -223,62 +231,52 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
 
   const rows = await query(sql, params);
 
-  // Map raw rows to comment models
-  const commentMap = new Map();
-  const topLevelComments = [];
+  // Map raw rows to comment models in chronological sequence
+  const allComments = (rows || []).map(r => ({
+    id: r.id,
+    novelId: r.novel_id,
+    chapterNum: r.chapter_num,
+    userId: r.user_id,
+    parentId: r.parent_id ? Number(r.parent_id) : null,
+    parentAuthor: r.parent_display_name || r.parent_username || null,
+    parentSnippet: r.parent_content ? r.parent_content.replace(/<[^>]+>/g, '').trim().slice(0, 80) : null,
+    username: r.username,
+    displayName: r.display_name,
+    avatar: r.avatar || '/profile.png',
+    role: r.role || 'Member',
+    userTitle: r.user_title || r.role || 'Member',
+    content: r.content,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    timeAgo: formatInstagramTime(r.created_at),
+    fullDate: formatFullDate(r.created_at),
+    isEdited: r.updated_at !== r.created_at,
+    likesCount: Number(r.likes_count || 0),
+    hasLiked: Boolean(r.user_liked && Number(r.user_liked) > 0),
+    replies: []
+  }));
 
-  for (const r of rows) {
-    const item = {
-      id: r.id,
-      novelId: r.novel_id,
-      chapterNum: r.chapter_num,
-      userId: r.user_id,
-      parentId: r.parent_id ? Number(r.parent_id) : null,
-      username: r.username,
-      displayName: r.display_name,
-      avatar: r.avatar || '/profile.png',
-      role: r.role || 'Member',
-      userTitle: r.user_title || r.role || 'Member',
-      content: r.content,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      timeAgo: formatInstagramTime(r.created_at),
-      fullDate: formatFullDate(r.created_at),
-      isEdited: r.updated_at !== r.created_at,
-      likesCount: Number(r.likes_count || 0),
-      hasLiked: Boolean(r.user_liked && Number(r.user_liked) > 0),
-      replies: []
-    };
-
-    commentMap.set(r.id, item);
+  const total = allComments.length;
+  const pageLimit = limit !== null && limit !== undefined && Number(limit) > 0 ? Number(limit) : 7;
+  const totalPages = Math.max(1, Math.ceil(total / pageLimit));
+  let currentPage = page ? Number(page) : 1;
+  if (offset !== null && offset !== undefined && offset > 0) {
+    currentPage = Math.floor(Number(offset) / pageLimit) + 1;
   }
+  currentPage = Math.max(1, Math.min(currentPage, totalPages));
+  const startIdx = (currentPage - 1) * pageLimit;
+  const pagedComments = allComments.slice(startIdx, startIdx + pageLimit);
 
-  // Nest replies under their respective parent comments
-  for (const [id, item] of commentMap.entries()) {
-    if (item.parentId && commentMap.has(item.parentId)) {
-      commentMap.get(item.parentId).replies.push(item);
-    } else {
-      topLevelComments.push(item);
-    }
-  }
+  // Attach pagination metadata
+  pagedComments.pagination = {
+    page: currentPage,
+    limit: pageLimit,
+    total,
+    totalPages
+  };
+  pagedComments.total = total;
 
-  // Ensure top-level comments are sorted newest first (descending by created_at)
-  topLevelComments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  // Ensure all replies are also sorted newest first (descending by created_at)
-  for (const item of commentMap.values()) {
-    if (item.replies && item.replies.length > 1) {
-      item.replies.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }
-  }
-
-  // Pagination support: slice top-level comments without skipping or duplicating replies
-  if (limit && Number(limit) > 0) {
-    const start = offset && Number(offset) > 0 ? Number(offset) : 0;
-    return topLevelComments.slice(start, start + Number(limit));
-  }
-
-  return topLevelComments;
+  return pagedComments;
 }
 
 /**
@@ -652,3 +650,243 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
 
   return await getReactions({ targetType, targetId, userId });
 }
+
+/**
+ * =============================================================================
+ * Secure Link Preview Service with SSRF & Private Network Protection
+ * =============================================================================
+ */
+
+function isPrivateIp(ip) {
+  if (!ip) return true;
+  if (/^127\./.test(ip)) return true;
+  if (/^10\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^169\.254\./.test(ip)) return true;
+  if (/^0\./.test(ip)) return true;
+  if (/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(ip)) return true;
+  if (ip === '::1' || ip === '::' || /^fe80:/i.test(ip) || /^fc00:/i.test(ip) || /^fd[0-9a-f]{2}:/i.test(ip)) {
+    return true;
+  }
+  return false;
+}
+
+const linkPreviewCache = new Map();
+
+/**
+ * Fetch link preview metadata safely without exposing server to SSRF or private network attacks
+ */
+export async function fetchLinkPreview(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return { success: false, error: 'Invalid URL' };
+  }
+
+  const trimmed = rawUrl.trim();
+  if (linkPreviewCache.has(trimmed)) {
+    const cached = linkPreviewCache.get(trimmed);
+    if (Date.now() - cached.timestamp < 3600 * 1000) {
+      return cached.data;
+    }
+    linkPreviewCache.delete(trimmed);
+  }
+
+  let currentUrl = trimmed;
+  let redirects = 0;
+  const maxRedirects = 3;
+
+  try {
+    while (redirects <= maxRedirects) {
+      let parsed;
+      try {
+        parsed = new URL(currentUrl);
+      } catch {
+        return { success: false, error: 'Invalid URL format' };
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { success: false, error: 'Only HTTP and HTTPS protocols allowed' };
+      }
+
+      const hostname = parsed.hostname.toLowerCase();
+      if (!hostname || hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+        return { success: false, error: 'Access to private domains is blocked', hostname };
+      }
+
+      // Disallow credentials in URL
+      if (parsed.username || parsed.password) {
+        return { success: false, error: 'URLs with embedded credentials are not allowed', hostname };
+      }
+
+      // Check if hostname is an IP string
+      if (/^[0-9.]+$/.test(hostname) && isPrivateIp(hostname)) {
+        return { success: false, error: 'Access to private IP is blocked', hostname };
+      }
+
+      // DNS lookup to prevent SSRF against hostnames resolving to private IPs
+      try {
+        const lookupRes = await dns.promises.lookup(hostname, { all: true });
+        for (const entry of lookupRes) {
+          if (isPrivateIp(entry.address)) {
+            return { success: false, error: 'Access to private network addresses is blocked', hostname };
+          }
+        }
+      } catch {
+        return { success: false, error: 'Domain name resolution failed', hostname };
+      }
+
+      // Fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      let res;
+      try {
+        res = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 RudhraBot/1.0',
+            'Accept': 'text/html,application/xhtml+xml,image/*;q=0.9,*/*;q=0.8'
+          }
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      // Handle redirect
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (!location) {
+          return { success: false, error: 'Redirect location missing', hostname };
+        }
+        currentUrl = new URL(location, currentUrl).href;
+        redirects++;
+        continue;
+      }
+
+      if (!res.ok) {
+        return { success: false, error: `HTTP ${res.status}`, hostname };
+      }
+
+      const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+      // If direct image response
+      if (contentType.startsWith('image/')) {
+        const data = {
+          success: true,
+          type: 'image',
+          url: currentUrl,
+          hostname
+        };
+        linkPreviewCache.set(trimmed, { timestamp: Date.now(), data });
+        return data;
+      }
+
+      // Read max 256KB of HTML
+      const reader = res.body.getReader();
+      let chunks = [];
+      let totalBytes = 0;
+      const maxBytes = 256 * 1024;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalBytes += value.length;
+        if (totalBytes >= maxBytes) {
+          reader.cancel();
+          break;
+        }
+      }
+
+      const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true });
+      const html = chunks.map(c => decoder.decode(c, { stream: true })).join('');
+
+      // Metadata extraction
+      const cleanText = (str) => {
+        if (!str) return '';
+        return str
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
+      };
+
+      // Title: og:title -> twitter:title -> <title>
+      let title = '';
+      const ogTitleMatch = html.match(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]+content=["']([^"']+)["']/i) ||
+                           html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:title|twitter:title)["']/i);
+      if (ogTitleMatch) {
+        title = cleanText(ogTitleMatch[1]);
+      }
+      if (!title) {
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) title = cleanText(titleMatch[1]);
+      }
+
+      // Description: og:description -> twitter:description -> description
+      let description = '';
+      const ogDescMatch = html.match(/<meta[^>]+(?:property|name)=["'](?:og:description|twitter:description|description)["'][^>]+content=["']([^"']+)["']/i) ||
+                          html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:description|twitter:description|description)["']/i);
+      if (ogDescMatch) {
+        description = cleanText(ogDescMatch[1]);
+      }
+
+      // Image: og:image -> twitter:image
+      let image = '';
+      const ogImageMatch = html.match(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/i) ||
+                           html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+      if (ogImageMatch) {
+        const rawImg = ogImageMatch[1].trim();
+        try {
+          const absImg = new URL(rawImg, currentUrl).href;
+          if (/^https?:\/\//i.test(absImg)) image = absImg;
+        } catch {}
+      }
+
+      // Site name
+      let siteName = '';
+      const siteMatch = html.match(/<meta[^>]+(?:property|name)=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ||
+                        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:site_name["']/i);
+      if (siteMatch) siteName = cleanText(siteMatch[1]);
+
+      // Favicon
+      let favicon = '';
+      const favMatch = html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i) ||
+                       html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'](?:shortcut )?icon["']/i);
+      if (favMatch) {
+        try {
+          favicon = new URL(favMatch[1].trim(), currentUrl).href;
+        } catch {}
+      }
+      if (!favicon) {
+        favicon = `https://${hostname}/favicon.ico`;
+      }
+
+      const data = {
+        success: true,
+        type: 'link',
+        url: currentUrl,
+        hostname,
+        title: title.slice(0, 150) || hostname,
+        description: description.slice(0, 250),
+        image,
+        siteName: siteName.slice(0, 60) || hostname,
+        favicon
+      };
+
+      linkPreviewCache.set(trimmed, { timestamp: Date.now(), data });
+      return data;
+    }
+
+    return { success: false, error: 'Too many redirects', hostname: new URL(currentUrl).hostname };
+  } catch (err) {
+    let host = 'unknown';
+    try { host = new URL(currentUrl).hostname; } catch {}
+    return { success: false, error: err.message, hostname: host };
+  }
+}
+

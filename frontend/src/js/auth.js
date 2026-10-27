@@ -4,6 +4,7 @@ import { showToast } from './reader.js';
 import { t } from './i18n.js';
 import { apiFetch } from './errors.js';
 import { connectRealtimeNotificationStream, updateNotificationBadge } from './notifications.js';
+import { updateUnreadMessageBadge } from './messaging.js';
 import { updateAuthorWriterHeader } from './author-header.js';
 
 window.IS_LOGGED_IN = Boolean(localStorage.getItem('rp_auth_token'));
@@ -288,6 +289,7 @@ export function initAuth() {
       updateHeaderUserArea();
       connectRealtimeNotificationStream();
       updateNotificationBadge();
+      updateUnreadMessageBadge();
 
       // Check redirect destination (e.g. from restricted chapter or audio)
       const redirectHash = sessionStorage.getItem('rp_auth_redirect');
@@ -777,13 +779,14 @@ export function initAuth() {
     window.IS_LOGGED_IN = false;
     updateHeaderUserArea();
     updateNotificationBadge();
+    updateUnreadMessageBadge();
     showToast('Logged out successfully.');
 
     // Protect private pages against access through browser history after logout
     if (window.history.replaceState) {
-      window.history.replaceState(null, '', '#home');
+      window.history.replaceState(null, '', '#forms');
     }
-    window.location.hash = '#home';
+    window.location.hash = '#forms';
 
     if (window.renderAppView) window.renderAppView();
 
@@ -869,14 +872,20 @@ export function initAuth() {
         if (iconEl) {
           iconEl.textContent = enabled ? '🟢' : '🔒';
         }
+        const descEl = document.getElementById('activity-status-desc-text');
+        if (descEl) {
+          descEl.textContent = enabled
+            ? 'When enabled, other readers can see when you are online, your reading duration, and your current or last read story.'
+            : 'When hidden, your online status, current story, duration, and last-read activity remain completely private.';
+        }
         const toggle = document.getElementById('profile-activity-toggle');
         if (toggle) {
           toggle.checked = enabled;
         }
 
-        showToast(enabled ? 'Activity status enabled 🟢' : 'Activity status hidden 🔒');
+        showToast(enabled ? 'Active Status is now ON! Other members can view permitted reading activity.' : 'Active Status is now OFF! Your online status and reading activity are completely private.');
 
-        // Dispatch live event to notify any open pages/components
+        // Dispatch live event to notify open pages/components
         window.dispatchEvent(new CustomEvent('rp:activity-status-changed', { detail: { enabled } }));
       }
     } catch (err) {

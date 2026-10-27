@@ -126,7 +126,7 @@ export function renderErrorView(container, options = {}) {
       defTitle: 'Page Not Found',
       defMsg: "The page or novel chapter you are looking for doesn't exist or may have been moved.",
       defTip: 'Check the link address or browse our complete novel library to discover stories.',
-      prim: { text: 'Go Home', href: '#home' },
+      prim: { text: 'Go Home', href: '#forms' },
       sec: { text: 'Return to Novels', href: '#novels' }
     },
     '403': {
@@ -145,7 +145,7 @@ export function renderErrorView(container, options = {}) {
       defMsg: 'Our literary servers encountered an unexpected issue while preparing this page.',
       defTip: 'We have logged this issue. Please try reloading the page in a moment.',
       prim: { text: 'Try Again', isRetry: true },
-      sec: { text: 'Go Home', href: '#home' }
+      sec: { text: 'Go Home', href: '#forms' }
     },
     'offline': {
       icon: '📡',
@@ -154,7 +154,7 @@ export function renderErrorView(container, options = {}) {
       defMsg: 'Unable to reach the server. Please check your internet connection and try again.',
       defTip: 'Ensure your device has an active Wi-Fi or mobile data connection.',
       prim: { text: 'Try Again', isRetry: true },
-      sec: { text: 'Go Home', href: '#home' }
+      sec: { text: 'Go Home', href: '#forms' }
     },
     'session_expired': {
       icon: '⌛',
@@ -163,7 +163,7 @@ export function renderErrorView(container, options = {}) {
       defMsg: 'For your account security, your session has expired. Please log in again to continue reading.',
       defTip: 'Your reading progress and bookmarks remain safely saved.',
       prim: { text: 'Log In Again', onClick: "openAuthModal('login')" },
-      sec: { text: 'Go Home', href: '#home' }
+      sec: { text: 'Go Home', href: '#forms' }
     },
     'chapter_error': {
       icon: '📖⚠️',

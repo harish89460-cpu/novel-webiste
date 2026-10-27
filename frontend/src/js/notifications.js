@@ -266,6 +266,18 @@ export function connectRealtimeNotificationStream() {
       }
     });
 
+    // Real-Time Private Chat SSE Event Dispatchers
+    ['chat:message', 'chat:message_sent', 'chat:read', 'chat:lock_change', 'chat:settings'].forEach((evtName) => {
+      sseSource.addEventListener(evtName, (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent(evtName, { detail: data }));
+        } catch (err) {
+          console.warn(`[SSE] Error handling ${evtName}:`, err);
+        }
+      });
+    });
+
     sseSource.onerror = () => {
       if (sseSource) {
         sseSource.close();
@@ -488,7 +500,7 @@ function renderNotificationItem(n) {
 
   return `
     <div class="notif-item ${n.unread ? 'unread' : ''}" 
-         onclick="window.handleNotificationClick(${n.id}, '${escapeQuote(n.link || '#home')}', this)">
+         onclick="window.handleNotificationClick(${n.id}, '${escapeQuote(n.link || '#forms')}', this)">
       
       <!-- Avatar with event badge overlay -->
       <div class="notif-avatar-box">

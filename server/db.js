@@ -6,14 +6,23 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createNotification, getUserNotifications, markNotificationReadInDb as notifMarkRead, markAllNotificationsReadInDb as notifMarkAllRead } from './notifications.js';
+function getDirname() {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta?.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch (_) {}
+  return path.resolve(process.cwd(), 'backend');
+}
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = getDirname();
 
 // Load environment variables from .env
 export function loadEnv() {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const envPath = path.resolve(currentDir, '../.env');
+  const currentDir = getDirname();
+  const envPath = fs.existsSync(path.resolve(currentDir, '.env'))
+    ? path.resolve(currentDir, '.env')
+    : path.resolve(currentDir, '../.env');
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf8');
     content.split('\n').forEach(line => {
@@ -180,8 +189,15 @@ export async function getSidebarPostsFromDb() {
   function mapPostRow(r) {
     const rawExcerpt = (r.excerpt || '').replace(/<[^>]+>/g, '').trim();
     const cleanExcerpt = rawExcerpt.length > 75 ? rawExcerpt.substring(0, 75) + '...' : rawExcerpt;
+    const resolvedNovelId = r.novel_id || resolveNovelIdFromTitle(r.title);
+    const link = resolvedNovelId
+      ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${r.chapter_num ? '&ch=' + encodeURIComponent(r.chapter_num) : ''}#comments`
+      : `#topic?id=${encodeURIComponent(r.id)}`;
+
     return {
       id: r.id,
+      novelId: resolvedNovelId,
+      chapterNum: r.chapter_num || null,
       title: r.title,
       category: r.category_title,
       categoryId: r.category_id,
@@ -193,14 +209,14 @@ export async function getSidebarPostsFromDb() {
       excerpt: cleanExcerpt,
       updatedAt: r.last_reply_at || r.updated_at || r.created_at,
       timeDisplay: formatRelativeTime(r.last_reply_at || r.updated_at || r.created_at),
-      link: `#topic?id=${encodeURIComponent(r.id)}`
+      link
     };
   }
 
   // 1. Latest Posts: strictly sorted by latest update / reply timestamp
   const latestRows = await query(`
     SELECT 
-      t.id, t.title, t.category_id, t.category_title,
+      t.id, t.title, t.category_id, t.category_title, t.novel_id, t.chapter_num,
       t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
       COALESCE(lp.display_name, lu.username, ap.display_name, au.username, 'Member') AS last_author_name,
       COALESCE(lp.avatar, ap.avatar, '/profile.png') AS author_avatar,
@@ -219,7 +235,7 @@ export async function getSidebarPostsFromDb() {
   // 2. Trending Posts: engagement formula: (replies_count * 3) + views_count DESC
   const trendingRows = await query(`
     SELECT 
-      t.id, t.title, t.category_id, t.category_title,
+      t.id, t.title, t.category_id, t.category_title, t.novel_id, t.chapter_num,
       t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
       ((t.replies_count * 3) + t.views_count) AS engagement_score,
       COALESCE(lp.display_name, lu.username, ap.display_name, au.username, 'Member') AS last_author_name,
@@ -242,48 +258,79 @@ export async function getSidebarPostsFromDb() {
   };
 }
 
+export function resolveNovelIdFromTitle(title) {
+  const s = String(title || '').toLowerCase();
+  if (s.includes('nenjam')) return 'nenjam-marappadhillai';
+  if (s.includes('kaadhal') || s.includes('காதல்')) return 'kaadhal-konden-kanave';
+  if (s.includes('vizhigalil')) return 'vizhigalil-vizhundha-kavithai';
+  if (s.includes('uyire')) return 'uyire-unakkaga';
+  if (s.includes('maaya')) return 'maaya-nadhi-theeram';
+  if (s.includes('rain') || s.includes('poongaatru')) return 'poongaatru-punnagaikka';
+  return 'nenjam-marappadhillai';
+}
+
 /**
  * Fetch all forum topics with metadata
  */
-export async function getForumTopicsFromDb(categoryId = null) {
+export async function getForumTopicsFromDb(categoryId = null, options = {}) {
+  const includeUnpublished = Boolean(options.includeUnpublished);
   let sql = `
     SELECT 
-      t.id, t.title, t.category_id, t.category_title,
-      t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
+      t.id, t.title, t.content, t.image, t.is_pinned, t.sort_order, t.category_id, t.category_title,
+      t.novel_id, t.chapter_num,
+      t.views_count, t.replies_count, t.is_published, t.visibility, t.created_at, t.updated_at, t.last_reply_at,
       COALESCE(ap.display_name, au.username, 'Member') AS author_name,
       COALESCE(ap.avatar, '/profile.png') AS author_avatar,
+      au.role AS author_role,
       COALESCE(lp.display_name, lu.username, ap.display_name, au.username, 'Member') AS last_author_name,
       COALESCE(lp.avatar, ap.avatar, '/profile.png') AS last_author_avatar,
-      COALESCE((SELECT content FROM forum_posts WHERE topic_id = t.id ORDER BY id ASC LIMIT 1), '') AS excerpt,
+      COALESCE(t.content, (SELECT content FROM forum_posts WHERE topic_id = t.id ORDER BY id ASC LIMIT 1), '') AS raw_content,
       (SELECT COUNT(*) FROM reactions r WHERE (r.target_type = 'forum_topic' AND r.target_id = t.id) OR (r.target_type = 'forum_post' AND r.target_id IN (SELECT fp.id FROM forum_posts fp WHERE fp.topic_id = t.id))) AS reactions_count
     FROM forum_topics t
     LEFT JOIN users au ON t.author_id = au.id
     LEFT JOIN profiles ap ON au.id = ap.user_id
     LEFT JOIN users lu ON t.last_reply_author_id = lu.id
     LEFT JOIN profiles lp ON lu.id = lp.user_id
-    WHERE t.is_published = 1 AND t.visibility = 'public'
+    WHERE 1=1
   `;
   const params = [];
+
+  if (!includeUnpublished) {
+    sql += ` AND t.is_published = 1 AND t.visibility = 'public'`;
+  }
 
   if (categoryId) {
     sql += ` AND t.category_id = ?`;
     params.push(categoryId);
   }
 
-  sql += ` ORDER BY COALESCE(t.last_reply_at, t.updated_at, t.created_at) DESC;`;
+  sql += ` ORDER BY t.is_pinned DESC, t.sort_order ASC, COALESCE(t.last_reply_at, t.updated_at, t.created_at) DESC;`;
 
   const topics = await query(sql, params);
 
   return (topics || []).map(t => {
-    const rawExcerpt = (t.excerpt || '').replace(/<[^>]+>/g, '').trim();
-    const cleanExcerpt = rawExcerpt.length > 110 ? rawExcerpt.substring(0, 110) + '...' : rawExcerpt;
+    const rawExcerpt = (t.raw_content || '').replace(/<[^>]+>/g, '').trim();
+    const cleanExcerpt = rawExcerpt.length > 140 ? rawExcerpt.substring(0, 140) + '...' : rawExcerpt;
+    const resolvedNovelId = t.novel_id || resolveNovelIdFromTitle(t.title);
+    const chParam = t.chapter_num ? `&ch=${t.chapter_num}` : '';
+    const novelLink = resolvedNovelId ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${chParam}#comments` : `#topic?id=${t.id}`;
     return {
       id: t.id,
       categoryId: t.category_id,
       categoryTitle: t.category_title,
+      novelId: resolvedNovelId,
+      chapterNum: t.chapter_num || null,
+      novelLink: novelLink,
       title: t.title,
+      content: t.content || t.raw_content,
+      image: t.image || null,
+      isPinned: Boolean(t.is_pinned),
+      sortOrder: Number(t.sort_order || 0),
+      isPublished: Number(t.is_published),
+      visibility: t.visibility,
       author: t.author_name,
       authorAvatar: t.author_avatar,
+      authorRole: t.author_role,
       lastAuthor: t.last_author_name,
       lastAuthorAvatar: t.last_author_avatar,
       lastReplyAt: t.last_reply_at || t.updated_at || t.created_at,
@@ -306,7 +353,7 @@ export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
 
   const topic = await queryOne(`
     SELECT 
-      t.id, t.title, t.category_id, t.category_title,
+      t.id, t.title, t.category_id, t.category_title, t.novel_id, t.chapter_num,
       t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
       COALESCE(ap.display_name, au.username, 'Member') AS author_name,
       COALESCE(ap.avatar, '/profile.png') AS author_avatar
@@ -387,6 +434,8 @@ export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
     id: topic.id,
     categoryId: topic.category_id,
     categoryTitle: topic.category_title,
+    novelId: topic.novel_id || resolveNovelIdFromTitle(topic.title),
+    chapterNum: topic.chapter_num || null,
     title: topic.title,
     author: topic.author_name,
     authorAvatar: topic.author_avatar,
@@ -536,9 +585,9 @@ export async function addForumReplyToDb(topicId, userId, content, parentId = nul
 }
 
 /**
- * Create a new forum topic
+ * Create a new forum topic (Supports admin pinning, order, publication status, image)
  */
-export async function createForumTopicInDb({ categoryId, title, authorId, content }) {
+export async function createForumTopicInDb({ categoryId, title, authorId, content, image = null, isPublished = 1, isPinned = 0, sortOrder = 0 }) {
   const cleanTitle = (title || '').trim();
   const cleanContent = (content || '').trim();
   if (!cleanTitle) return { success: false, error: 'Title is required' };
@@ -546,7 +595,7 @@ export async function createForumTopicInDb({ categoryId, title, authorId, conten
 
   const category = await queryOne('SELECT id, title FROM forum_categories WHERE id = ?;', [categoryId || 'general']);
   const catId = category ? category.id : 'general';
-  const catTitle = category ? category.title : 'General Discussions';
+  const catTitle = category ? category.title : 'General';
 
   const slug = cleanTitle.toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
@@ -555,10 +604,14 @@ export async function createForumTopicInDb({ categoryId, title, authorId, conten
     .slice(0, 80);
   const topicId = `topic-${slug || 'discussion'}-${Date.now().toString().slice(-4)}`;
 
+  const pubStatus = (isPublished === 0 || isPublished === false || isPublished === '0') ? 0 : 1;
+  const pinStatus = (isPinned === 1 || isPinned === true || isPinned === '1') ? 1 : 0;
+  const orderNum = Number(sortOrder) || 0;
+
   await query(`
-    INSERT INTO forum_topics (id, category_id, category_title, title, author_id, views_count, replies_count, is_published, visibility, last_reply_author_id, last_reply_at)
-    VALUES (?, ?, ?, ?, ?, 1, 0, 1, 'public', ?, CURRENT_TIMESTAMP);
-  `, [topicId, catId, catTitle, cleanTitle, authorId, authorId]);
+    INSERT INTO forum_topics (id, category_id, category_title, title, content, image, author_id, views_count, replies_count, is_published, is_pinned, sort_order, visibility, last_reply_author_id, last_reply_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, 'public', ?, CURRENT_TIMESTAMP);
+  `, [topicId, catId, catTitle, cleanTitle, cleanContent, image || null, authorId, pubStatus, pinStatus, orderNum, authorId]);
 
   await query(`
     INSERT INTO forum_posts (topic_id, user_id, content)
@@ -576,12 +629,12 @@ export async function createForumTopicInDb({ categoryId, title, authorId, conten
 }
 
 /**
- * Fetch all forum categories with accurate real MySQL topic & post counts and latest activity
+ * Fetch all forum categories with accurate real MySQL topic & post counts, active status, color, and latest activity
  */
-export async function getForumCategoriesFromDb() {
-  const categories = await query(`
+export async function getForumCategoriesFromDb(includeInactive = false) {
+  let sql = `
     SELECT 
-      c.id, c.title, c.description, c.icon, c.sort_order,
+      c.id, c.title, c.description, c.icon, c.sort_order, c.is_active, c.color,
       (SELECT COUNT(*) FROM forum_topics t WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS topics_count,
       (SELECT COUNT(*) FROM forum_posts p JOIN forum_topics t ON p.topic_id = t.id WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS posts_count,
       (SELECT COALESCE(SUM(t.replies_count), 0) FROM forum_topics t WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS replies_count,
@@ -600,14 +653,24 @@ export async function getForumCategoriesFromDb() {
     LEFT JOIN profiles lp ON lu.id = lp.user_id
     LEFT JOIN users au ON latest_t.author_id = au.id
     LEFT JOIN profiles ap ON au.id = ap.user_id
-    ORDER BY c.sort_order ASC;
-  `);
+  `;
 
-  return categories.map(c => ({
+  if (!includeInactive) {
+    sql += ` WHERE c.is_active = 1 `;
+  }
+
+  sql += ` ORDER BY c.sort_order ASC;`;
+
+  const categories = await query(sql);
+
+  return (categories || []).map(c => ({
     id: c.id,
     title: c.title,
     desc: c.description,
     icon: c.icon || '💬',
+    sortOrder: Number(c.sort_order || 0),
+    isActive: Boolean(c.is_active === 1 || c.is_active === true),
+    color: c.color || '#2E1065',
     topicsCount: Number(c.topics_count || 0),
     postsCount: Number(c.posts_count || 0),
     repliesCount: Number(c.replies_count || 0),
@@ -617,6 +680,182 @@ export async function getForumCategoriesFromDb() {
     lastActivityAuthor: c.latest_topic_id ? c.last_activity_author : null,
     lastActivityAvatar: c.latest_topic_id ? c.last_activity_avatar : null
   }));
+}
+
+/**
+ * Admin: Create a new forum category
+ */
+export async function createForumCategoryInDb({ id, title, description, icon, sort_order, color, is_active }) {
+  const cleanTitle = (title || '').trim();
+  if (!cleanTitle) return { success: false, error: 'Category title is required' };
+
+  let catId = (id || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!catId) {
+    catId = cleanTitle.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  }
+  if (!catId) catId = 'category-' + Date.now();
+
+  const existing = await queryOne('SELECT id FROM forum_categories WHERE id = ?', [catId]);
+  if (existing) {
+    catId = `${catId}-${Date.now().toString().slice(-4)}`;
+  }
+
+  const order = Number(sort_order) || 10;
+  const active = (is_active === false || is_active === 0 || is_active === '0') ? 0 : 1;
+  const catColor = (color || '#2E1065').trim();
+  const catIcon = (icon || '💬').trim();
+
+  await query(`
+    INSERT INTO forum_categories (id, title, description, icon, sort_order, is_active, color)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
+  `, [catId, cleanTitle, (description || '').trim(), catIcon, order, active, catColor]);
+
+  return { success: true, categoryId: catId };
+}
+
+/**
+ * Admin: Update an existing forum category
+ */
+export async function updateForumCategoryInDb(catId, { title, description, icon, sort_order, color, is_active }) {
+  const category = await queryOne('SELECT id FROM forum_categories WHERE id = ?', [catId]);
+  if (!category) return { success: false, error: 'Category not found' };
+
+  const updates = [];
+  const params = [];
+
+  if (title !== undefined) {
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle) return { success: false, error: 'Title cannot be empty' };
+    updates.push('title = ?');
+    params.push(cleanTitle);
+
+    // Synchronize category_title in forum_topics
+    await query('UPDATE forum_topics SET category_title = ? WHERE category_id = ?', [cleanTitle, catId]);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    params.push((description || '').trim());
+  }
+  if (icon !== undefined) {
+    updates.push('icon = ?');
+    params.push((icon || '').trim());
+  }
+  if (sort_order !== undefined) {
+    updates.push('sort_order = ?');
+    params.push(Number(sort_order) || 0);
+  }
+  if (color !== undefined) {
+    updates.push('color = ?');
+    params.push((color || '').trim());
+  }
+  if (is_active !== undefined) {
+    updates.push('is_active = ?');
+    params.push((is_active === true || is_active === 1 || is_active === '1') ? 1 : 0);
+  }
+
+  if (updates.length > 0) {
+    params.push(catId);
+    await query(`UPDATE forum_categories SET ${updates.join(', ')} WHERE id = ?`, params);
+  }
+
+  return { success: true };
+}
+
+/**
+ * Admin: Delete or disable forum category
+ */
+export async function deleteForumCategoryInDb(catId) {
+  const category = await queryOne('SELECT id FROM forum_categories WHERE id = ?', [catId]);
+  if (!category) return { success: false, error: 'Category not found' };
+
+  const topicCount = await queryOne('SELECT COUNT(*) AS count FROM forum_topics WHERE category_id = ?', [catId]);
+  if (topicCount && Number(topicCount.count) > 0) {
+    await query('UPDATE forum_categories SET is_active = 0 WHERE id = ?', [catId]);
+    return { success: true, message: 'Category has existing discussions and was disabled rather than deleted to protect reader content.' };
+  }
+
+  await query('DELETE FROM forum_categories WHERE id = ?', [catId]);
+  return { success: true };
+}
+
+/**
+ * Admin: Update forum topic metadata (title, content, category, pin, published, sort_order, image)
+ */
+export async function updateForumTopicInDb(topicId, { title, categoryId, content, image, is_published, is_pinned, sort_order }) {
+  const topic = await queryOne('SELECT id, category_id FROM forum_topics WHERE id = ?', [topicId]);
+  if (!topic) return { success: false, error: 'Topic not found' };
+
+  const updates = [];
+  const params = [];
+
+  if (title !== undefined) {
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle) return { success: false, error: 'Title cannot be empty' };
+    updates.push('title = ?');
+    params.push(cleanTitle);
+  }
+  if (categoryId !== undefined) {
+    const cat = await queryOne('SELECT id, title FROM forum_categories WHERE id = ?', [categoryId]);
+    if (cat) {
+      updates.push('category_id = ?');
+      params.push(cat.id);
+      updates.push('category_title = ?');
+      params.push(cat.title);
+    }
+  }
+  if (content !== undefined) {
+    const cleanContent = (content || '').trim();
+    updates.push('content = ?');
+    params.push(cleanContent);
+
+    // Also update first post in forum_posts
+    const firstPost = await queryOne('SELECT id FROM forum_posts WHERE topic_id = ? ORDER BY id ASC LIMIT 1', [topicId]);
+    if (firstPost) {
+      await query('UPDATE forum_posts SET content = ? WHERE id = ?', [cleanContent, firstPost.id]);
+    }
+  }
+  if (image !== undefined) {
+    updates.push('image = ?');
+    params.push(image ? image.trim() : null);
+  }
+  if (is_published !== undefined) {
+    updates.push('is_published = ?');
+    params.push((is_published === true || is_published === 1 || is_published === '1') ? 1 : 0);
+  }
+  if (is_pinned !== undefined) {
+    updates.push('is_pinned = ?');
+    params.push((is_pinned === true || is_pinned === 1 || is_pinned === '1') ? 1 : 0);
+  }
+  if (sort_order !== undefined) {
+    updates.push('sort_order = ?');
+    params.push(Number(sort_order) || 0);
+  }
+
+  if (updates.length > 0) {
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(topicId);
+    await query(`UPDATE forum_topics SET ${updates.join(', ')} WHERE id = ?`, params);
+  }
+
+  return { success: true };
+}
+
+/**
+ * Admin: Delete or unpublish forum topic
+ */
+export async function deleteForumTopicInDb(topicId, permanent = false) {
+  const topic = await queryOne('SELECT id FROM forum_topics WHERE id = ?', [topicId]);
+  if (!topic) return { success: false, error: 'Topic not found' };
+
+  if (permanent) {
+    await query('DELETE FROM forum_posts WHERE topic_id = ?', [topicId]);
+    await query('DELETE FROM reactions WHERE target_type = "forum_topic" AND target_id = ?', [topicId]);
+    await query('DELETE FROM forum_topics WHERE id = ?', [topicId]);
+    return { success: true, message: 'Topic deleted.' };
+  } else {
+    await query('UPDATE forum_topics SET is_published = 0 WHERE id = ?', [topicId]);
+    return { success: true, message: 'Topic unpublished.' };
+  }
 }
 
 /**

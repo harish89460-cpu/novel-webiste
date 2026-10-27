@@ -1,3 +1,5 @@
+import { startReadingSession, heartbeatReadingSession, pauseOrStopReadingSession } from './content-service.js';
+
 // Reader Functionality: Font scaling, Light/Sepia/Dark modes, Scroll progress, Bookmarks
 
 export function initReader() {
@@ -119,4 +121,142 @@ export function showToast(message) {
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(12px)';
   }, 3200);
+}
+
+// ============================================================================
+// Real-Time Member Reading Activity & Duration Tracking
+// ============================================================================
+
+let readingTrackerInterval = null;
+let currentTrackingSession = null;
+let lastUserActivityTime = Date.now();
+let readingSessionTabId = null;
+
+function getTabId() {
+  if (!readingSessionTabId) {
+    try {
+      readingSessionTabId = sessionStorage.getItem('rp_reading_tab_id');
+      if (!readingSessionTabId) {
+        readingSessionTabId = 'tab_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
+        sessionStorage.setItem('rp_reading_tab_id', readingSessionTabId);
+      }
+    } catch {
+      readingSessionTabId = 'tab_' + Math.random().toString(36).slice(2, 10);
+    }
+  }
+  return readingSessionTabId;
+}
+
+export function setupReadingSessionTracker(novelId, chapterNum) {
+  // Only track authentic reading for logged-in members
+  if (!window.IS_LOGGED_IN) return;
+  if (!novelId || !chapterNum) return;
+
+  // Clean up any previously active tracking session
+  stopReadingSessionTracker();
+
+  const tabId = getTabId();
+  currentTrackingSession = {
+    novelId,
+    chapterNum,
+    tabId,
+    startedAt: Date.now(),
+    lastPingAt: Date.now()
+  };
+  lastUserActivityTime = Date.now();
+
+  // 1. Initial Start Ping to Backend
+  startReadingSession(novelId, chapterNum, tabId).catch(() => {});
+
+  // 2. Track genuine interaction (scroll, touch, mouse, key)
+  const onUserActivity = () => {
+    lastUserActivityTime = Date.now();
+  };
+  window.addEventListener('scroll', onUserActivity, { passive: true });
+  window.addEventListener('mousemove', onUserActivity, { passive: true });
+  window.addEventListener('keydown', onUserActivity, { passive: true });
+  window.addEventListener('touchstart', onUserActivity, { passive: true });
+
+  // 3. Periodic Heartbeat every 25 seconds
+  readingTrackerInterval = setInterval(() => {
+    if (!currentTrackingSession) return;
+
+    // If tab is hidden or user has been completely idle for more than 120 seconds, pause accumulating time
+    const isTabHidden = document.hidden;
+    const idleSeconds = (Date.now() - lastUserActivityTime) / 1000;
+
+    if (isTabHidden || idleSeconds > 120) {
+      return;
+    }
+
+    const elapsed = Math.round((Date.now() - currentTrackingSession.lastPingAt) / 1000);
+    currentTrackingSession.lastPingAt = Date.now();
+
+    heartbeatReadingSession(
+      currentTrackingSession.novelId,
+      currentTrackingSession.chapterNum,
+      currentTrackingSession.tabId,
+      Math.min(elapsed, 30)
+    ).catch(() => {});
+  }, 25000);
+
+  // 4. Tab visibility change (pause when tab hidden, resume when tab visible)
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      if (currentTrackingSession) {
+        pauseOrStopReadingSession(currentTrackingSession.novelId, currentTrackingSession.chapterNum).catch(() => {});
+      }
+    } else {
+      if (currentTrackingSession) {
+        lastUserActivityTime = Date.now();
+        currentTrackingSession.lastPingAt = Date.now();
+        startReadingSession(currentTrackingSession.novelId, currentTrackingSession.chapterNum, currentTrackingSession.tabId).catch(() => {});
+      }
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  // 5. Unload / navigation cleanup
+  const onBeforeUnload = () => {
+    if (currentTrackingSession) {
+      try {
+        const payload = JSON.stringify({ novelId: currentTrackingSession.novelId, chapterNum: currentTrackingSession.chapterNum });
+        if (navigator.sendBeacon) {
+          const blob = new Blob([payload], { type: 'application/json' });
+          navigator.sendBeacon('/api/reading/session/pause', blob);
+        } else {
+          fetch('/api/reading/session/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          });
+        }
+      } catch {}
+    }
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+
+  currentTrackingSession._cleanup = () => {
+    window.removeEventListener('scroll', onUserActivity);
+    window.removeEventListener('mousemove', onUserActivity);
+    window.removeEventListener('keydown', onUserActivity);
+    window.removeEventListener('touchstart', onUserActivity);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  };
+}
+
+export function stopReadingSessionTracker() {
+  if (readingTrackerInterval) {
+    clearInterval(readingTrackerInterval);
+    readingTrackerInterval = null;
+  }
+  if (currentTrackingSession) {
+    if (typeof currentTrackingSession._cleanup === 'function') {
+      currentTrackingSession._cleanup();
+    }
+    pauseOrStopReadingSession(currentTrackingSession.novelId, currentTrackingSession.chapterNum).catch(() => {});
+    currentTrackingSession = null;
+  }
 }

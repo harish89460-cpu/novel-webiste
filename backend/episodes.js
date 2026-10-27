@@ -120,13 +120,22 @@ export async function checkAndPublishDueEpisodes() {
  */
 export async function refreshNovelStats(novelId) {
   try {
+    const cleanId = String(novelId || '').trim();
     const countRow = await queryOne(`
       SELECT COUNT(*) AS total
       FROM chapters
-      WHERE novel_id = ? AND status = 'published';
-    `, [novelId]);
+      WHERE novel_id = ? AND status = 'published' AND parent_id IS NULL;
+    `, [cleanId]);
 
-    const total = Number(countRow?.total || 0);
+    let total = Number(countRow?.total || 0);
+    if (total === 0) {
+      const fallbackRow = await queryOne(`
+        SELECT COUNT(*) AS total
+        FROM chapters
+        WHERE novel_id = ? AND status = 'published';
+      `, [cleanId]);
+      total = Number(fallbackRow?.total || 0);
+    }
     const updatedDate = formatReleaseDate(new Date());
 
     await query(`
@@ -134,7 +143,7 @@ export async function refreshNovelStats(novelId) {
       SET chapters_count = ?,
           updated_date = ?
       WHERE id = ?;
-    `, [total, updatedDate, novelId]);
+    `, [total, updatedDate, cleanId]);
   } catch (err) {
     console.warn(`[Stats Refresh Warning] Failed for novel ${novelId}:`, err.message);
   }
@@ -176,8 +185,31 @@ export function formatEpisode(row, subEpisodes = []) {
     updatedAt: row.updated_at,
     isSubEpisode: Boolean(row.parent_id),
     subEpisodesCount: subEpisodes.length,
-    subEpisodes: subEpisodes.map(sub => formatEpisode(sub))
+    subEpisodes: subEpisodes.map(sub => (sub && sub.id && sub.subEpisodes !== undefined ? sub : formatEpisode(sub)))
   };
+}
+
+/**
+ * Compare hierarchical dot numbers (e.g. 1, 1.1, 1.1.1, 1.2, 2, 2.1)
+ */
+export function compareHierarchicalNumbers(aStr, bStr) {
+  const aParts = String(aStr || '').split('.').map(s => parseInt(s, 10));
+  const bParts = String(bStr || '').split('.').map(s => parseInt(s, 10));
+  const len = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < len; i++) {
+    const aVal = isNaN(aParts[i]) ? 0 : aParts[i];
+    const bVal = isNaN(bParts[i]) ? 0 : bParts[i];
+    if (aVal !== bVal) return aVal - bVal;
+  }
+  return 0;
+}
+
+function compareEpisodeRows(a, b) {
+  const numA = a.chapter_num || a.episode_number || '';
+  const numB = b.chapter_num || b.episode_number || '';
+  const diff = compareHierarchicalNumbers(numA, numB);
+  if (diff !== 0) return diff;
+  return Number(a.sort_order || 0) - Number(b.sort_order || 0);
 }
 
 /**
@@ -190,13 +222,18 @@ export async function getEpisodesByNovel(novelId, { includeAll = false, hierarch
   // Always trigger scheduler check first to guarantee real-time freshness
   await checkAndPublishDueEpisodes();
 
+  const cleanId = String(novelId || '').trim();
+  const novelRow = await queryOne('SELECT id, title FROM novels WHERE id = ? OR title = ? LIMIT 1;', [cleanId, cleanId]);
+  const targetId = novelRow ? novelRow.id : cleanId;
+
   let sql = `
-    SELECT c.*, p.title AS parent_title
+    SELECT c.*, p.title AS parent_title, n.title AS novel_title
     FROM chapters c
     LEFT JOIN chapters p ON c.parent_id = p.id
+    LEFT JOIN novels n ON c.novel_id = n.id
     WHERE c.novel_id = ?
   `;
-  const params = [novelId];
+  const params = [targetId];
 
   if (!includeAll) {
     sql += ` AND c.status = 'published'`;
@@ -205,36 +242,52 @@ export async function getEpisodesByNovel(novelId, { includeAll = false, hierarch
   sql += ` ORDER BY c.sort_order ASC, c.id ASC;`;
 
   const rows = await query(sql, params);
+  rows.sort(compareEpisodeRows);
 
   if (!hierarchical) {
     return rows.map(r => formatEpisode(r));
   }
 
-  // Build hierarchical episode tree (root episodes with nested subEpisodes array)
-  const rootEpisodes = [];
+  // Build recursive 3-level tree (Chapter -> Episode -> Sub-episode)
   const childrenMap = new Map();
-
   for (const r of rows) {
     if (r.parent_id) {
-      if (!childrenMap.has(r.parent_id)) {
-        childrenMap.set(r.parent_id, []);
+      const pId = Number(r.parent_id);
+      if (!childrenMap.has(pId)) {
+        childrenMap.set(pId, []);
       }
-      childrenMap.get(r.parent_id).push(r);
+      childrenMap.get(pId).push(r);
     }
   }
 
-  for (const r of rows) {
-    if (!r.parent_id) {
-      const subs = childrenMap.get(r.id) || [];
-      rootEpisodes.push(formatEpisode(r, subs));
-    }
+  function buildTreeItem(r) {
+    const childRows = childrenMap.get(Number(r.id)) || [];
+    childRows.sort(compareEpisodeRows);
+    const childTree = childRows.map(child => buildTreeItem(child));
+    return formatEpisode(r, childTree);
+  }
+
+  const rootEpisodes = [];
+  const rootRows = rows.filter(r => !r.parent_id);
+  rootRows.sort(compareEpisodeRows);
+
+  for (const r of rootRows) {
+    rootEpisodes.push(buildTreeItem(r));
   }
 
   // If there are orphaned sub-episodes whose parents aren't in roots, append them
-  const rootIds = new Set(rows.filter(r => !r.parent_id).map(r => r.id));
+  const emittedIds = new Set();
+  function markEmitted(item) {
+    emittedIds.add(Number(item.id));
+    if (item.subEpisodes) {
+      item.subEpisodes.forEach(markEmitted);
+    }
+  }
+  rootEpisodes.forEach(markEmitted);
+
   for (const r of rows) {
-    if (r.parent_id && !rootIds.has(r.parent_id)) {
-      rootEpisodes.push(formatEpisode(r));
+    if (!emittedIds.has(Number(r.id))) {
+      rootEpisodes.push(buildTreeItem(r));
     }
   }
 
@@ -257,52 +310,53 @@ export async function getEpisodeById(id) {
 
   // Retrieve any child sub-episodes
   const subs = await query(`
-    SELECT * FROM chapters 
-    WHERE parent_id = ? 
-    ORDER BY sort_order ASC, id ASC;
+    SELECT c.*, n.title AS novel_title, p.title AS parent_title
+    FROM chapters c
+    LEFT JOIN novels n ON c.novel_id = n.id
+    LEFT JOIN chapters p ON c.parent_id = p.id
+    WHERE c.parent_id = ? 
+    ORDER BY c.sort_order ASC, c.id ASC;
   `, [id]);
+  subs.sort(compareEpisodeRows);
 
   return formatEpisode(row, subs);
 }
 
 /**
- * Create a new Episode or Sub-Episode
+ * Create a new Chapter, Episode, or Sub-Episode
  */
 export async function createEpisode(data) {
-  const novelId = (data.novelId || '').trim();
-  const title = (data.title || '').trim();
+  const rawNovelId = String(data.novelId || '').trim();
   const content = (data.content || '').trim();
 
-  if (!novelId) {
+  if (!rawNovelId) {
     return { success: false, error: 'novelId is required.' };
   }
-  if (!title) {
-    return { success: false, error: 'Episode title is required.' };
-  }
 
-  // Verify novel exists
-  const novel = await queryOne('SELECT id, title FROM novels WHERE id = ?;', [novelId]);
+  // Verify novel exists by id or title
+  const novel = await queryOne('SELECT id, title FROM novels WHERE id = ? OR title = ? LIMIT 1;', [rawNovelId, rawNovelId]);
   if (!novel) {
-    return { success: false, error: `Novel "${novelId}" not found.` };
+    return { success: false, error: `Novel "${rawNovelId}" not found.` };
   }
+  const novelId = novel.id;
 
   const parentId = data.parentId ? parseInt(data.parentId, 10) : null;
   let parentEpisode = null;
   if (parentId) {
     parentEpisode = await queryOne('SELECT * FROM chapters WHERE id = ? AND novel_id = ?;', [parentId, novelId]);
     if (!parentEpisode) {
-      return { success: false, error: 'Specified parent episode was not found.' };
+      return { success: false, error: 'Specified parent chapter/episode was not found.' };
     }
   }
 
-  // Determine Episode Numbering and Sort Order
+  // Determine Hierarchical Numbering and Sort Order
   let episodeNumber = (data.episodeNumber || data.chapterNum || '').trim();
   let sortOrder = data.sortOrder !== undefined && !isNaN(parseFloat(data.sortOrder))
     ? parseFloat(data.sortOrder)
     : null;
 
   if (parentId && parentEpisode) {
-    // Child sub-episode: e.g. parent is "1", sub-episode is "1.1", "1.2", etc.
+    // Parent could be a Chapter (parent_id IS NULL) OR an Episode (parent_id IS NOT NULL)
     const parentNum = String(parentEpisode.episode_number || parentEpisode.chapter_num || '1');
     const existingSubs = await query(`
       SELECT id, chapter_num, episode_number, sort_order 
@@ -312,35 +366,46 @@ export async function createEpisode(data) {
     `, [parentId]);
 
     if (!episodeNumber) {
-      const subIndex = existingSubs.length + 1;
-      episodeNumber = `${parentNum}.${subIndex}`;
+      // Find highest suffix number under parentNum (e.g. 1.1 -> suffix 1, 1.2 -> suffix 2)
+      let maxSuffix = 0;
+      for (const sub of existingSubs) {
+        const subNumStr = String(sub.episode_number || sub.chapter_num || '');
+        if (subNumStr.startsWith(parentNum + '.')) {
+          const rest = subNumStr.slice(parentNum.length + 1);
+          const firstPart = parseInt(rest.split('.')[0], 10);
+          if (!isNaN(firstPart) && firstPart > maxSuffix) {
+            maxSuffix = firstPart;
+          }
+        }
+      }
+      const nextIndex = Math.max(maxSuffix + 1, existingSubs.length + 1);
+      episodeNumber = `${parentNum}.${nextIndex}`;
     }
 
     if (sortOrder === null) {
       const baseSort = Number(parentEpisode.sort_order || 1);
-      const subOffset = (existingSubs.length + 1) * 0.1;
+      const subOffset = (existingSubs.length + 1) * 0.01;
       sortOrder = Number((baseSort + subOffset).toFixed(4));
     }
   } else {
-    // Root episode
+    // Root Chapter (parent_id IS NULL)
     if (!episodeNumber) {
-      const maxRow = await queryOne(`
-        SELECT chapter_num, sort_order 
+      const rootChapters = await query(`
+        SELECT chapter_num, episode_number, sort_order 
         FROM chapters 
-        WHERE novel_id = ? AND parent_id IS NULL 
-        ORDER BY sort_order DESC, id DESC 
-        LIMIT 1;
+        WHERE novel_id = ? AND parent_id IS NULL;
       `, [novelId]);
 
-      if (maxRow) {
-        const lastNum = parseInt(maxRow.chapter_num, 10);
-        episodeNumber = String(!isNaN(lastNum) ? lastNum + 1 : 1);
-        if (sortOrder === null) {
-          sortOrder = Number(maxRow.sort_order || 0) + 1.0;
+      let maxChapterNum = 0;
+      for (const ch of rootChapters) {
+        const cNum = parseInt(String(ch.episode_number || ch.chapter_num || '0'), 10);
+        if (!isNaN(cNum) && cNum > maxChapterNum) {
+          maxChapterNum = cNum;
         }
-      } else {
-        episodeNumber = '1';
-        if (sortOrder === null) sortOrder = 1.0;
+      }
+      episodeNumber = String(maxChapterNum + 1);
+      if (sortOrder === null) {
+        sortOrder = Number(maxChapterNum + 1);
       }
     } else if (sortOrder === null) {
       const parsed = parseFloat(episodeNumber);
@@ -348,14 +413,35 @@ export async function createEpisode(data) {
     }
   }
 
-  // Ensure unique chapter_num per novel
+  // Ensure unique chapter_num per novel by cleanly incrementing if collision occurs
   let finalChapterNum = episodeNumber;
-  const duplicate = await queryOne(`
-    SELECT id FROM chapters WHERE novel_id = ? AND chapter_num = ?;
-  `, [novelId, finalChapterNum]);
+  let collisionCount = 1;
+  while (true) {
+    const duplicate = await queryOne(`
+      SELECT id FROM chapters WHERE novel_id = ? AND chapter_num = ?;
+    `, [novelId, finalChapterNum]);
+    if (!duplicate) break;
 
-  if (duplicate) {
-    finalChapterNum = `${episodeNumber}-${Date.now().toString().slice(-4)}`;
+    // Increment last dot segment
+    if (finalChapterNum.includes('.')) {
+      const parts = finalChapterNum.split('.');
+      const last = parseInt(parts[parts.length - 1], 10);
+      parts[parts.length - 1] = String(!isNaN(last) ? last + 1 : collisionCount++);
+      finalChapterNum = parts.join('.');
+    } else {
+      const num = parseInt(finalChapterNum, 10);
+      finalChapterNum = String(!isNaN(num) ? num + 1 : `${episodeNumber}_${collisionCount++}`);
+    }
+  }
+
+  // Auto-generate display title according to naming rules if title not explicitly provided:
+  // Chapter: Novel Title (1)
+  // Episode: Novel Title (1.1)
+  // Sub-episode: Novel Title (1.1.1)
+  let title = (data.title || '').trim();
+  const novelTitle = novel.title || 'Novel';
+  if (!title) {
+    title = `${novelTitle} (${finalChapterNum})`;
   }
 
   // Publishing Status & Scheduling
@@ -460,7 +546,7 @@ export async function updateEpisode(id, data) {
 
   const novelId = existing.novel_id;
   const title = data.title !== undefined ? String(data.title).trim() : existing.title;
-  const titleTa = data.titleTa !== undefined ? String(data.titleTa).trim() : existing.title_ta;
+  const titleTa = data.titleTa !== undefined ? String(data.titleTa).trim() : (data.title !== undefined ? title : existing.title_ta);
   const content = data.content !== undefined ? String(data.content).trim() : existing.content;
 
   if (!title) {

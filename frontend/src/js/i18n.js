@@ -246,11 +246,14 @@ export function updateStaticDOMElements() {
   const navDesktop = document.querySelector('.nav-desktop');
   if (navDesktop) {
     const links = navDesktop.querySelectorAll('.nav-link');
-    links.forEach(link => {
+    links.forEach((link, idx) => {
       const href = link.getAttribute('href');
-      if (href === '#home') link.innerText = t('nav_home');
-      else if (href === '#forum') {
-        link.innerHTML = `${t('nav_forum')} <span class="nav-link-badge">${t('nav_forum_badge')}</span>`;
+      const dataNav = link.getAttribute('data-nav');
+      const text = (link.textContent || '').trim().toLowerCase();
+      if (dataNav === 'home' || (idx === 0 && (href === '#forms' || href === '#home')) || text === 'home') {
+        link.textContent = t('nav_home') || 'Home';
+      } else if (dataNav === 'forms' || href === '#forms' || href === '#forum') {
+        link.innerHTML = `Forms <span class="nav-link-badge">New</span>`;
       }
       else if (href === '#novels?category=Ongoing') link.innerText = t('nav_whats_new');
       else if (href === '#members') link.innerText = t('nav_members');
@@ -264,10 +267,15 @@ export function updateStaticDOMElements() {
   const drawerNav = document.querySelector('.drawer-nav');
   if (drawerNav) {
     const links = drawerNav.querySelectorAll('.drawer-nav-item');
-    links.forEach(link => {
+    links.forEach((link, idx) => {
       const href = link.getAttribute('href');
-      if (href === '#home') link.innerText = t('nav_home');
-      else if (href === '#forum') link.innerText = t('nav_forum');
+      const dataNav = link.getAttribute('data-nav');
+      const text = (link.textContent || '').trim().toLowerCase();
+      if (dataNav === 'home' || (idx === 0 && (href === '#forms' || href === '#home')) || text === 'home') {
+        link.textContent = t('nav_home') || 'Home';
+      } else if (dataNav === 'forms' || href === '#forms' || href === '#forum') {
+        link.innerText = 'Forms';
+      }
       else if (href === '#novels?category=Ongoing') link.innerText = t('nav_whats_new');
       else if (href === '#members') link.innerText = t('nav_members');
       else if (href.includes('pratilipi.com')) link.innerText = t('nav_pratilipi');

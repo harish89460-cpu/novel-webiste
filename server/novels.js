@@ -2,8 +2,16 @@
 // Dynamic MySQL Persistence with Relations to Chapters and Scheduler Integration
 
 import { query, queryOne } from './db.js';
-import { checkAndPublishDueEpisodes } from './episodes.js';
+import { checkAndPublishDueEpisodes, compareHierarchicalNumbers } from './episodes.js';
 import { saveBase64Image } from './auth.js';
+
+function compareHierarchicalRows(a, b) {
+  const numA = a.chapter_num || a.episode_number || a.num || '';
+  const numB = b.chapter_num || b.episode_number || b.num || '';
+  const diff = compareHierarchicalNumbers(numA, numB);
+  if (diff !== 0) return diff;
+  return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+}
 
 /**
  * Format a database row into a clean frontend-ready novel object
@@ -24,7 +32,7 @@ export function formatNovel(row, chapters = []) {
     description: row.description || '',
     chaptersCount: row.chapters_count !== null && row.chapters_count !== undefined 
       ? Number(row.chapters_count) 
-      : (chapters.length || undefined),
+      : (chapters.filter(c => !c.parent_id && !c.parentId).length || chapters.length || undefined),
     views: row.views !== null && row.views !== undefined && String(row.views).trim() !== '' ? String(row.views) : undefined,
     rating: row.rating !== null && row.rating !== undefined && String(row.rating).trim() !== '' ? String(row.rating) : undefined,
     updatedDate: row.updated_date || '',
@@ -131,9 +139,10 @@ export async function getNovelById(id, { includeAll = false } = {}) {
     chapterSql += ` AND status = 'published'`;
   }
 
-  chapterSql += ` ORDER BY sort_order ASC, CAST(chapter_num AS DECIMAL(10,2)) ASC, id ASC;`;
+  chapterSql += ` ORDER BY sort_order ASC, id ASC;`;
 
   const chapters = await query(chapterSql, params);
+  chapters.sort(compareHierarchicalRows);
   return formatNovel(row, chapters);
 }
 
@@ -174,9 +183,10 @@ export async function getChaptersByNovel(novelId, { includeAll = false } = {}) {
     sql += ` AND status = 'published'`;
   }
 
-  sql += ` ORDER BY sort_order ASC, CAST(chapter_num AS DECIMAL(10,2)) ASC, id ASC;`;
+  sql += ` ORDER BY sort_order ASC, id ASC;`;
 
   const chapters = await query(sql, params);
+  chapters.sort(compareHierarchicalRows);
 
   return chapters.map(ch => {
     const numStr = String(ch.episode_number || ch.chapter_num || '1');
@@ -202,314 +212,13 @@ export async function getChaptersByNovel(novelId, { includeAll = false } = {}) {
   });
 }
 
-/**
- * Get homepage data with dynamically configured sections, custom collections, and priority ordering
- */
-export async function getHomepageData(currentUser = null) {
+export async function getHomepageData() {
   await checkAndPublishDueEpisodes();
-
-  // 1. Fetch only visible sections ordered by sort_order
-  const visibleSections = await query(`
-    SELECT * FROM homepage_sections 
-    WHERE is_visible = 1 
-    ORDER BY sort_order ASC, section_key ASC;
-  `);
-
-  // 2. Fetch all sections for backward compatibility config map
-  const allSectionRows = await query('SELECT * FROM homepage_sections ORDER BY sort_order ASC');
-  const sectionsConfig = {};
-  for (const s of allSectionRows) {
-    sectionsConfig[s.section_key] = {
-      title: s.title,
-      subtitle: s.subtitle,
-      name: s.name,
-      sectionType: s.section_type,
-      visible: Boolean(s.is_visible),
-      sortOrder: Number(s.sort_order || 0),
-      contentLimit: Number(s.content_limit || 6),
-      viewAllLink: s.view_all_link,
-      displayStyle: s.display_style || 'grid'
-    };
-  }
-
-  const orderedSections = [];
-
-  for (const s of visibleSections) {
-    const limit = Number(s.content_limit) > 0 ? Number(s.content_limit) : 6;
-    let items = [];
-
-    switch (s.section_type) {
-      case 'featured': {
-        const rows = await query(`
-          SELECT * FROM novels 
-          WHERE is_published = 1 AND visibility = 'public' AND featured = 1 AND LOWER(status) = 'ongoing'
-          ORDER BY sort_order ASC, id ASC
-          LIMIT ?
-        `, [limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-
-      case 'continue_reading': {
-        if (currentUser && currentUser.id) {
-          const userRows = await query(`
-            SELECT p.chapter_num AS last_read_chapter, p.progress_percentage, p.last_read_at,
-                   n.*, c.title AS chapter_title
-            FROM reading_progress p
-            JOIN novels n ON p.novel_id = n.id
-            LEFT JOIN chapters c ON p.novel_id = c.novel_id AND p.chapter_num = c.chapter_num
-            WHERE p.user_id = ? AND n.is_published = 1 AND n.visibility = 'public'
-            ORDER BY p.last_read_at DESC
-            LIMIT ?
-          `, [currentUser.id, limit]);
-
-          if (userRows.length > 0) {
-            items = userRows.map(r => {
-              const formatted = formatNovel(r);
-              formatted.lastReadChapter = r.last_read_chapter;
-              formatted.chapterTitle = r.chapter_title;
-              formatted.progressPercentage = r.progress_percentage;
-              formatted.lastReadAt = r.last_read_at;
-              return formatted;
-            });
-          }
-        }
-        
-        // Fallback to continue_reading / ongoing novels if not logged in or no personal progress
-        if (items.length === 0) {
-          const rows = await query(`
-            SELECT * FROM novels 
-            WHERE is_published = 1 AND visibility = 'public' AND (continue_reading = 1 OR LOWER(status) = 'ongoing')
-            ORDER BY sort_order ASC, id ASC
-            LIMIT ?
-          `, [limit]);
-          items = rows.map(r => formatNovel(r));
-        }
-        break;
-      }
-
-      case 'audio': {
-        try {
-          const audioNovelsRows = await query(`
-            SELECT an.*, n.title AS linked_novel_title, n.author AS novel_author
-            FROM audio_novels an
-            LEFT JOIN novels n ON an.novel_id = n.id
-            WHERE an.status = 'published'
-              AND (an.novel_id IS NULL OR (n.is_published = 1 AND n.visibility = 'public'))
-            ORDER BY an.sort_order ASC, an.created_at DESC, an.id DESC
-            LIMIT ?
-          `, [limit]);
-          items = audioNovelsRows.map(r => ({
-            id: r.id,
-            slug: r.slug,
-            title: r.title,
-            description: r.description,
-            cover: r.cover || '/default-cover.jpg',
-            sourceType: r.source_type,
-            youtubeUrl: r.youtube_url,
-            youtubeVideoId: r.youtube_video_id,
-            audioFileUrl: r.audio_file_url,
-            audioDuration: r.audio_duration,
-            episodeNumber: r.episode_number,
-            partNumber: r.part_number,
-            language: r.language,
-            novelId: r.novel_id,
-            novelTitle: r.linked_novel_title,
-            author: r.novel_author || 'Rudhra Prarthana',
-            audioVoice: 'Rudhra Prarthana',
-            status: r.status,
-            views: r.views || 0,
-            createdAt: r.created_at
-          }));
-        } catch (err) {
-          console.error('[Homepage] Failed to query audio_novels:', err.message);
-        }
-
-        if (items.length === 0) {
-          const fallbackRows = await query(`
-            SELECT * FROM novels 
-            WHERE is_published = 1 AND visibility = 'public' AND (is_audio = 1 OR audio_available = 1)
-            ORDER BY sort_order ASC, id ASC
-            LIMIT ?
-          `, [limit]);
-          items = fallbackRows.map(r => formatNovel(r));
-        }
-        break;
-      }
-
-      case 'trending': {
-        const rows = await query(`
-          SELECT * FROM novels 
-          WHERE is_published = 1 AND visibility = 'public' AND trending_rank > 0
-          ORDER BY trending_rank ASC, sort_order ASC
-          LIMIT ?
-        `, [limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-
-      case 'completed': {
-        const rows = await query(`
-          SELECT * FROM novels 
-          WHERE is_published = 1 AND visibility = 'public' AND LOWER(status) = 'completed'
-          ORDER BY sort_order ASC, id ASC
-          LIMIT ?
-        `, [limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-
-      case 'latest': {
-        const rows = await query(`
-          SELECT * FROM novels 
-          WHERE is_published = 1 AND visibility = 'public'
-          ORDER BY updated_at DESC, id DESC
-          LIMIT ?
-        `, [limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-
-      case 'forum': {
-        try {
-          const topicRows = await query(`
-            SELECT t.id, t.title, t.category_id, t.category_title,
-                   t.views_count AS views, t.replies_count, t.created_at, t.updated_at,
-                   COALESCE(ap.display_name, au.username, 'Reader') AS author,
-                   COALESCE(ap.avatar, '/profile.png') AS author_avatar
-            FROM forum_topics t
-            LEFT JOIN users au ON t.author_id = au.id
-            LEFT JOIN profiles ap ON au.id = ap.user_id
-            WHERE t.is_published = 1 AND t.visibility = 'public'
-            ORDER BY t.created_at DESC
-            LIMIT ?
-          `, [limit]);
-          items = topicRows.map(t => ({
-            id: t.id,
-            title: t.title,
-            views: t.views || 0,
-            repliesCount: t.replies_count || 0,
-            date: t.created_at,
-            author: t.author || 'Reader',
-            authorAvatar: t.author_avatar || '/profile.png'
-          }));
-        } catch (e) {
-          console.warn('[Homepage] Forum topics query error:', e.message);
-        }
-        break;
-      }
-
-      case 'curated': {
-        const rows = await query(`
-          SELECT n.*, hsi.sort_order AS item_sort_order
-          FROM homepage_section_items hsi
-          JOIN novels n ON hsi.novel_id = n.id
-          WHERE hsi.section_key = ? AND n.is_published = 1 AND n.visibility = 'public'
-          ORDER BY hsi.sort_order ASC, hsi.id ASC
-          LIMIT ?
-        `, [s.section_key, limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-
-      case 'author_spotlight': {
-        items = [{
-          name: 'Rudhra Prarthana',
-          role: 'Author & Storyteller',
-          avatar: '/profile.png',
-          bio: 'Heart-touching family dramas, captivating romance, and a warm community for passionate Tamil novel readers.',
-          links: [
-            { label: 'Pratilipi', url: 'https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w' },
-            { label: 'YouTube', url: 'https://www.youtube.com/@rudhraprarthanaaudionovels' }
-          ]
-        }];
-        break;
-      }
-
-      case 'community_cta': {
-        items = [{
-          title: s.title || 'Join Our Reader Community',
-          subtitle: s.subtitle || 'Connect & Share',
-          desc: 'Discuss chapter twists, connect with author Rudhra Prarthana, and get early notifications for new episode releases.'
-        }];
-        break;
-      }
-
-      default: {
-        const rows = await query(`
-          SELECT * FROM novels 
-          WHERE is_published = 1 AND visibility = 'public'
-          ORDER BY sort_order ASC, id ASC
-          LIMIT ?
-        `, [limit]);
-        items = rows.map(r => formatNovel(r));
-        break;
-      }
-    }
-
-    orderedSections.push({
-      sectionKey: s.section_key,
-      name: s.name || s.title,
-      title: s.title,
-      subtitle: s.subtitle,
-      sectionType: s.section_type,
-      isSystem: Boolean(s.is_system),
-      isVisible: Boolean(s.is_visible),
-      visible: Boolean(s.is_visible),
-      sortOrder: Number(s.sort_order || 0),
-      contentLimit: limit,
-      viewAllLink: s.view_all_link,
-      displayStyle: s.display_style || 'grid',
-      settings: s.settings ? (typeof s.settings === 'string' ? JSON.parse(s.settings) : s.settings) : null,
-      novels: items,
-      items: items
-    });
-  }
-
-  // Backward compatibility object for any components still accessing sections directly
-  const legacySections = {
-    featured: {
-      title: sectionsConfig.featured?.title || 'Featured Ongoing Novels',
-      subtitle: sectionsConfig.featured?.subtitle || 'Currently Releasing',
-      visible: sectionsConfig.featured?.visible !== false,
-      sortOrder: sectionsConfig.featured?.sortOrder || 1,
-      novels: orderedSections.find(s => s.sectionKey === 'featured')?.novels || []
-    },
-    continueReading: {
-      title: sectionsConfig.continue_reading?.title || 'Continue Reading',
-      subtitle: sectionsConfig.continue_reading?.subtitle || 'Pick Up Where You Left Off',
-      visible: sectionsConfig.continue_reading?.visible !== false,
-      sortOrder: sectionsConfig.continue_reading?.sortOrder || 2,
-      novels: orderedSections.find(s => s.sectionKey === 'continue_reading')?.novels || []
-    },
-    audio: {
-      title: sectionsConfig.audio?.title || 'Audio Novels',
-      subtitle: sectionsConfig.audio?.subtitle || 'Listen & Enjoy',
-      visible: sectionsConfig.audio?.visible !== false,
-      sortOrder: sectionsConfig.audio?.sortOrder || 3,
-      novels: orderedSections.find(s => s.sectionKey === 'audio')?.novels || []
-    },
-    trending: {
-      title: sectionsConfig.trending?.title || 'Trending Novels',
-      subtitle: sectionsConfig.trending?.subtitle || 'Reader Favorites',
-      visible: sectionsConfig.trending?.visible !== false,
-      sortOrder: sectionsConfig.trending?.sortOrder || 4,
-      novels: orderedSections.find(s => s.sectionKey === 'trending')?.novels || []
-    },
-    completed: {
-      title: sectionsConfig.completed?.title || 'Completed Novels',
-      subtitle: sectionsConfig.completed?.subtitle || 'Completed Works',
-      visible: sectionsConfig.completed?.visible !== false,
-      sortOrder: sectionsConfig.completed?.sortOrder || 5,
-      novels: orderedSections.find(s => s.sectionKey === 'completed')?.novels || []
-    }
-  };
-
   return {
     success: true,
-    orderedSections,
-    sectionsConfig,
-    sections: legacySections
+    message: 'Forms is now the main landing page',
+    sections: {},
+    orderedSections: []
   };
 }
 
@@ -577,6 +286,23 @@ export async function updateNovel(id, data) {
     audioDuration, audioVoice, youtubeUrl, trendingRank,
     sortOrder, isPublished, visibility, id
   ]);
+
+  // If novel title changed, cascade update to chapters that used default generated title "${existing.title} (...)"
+  if (title && existing.title && title !== existing.title) {
+    try {
+      const relatedChapters = await query('SELECT id, chapter_num, episode_number, title FROM chapters WHERE novel_id = ?;', [id]);
+      for (const ch of relatedChapters) {
+        const chNum = ch.episode_number || ch.chapter_num;
+        const expectedOldTitle = `${existing.title} (${chNum})`;
+        if (ch.title === expectedOldTitle) {
+          const newChTitle = `${title} (${chNum})`;
+          await query('UPDATE chapters SET title = ?, title_ta = ? WHERE id = ?;', [newChTitle, newChTitle, ch.id]);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not cascade novel title update to chapters:', e.message);
+    }
+  }
 
   return { success: true, novel: await getNovelById(id, { includeAll: true }) };
 }
@@ -759,27 +485,4 @@ export async function deleteNovel(id) {
 
   await query('DELETE FROM novels WHERE id = ?;', [id]);
   return { success: true };
-}
-
-/**
- * Update homepage section visibility and ordering
- */
-export async function updateSectionVisibility(sectionKey, data) {
-  const existing = await queryOne('SELECT * FROM homepage_sections WHERE section_key = ?', [sectionKey]);
-  const isVisible = data.visible !== undefined ? (data.visible ? 1 : 0) : (existing ? existing.is_visible : 1);
-  const sortOrder = data.sortOrder !== undefined ? parseInt(data.sortOrder, 10) : (existing ? existing.sort_order : 0);
-  const title = data.title || (existing ? existing.title : sectionKey);
-  const subtitle = data.subtitle || (existing ? existing.subtitle : '');
-
-  await query(`
-    INSERT INTO homepage_sections (section_key, title, subtitle, is_visible, sort_order)
-    VALUES (?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      title = VALUES(title),
-      subtitle = VALUES(subtitle),
-      is_visible = VALUES(is_visible),
-      sort_order = VALUES(sort_order);
-  `, [sectionKey, title, subtitle, isVisible, sortOrder]);
-
-  return { success: true, sectionKey, visible: Boolean(isVisible), sortOrder };
 }

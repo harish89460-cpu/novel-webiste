@@ -11,8 +11,10 @@ import { checkAndPublishDueEpisodes } from './episodes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const distDir = path.resolve(rootDir, 'dist');
-const publicDir = path.resolve(rootDir, 'public');
+const frontendDir = path.resolve(rootDir, 'frontend');
+const distDir = path.resolve(frontendDir, 'dist');
+const publicDir = path.resolve(frontendDir, 'public');
+const uploadsDir = path.resolve(__dirname, 'uploads');
 
 loadEnv();
 
@@ -38,7 +40,8 @@ const MIME_TYPES = {
   '.m4a': 'audio/mp4',
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
-  '.ogg': 'audio/ogg'
+  '.ogg': 'audio/ogg',
+  '.webm': 'audio/webm'
 };
 
 function serveStatic(req, res, targetDir, fallbackToIndex = false) {
@@ -106,10 +109,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Direct Admin / Author / Writer Route Navigation (Serve index.html with strict no-cache headers)
+  // Direct pathname /home redirect to Forms landing page
   const cleanUrl = req.url.split('?')[0];
+  if (cleanUrl === '/home') {
+    res.writeHead(302, { 'Location': '/#forms' });
+    return res.end();
+  }
+
+  // Direct Admin / Author / Writer Route Navigation (Serve index.html with strict no-cache headers)
   if (cleanUrl === '/admin' || cleanUrl.startsWith('/admin/') || cleanUrl === '/dashboard' || cleanUrl === '/writer' || cleanUrl.startsWith('/writer/')) {
-    const indexPath = fs.existsSync(distDir) ? path.join(distDir, 'index.html') : path.join(rootDir, 'index.html');
+    const indexPath = fs.existsSync(distDir) ? path.join(distDir, 'index.html') : path.join(frontendDir, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
@@ -122,15 +131,37 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Static Assets from public/ directory
+  // Uploaded User Assets from backend/uploads/ directory
+  if (req.url.startsWith('/uploads/') || req.url === '/uploads') {
+    let reqPath = req.url.split('?')[0].replace(/^\/uploads/, '');
+    if (reqPath === '' || reqPath === '/') reqPath = '';
+    const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');
+    const filePath = path.join(uploadsDir, safePath);
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+    res.statusCode = 404;
+    res.end('Upload not found');
+    return;
+  }
+
+  // Static Assets from frontend public/ directory
   if (serveStatic(req, res, publicDir, false)) return;
 
-  // Production Build assets from dist/ directory (if built)
+  // Production Build assets from frontend dist/ directory (if built)
   if (fs.existsSync(distDir)) {
     if (serveStatic(req, res, distDir, true)) return;
   }
 
-  // Fallback for root files (index.html, profile.png, etc.)
+  // Fallback for frontend root files (index.html, profile.png, etc.)
+  if (serveStatic(req, res, frontendDir, false)) return;
   if (serveStatic(req, res, rootDir, false)) return;
 
   res.statusCode = 404;

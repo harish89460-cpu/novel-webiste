@@ -27,6 +27,449 @@ function escapeQuotes(str) {
   return String(str || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
 }
 
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Auto-detect and wrap URLs within text into clean, safe <a> links
+ */
+export function autoLinkifyText(text) {
+  if (!text) return '';
+  const urlRegex = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/gi;
+  let lastIdx = 0;
+  let match;
+  let result = '';
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    const before = text.substring(lastIdx, match.index);
+    result += escapeHtml(before).replace(/\n/g, '<br>');
+
+    let rawUrl = match[0];
+    let trailingPunct = '';
+    const punctMatch = rawUrl.match(/[.,!?)]+$/);
+    if (punctMatch) {
+      trailingPunct = punctMatch[0];
+      rawUrl = rawUrl.slice(0, -trailingPunct.length);
+    }
+
+    let href = rawUrl;
+    if (!/^https?:\/\//i.test(href)) {
+      href = 'https://' + href;
+    }
+
+    const cleanHref = escapeHtml(href);
+    result += `<a href="${cleanHref}" target="_blank" rel="noopener noreferrer" class="rp-comment-link">${escapeHtml(rawUrl)}</a>${escapeHtml(trailingPunct)}`;
+    lastIdx = match.index + match[0].length;
+  }
+
+  const remaining = text.substring(lastIdx);
+  result += escapeHtml(remaining).replace(/\n/g, '<br>');
+  return result;
+}
+
+/**
+ * Scan an HTML fragment and ensure all raw text URLs (not already in <a>) are safely linkified
+ */
+export function ensureAllUrlsLinked(rawHtml) {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(rawHtml, 'text/html');
+
+  const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+
+  const urlRegex = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/i;
+  for (const tNode of textNodes) {
+    if (tNode.parentNode && tNode.parentNode.nodeName.toLowerCase() === 'a') {
+      continue;
+    }
+    const txt = tNode.textContent;
+    if (urlRegex.test(txt)) {
+      const span = doc.createElement('span');
+      span.innerHTML = autoLinkifyText(txt);
+      tNode.parentNode.replaceChild(span, tNode);
+    }
+  }
+
+  return doc.body.innerHTML;
+}
+
+/**
+ * Parse a URL and classify its embed provider (YouTube, Vimeo, direct image, or external link)
+ */
+export function parseEmbedInfo(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  let url = rawUrl.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname;
+
+    // 1. YouTube formats:
+    // - https://www.youtube.com/watch?v=VIDEO_ID
+    // - https://youtu.be/VIDEO_ID
+    // - https://www.youtube.com/shorts/VIDEO_ID
+    // - https://www.youtube.com/embed/VIDEO_ID
+    // - https://m.youtube.com/watch?v=VIDEO_ID
+    // - https://music.youtube.com/watch?v=VIDEO_ID
+    const ytHosts = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'];
+    if (ytHosts.includes(host)) {
+      if (pathname === '/watch') {
+        const v = parsed.searchParams.get('v');
+        if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+          return { type: 'youtube', videoId: v, url };
+        }
+      } else if (pathname.startsWith('/shorts/')) {
+        const parts = pathname.split('/');
+        const id = parts[2];
+        if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) {
+          return { type: 'youtube', videoId: id, url };
+        }
+      } else if (pathname.startsWith('/embed/')) {
+        const parts = pathname.split('/');
+        const id = parts[2];
+        if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) {
+          return { type: 'youtube', videoId: id, url };
+        }
+      }
+    } else if (host === 'youtu.be') {
+      const id = pathname.slice(1).split('?')[0].split('/')[0];
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) {
+        return { type: 'youtube', videoId: id, url };
+      }
+    }
+
+    // 2. Vimeo: vimeo.com/DIGITS or player.vimeo.com/video/DIGITS
+    if (host === 'vimeo.com' || host === 'www.vimeo.com') {
+      const match = pathname.match(/^\/(\d+)/);
+      if (match) {
+        return { type: 'vimeo', videoId: match[1], url };
+      }
+    } else if (host === 'player.vimeo.com') {
+      const match = pathname.match(/^\/video\/(\d+)/);
+      if (match) {
+        return { type: 'vimeo', videoId: match[1], url };
+      }
+    }
+
+    // 3. Direct safely-loadable image URL
+    if (/\.(jpe?g|png|gif|webp|svg)($|\?)/i.test(pathname)) {
+      return { type: 'image', url };
+    }
+
+    // 4. Other safe website URL
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return { type: 'link', url, hostname: host };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Extract all unique URLs from comment HTML content and categorize them
+ */
+export function extractCommentEmbeds(htmlContent) {
+  if (!htmlContent || typeof htmlContent !== 'string') return [];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlContent, 'text/html');
+
+  const urlsFound = [];
+  const seen = new Set();
+
+  const addUrl = (u) => {
+    if (!u || typeof u !== 'string') return;
+    const clean = u.trim();
+    if (!clean) return;
+    if (clean.startsWith('/uploads/') || clean.includes('/uploads/comments/')) return;
+    if (/^(javascript|data|vbscript|file|about):/i.test(clean)) return;
+    if (!seen.has(clean)) {
+      seen.add(clean);
+      urlsFound.push(clean);
+    }
+  };
+
+  // 1. From <a> href attributes
+  doc.querySelectorAll('a[href]').forEach(a => {
+    addUrl(a.getAttribute('href'));
+  });
+
+  // 2. From text nodes in case any raw URLs are present
+  const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+  let tNode;
+  const rawUrlRegex = /(https?:\/\/[^\s<"'>]+)/gi;
+  while ((tNode = walker.nextNode())) {
+    let m;
+    while ((m = rawUrlRegex.exec(tNode.textContent)) !== null) {
+      addUrl(m[0]);
+    }
+  }
+
+  // Parse embed info for each URL
+  const embeds = [];
+  for (const u of urlsFound) {
+    const info = parseEmbedInfo(u);
+    if (info) embeds.push(info);
+  }
+
+  return embeds;
+}
+
+/**
+ * Render single embed HTML for video, image, or website preview card
+ */
+function renderSingleEmbed(item, commentId, index) {
+  if (!item) return '';
+
+  if (item.type === 'youtube') {
+    return `
+      <div class="rp-embed-card rp-embed-video-card" data-embed-type="youtube">
+        <div class="rp-embed-video-wrap">
+          <iframe 
+            src="https://www.youtube-nocookie.com/embed/${escapeHtml(item.videoId)}" 
+            title="YouTube video player"
+            loading="lazy"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+            referrerpolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+            allowfullscreen
+            class="rp-embed-iframe">
+          </iframe>
+        </div>
+        <div class="rp-embed-meta-bar">
+          <span class="rp-embed-provider-badge youtube">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            YouTube
+          </span>
+          <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="rp-embed-external-link" title="Open in YouTube">
+            Watch on YouTube ↗
+          </a>
+        </div>
+      </div>
+    `;
+  }
+
+  if (item.type === 'vimeo') {
+    return `
+      <div class="rp-embed-card rp-embed-video-card" data-embed-type="vimeo">
+        <div class="rp-embed-video-wrap">
+          <iframe 
+            src="https://player.vimeo.com/video/${escapeHtml(item.videoId)}" 
+            title="Vimeo video player"
+            loading="lazy"
+            frameborder="0"
+            allow="autoplay; fullscreen; picture-in-picture" 
+            referrerpolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+            allowfullscreen
+            class="rp-embed-iframe">
+          </iframe>
+        </div>
+        <div class="rp-embed-meta-bar">
+          <span class="rp-embed-provider-badge vimeo">Vimeo</span>
+          <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="rp-embed-external-link" title="Open in Vimeo">
+            Watch on Vimeo ↗
+          </a>
+        </div>
+      </div>
+    `;
+  }
+
+  if (item.type === 'image') {
+    return `
+      <div class="rp-embed-card rp-embed-image-card">
+        <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="rp-embed-img-link" title="Click to view full image in new tab">
+          <img src="${escapeHtml(item.url)}" alt="Shared image preview" class="rp-embed-img" loading="lazy" onerror="this.closest('.rp-embed-image-card').style.display='none';" />
+        </a>
+      </div>
+    `;
+  }
+
+  if (item.type === 'link') {
+    return `
+      <div class="rp-embed-card rp-embed-link-card" id="link-preview-${commentId}-${index}" data-url="${escapeHtml(item.url)}">
+        <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="rp-link-preview-box">
+          <div class="rp-link-preview-details">
+            <div class="rp-link-preview-host">
+              <span class="rp-link-preview-globe">🌐</span>
+              <span>${escapeHtml(item.hostname)}</span>
+            </div>
+            <div class="rp-link-preview-title" id="lp-title-${commentId}-${index}">${escapeHtml(item.hostname)}</div>
+            <div class="rp-link-preview-desc" id="lp-desc-${commentId}-${index}" style="display:none;"></div>
+            <div class="rp-link-preview-bottom">
+              <span class="rp-link-preview-url-text">${escapeHtml(item.url)}</span>
+              <span class="rp-link-preview-arrow">↗</span>
+            </div>
+          </div>
+        </a>
+      </div>
+    `;
+  }
+
+  return '';
+}
+
+/**
+ * Render all embeds for a given comment
+ */
+export function renderCommentEmbeds(content, commentId) {
+  const embeds = extractCommentEmbeds(content);
+  if (!embeds || embeds.length === 0) return '';
+
+  return `
+    <div class="rp-comment-embeds" id="comment-embeds-${commentId}">
+      ${embeds.map((item, index) => renderSingleEmbed(item, commentId, index)).join('')}
+    </div>
+  `;
+}
+
+// In-memory client cache for website OpenGraph previews
+const clientLinkMetadataCache = new Map();
+
+/**
+ * Fetch and hydrate link preview cards with server-retrieved OpenGraph metadata
+ */
+export async function hydrateLinkPreviews(containerEl = document) {
+  if (!containerEl) return;
+  const cards = containerEl.querySelectorAll('.rp-embed-link-card[data-url]');
+
+  cards.forEach(async (card) => {
+    const rawUrl = card.getAttribute('data-url');
+    if (!rawUrl) return;
+
+    if (clientLinkMetadataCache.has(rawUrl)) {
+      applyMetadataToCard(card, clientLinkMetadataCache.get(rawUrl));
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`/api/link-preview?url=${encodeURIComponent(rawUrl)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          clientLinkMetadataCache.set(rawUrl, data);
+          applyMetadataToCard(card, data);
+        }
+      }
+    } catch {
+      // Safe fallback card is already shown
+    }
+  });
+}
+
+function applyMetadataToCard(card, data) {
+  if (!card || !data) return;
+  const linkBox = card.querySelector('.rp-link-preview-box');
+  if (!linkBox) return;
+
+  const titleEl = card.querySelector('.rp-link-preview-title');
+  const descEl = card.querySelector('.rp-link-preview-desc');
+  const hostEl = card.querySelector('.rp-link-preview-host span:last-child');
+
+  if (data.title && titleEl) {
+    titleEl.textContent = data.title;
+  }
+  if (data.siteName && hostEl) {
+    hostEl.textContent = data.siteName;
+  }
+  if (data.description && descEl) {
+    descEl.textContent = data.description;
+    descEl.style.display = '-webkit-box';
+  }
+
+  if (data.image && !card.querySelector('.rp-link-preview-thumb-wrap')) {
+    const thumbWrap = document.createElement('div');
+    thumbWrap.className = 'rp-link-preview-thumb-wrap';
+    const img = document.createElement('img');
+    img.className = 'rp-link-preview-thumb';
+    img.src = data.image;
+    img.alt = data.title || 'Preview thumbnail';
+    img.loading = 'lazy';
+    img.onerror = () => thumbWrap.remove();
+    thumbWrap.appendChild(img);
+    linkBox.prepend(thumbWrap);
+    linkBox.classList.add('has-thumb');
+  }
+}
+
+/**
+ * Automatically linkify preceding word when typing in contenteditable editor
+ */
+function autoLinkifyCaretWord(editorId) {
+  const sel = window.getSelection();
+  const editor = document.getElementById(`comment-editor-${editorId}`);
+  if (!sel || !editor || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return;
+
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) return;
+  if (node.parentElement && node.parentElement.closest('a')) return;
+
+  const textBefore = node.textContent.slice(0, range.startOffset);
+  const match = textBefore.match(/(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)$/);
+  if (match) {
+    const rawUrl = match[0];
+    const startIndex = match.index;
+    const endIndex = startIndex + rawUrl.length;
+
+    let href = rawUrl;
+    if (!/^https?:\/\//i.test(href)) {
+      href = 'https://' + href;
+    }
+
+    try {
+      new URL(href);
+    } catch {
+      return;
+    }
+
+    const fullText = node.textContent;
+    const beforePart = fullText.slice(0, startIndex);
+    const afterPart = fullText.slice(endIndex);
+
+    const a = document.createElement('a');
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'rp-comment-link';
+    a.textContent = rawUrl;
+
+    const parent = node.parentNode;
+    const beforeNode = document.createTextNode(beforePart);
+    const afterNode = document.createTextNode(afterPart || '\u00A0');
+
+    parent.insertBefore(beforeNode, node);
+    parent.insertBefore(a, node);
+    parent.insertBefore(afterNode, node);
+    parent.removeChild(node);
+
+    const newRange = document.createRange();
+    newRange.setStart(afterNode, 1);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    saveEditorRange(editorId);
+  }
+}
+
 // Saved Selection Ranges for cursor preservation across toolbar controls
 const editorRanges = {};
 
@@ -137,48 +580,7 @@ export function validateUrl(input) {
  * Render WordPress-Style Inline Link Popover Markup
  */
 function renderLinkPopoverHtml(editorId) {
-  return `
-    <div class="rp-link-popover" id="rp-link-popover-${editorId}" style="display:none;" role="dialog" aria-label="Insert or edit link">
-      <div class="rp-link-popover-header">
-        <div class="rp-link-popover-title" id="rp-link-popover-title-${editorId}">
-          <span class="rp-link-title-icon">🔗</span>
-          <span class="rp-link-title-text" id="rp-link-title-text-${editorId}">Insert Link</span>
-        </div>
-        <button type="button" class="rp-link-popover-close" onclick="closeLinkPopover('${editorId}')" title="Close (Esc)">✕</button>
-      </div>
-      <div class="rp-link-popover-body">
-        <div class="rp-link-popover-fields">
-          <div class="rp-link-field-group">
-            <label class="rp-link-field-label" for="rp-link-url-${editorId}">URL <span class="rp-link-req">*</span></label>
-            <div class="rp-link-input-wrap">
-              <input type="text" 
-                     id="rp-link-url-${editorId}" 
-                     class="rp-link-input rp-link-url-input" 
-                     placeholder="https://example.com" 
-                     autocomplete="off" 
-                     spellcheck="false"
-                     onkeydown="if(event.key==='Enter'){event.preventDefault(); applyLinkInsert('${editorId}');} else if(event.key==='Escape'){event.preventDefault(); closeLinkPopover('${editorId}');}" />
-              <a href="#" target="_blank" rel="noopener noreferrer" id="rp-link-preview-${editorId}" class="rp-link-preview-btn" style="display:none;" title="Open link in new tab">↗️</a>
-            </div>
-          </div>
-          <div class="rp-link-field-group">
-            <label class="rp-link-field-label" for="rp-link-text-${editorId}">Link Text <span class="rp-link-opt">(optional)</span></label>
-            <input type="text" 
-                   id="rp-link-text-${editorId}" 
-                   class="rp-link-input rp-link-text-input" 
-                   placeholder="Text to display" 
-                   autocomplete="off"
-                   onkeydown="if(event.key==='Enter'){event.preventDefault(); applyLinkInsert('${editorId}');} else if(event.key==='Escape'){event.preventDefault(); closeLinkPopover('${editorId}');}" />
-          </div>
-        </div>
-        <div class="rp-link-popover-actions">
-          <button type="button" class="btn btn-outline btn-sm rp-link-btn-cancel" onclick="closeLinkPopover('${editorId}')">Cancel</button>
-          <button type="button" id="rp-link-btn-unlink-${editorId}" class="btn btn-outline btn-sm rp-link-btn-unlink" style="display:none;" onclick="handleEditorUnlink('${editorId}')">Remove Link</button>
-          <button type="button" id="rp-link-btn-apply-${editorId}" class="btn btn-gold btn-sm rp-link-btn-apply" onclick="applyLinkInsert('${editorId}')">Insert Link</button>
-        </div>
-      </div>
-    </div>
-  `;
+  return '';
 }
 
 /**
@@ -284,13 +686,6 @@ export function renderCommentToolbarHtml(editorId) {
       </div>
 
       <span class="rp-tb-divider"></span>
-
-      <!-- Insert Link -->
-      <div class="rp-tb-group">
-        <button type="button" class="rp-tb-btn" onmousedown="event.preventDefault(); openLinkPrompt(event, '${editorId}');" title="Insert Link (Ctrl+K)" aria-label="Insert Link">
-          🔗
-        </button>
-      </div>
 
       <!-- Emoji Picker -->
       <div class="rp-tb-group" style="position:relative;">
@@ -425,6 +820,19 @@ export function renderCommentHtml(rawHtml) {
   ]);
 
   const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.parentNode && node.parentNode.nodeName.toLowerCase() === 'a') {
+        return;
+      }
+      const txt = node.textContent;
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/i;
+      if (urlRegex.test(txt)) {
+        const span = doc.createElement('span');
+        span.innerHTML = autoLinkifyText(txt);
+        node.parentNode.replaceChild(span, node);
+      }
+      return;
+    }
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tagName = node.tagName.toLowerCase();
       if (!allowedTags.has(tagName)) {
@@ -569,20 +977,20 @@ export async function renderReactionsWidget(containerId, targetType, targetId) {
   container.innerHTML = `
     <div class="rp-reactions-wrap" id="reactions-wrap-${containerId}">
       <div class="rp-like-widget-row">
-        <!-- Heart-shaped Like Button Trigger -->
-        <div class="rp-like-trigger-wrap" id="like-trigger-wrap-${containerId}">
+        <!-- Thumbs-up Like Button Trigger (👍 Like) -->
+        <div class="rp-like-trigger-wrap" id="like-trigger-wrap-${containerId}" onmouseenter="window.openEmojiPicker?.('${containerId}')" onmouseleave="window.closeEmojiPicker?.('${containerId}')">
           <button type="button" 
                   id="like-main-btn-${containerId}" 
-                  class="rp-like-btn rp-heart-btn ${userReaction ? 'active' : ''}" 
-                  onclick="toggleEmojiPicker('${containerId}')"
+                  class="rp-like-btn rp-heart-btn rp-thumb-btn ${userReaction ? 'active' : ''}" 
+                  onclick="handleLikeButtonClick('${targetType}', '${targetId}', '${containerId}')"
                   aria-haspopup="true" 
                   aria-expanded="false"
-                  title="${userReaction ? `You reacted ${userReaction} (${EMOJI_LABELS[userReaction] || 'Liked'}) — Click to change or remove` : 'Click to like this episode or choose an emoji reaction'}">
-            <span class="rp-heart-glyph" id="like-icon-${containerId}">
-              ${userReaction || '❤️'}
+                  title="${userReaction ? `You reacted ${userReaction} (${EMOJI_LABELS[userReaction] || 'Liked'}) — Click to unlike or change` : 'Click to like (👍 Like) or choose an emoji reaction'}">
+            <span class="rp-heart-glyph rp-like-glyph" id="like-icon-${containerId}">
+              ${userReaction || '👍'}
             </span>
             <span class="rp-like-label" id="like-label-${containerId}">
-              ${userReaction ? (EMOJI_LABELS[userReaction] || 'Liked') : 'Like'}
+              ${userReaction && userReaction !== '👍' ? (EMOJI_LABELS[userReaction] || 'Liked') : 'Like'}
             </span>
             ${totalCount > 0 ? `<span class="rp-like-total-badge">${totalCount}</span>` : ''}
           </button>
@@ -619,6 +1027,41 @@ export async function renderReactionsWidget(containerId, targetType, targetId) {
     </div>
   `;
 }
+
+/**
+ * Handle Like Button Click (Defaults to 👍 Like toggle)
+ */
+window.handleLikeButtonClick = async function(targetType, targetId, containerId) {
+  const isGuest = !window.IS_LOGGED_IN;
+  if (isGuest) {
+    showToast('Please log in to like this chapter! ✨');
+    if (typeof window.openAuthModal === 'function') {
+      window.openAuthModal('login');
+    }
+    return;
+  }
+
+  // Toggle thumbs up reaction: if already reacted with 👍, remove it; otherwise set to 👍
+  await window.handleReactionSelect(targetType, targetId, '👍', containerId);
+};
+
+window.openEmojiPicker = function(containerId) {
+  const picker = document.getElementById(`emoji-picker-${containerId}`);
+  const btn = document.getElementById(`like-main-btn-${containerId}`);
+  if (picker) {
+    picker.style.display = 'flex';
+    btn?.setAttribute('aria-expanded', 'true');
+  }
+};
+
+window.closeEmojiPicker = function(containerId) {
+  const picker = document.getElementById(`emoji-picker-${containerId}`);
+  const btn = document.getElementById(`like-main-btn-${containerId}`);
+  if (picker) {
+    picker.style.display = 'none';
+    btn?.setAttribute('aria-expanded', 'false');
+  }
+};
 
 /**
  * Toggle the Emoji Picker popover
@@ -722,43 +1165,47 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 window._rpExpandedReplies = window._rpExpandedReplies || new Set();
 
-export async function renderCommentsWidget(containerId, novelId, chapterNum = 0) {
+export async function renderCommentsWidget(containerId, novelId, chapterNum = 0, targetPage = null) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
   const chStr = chapterNum !== undefined ? String(chapterNum).trim() : '0';
-  const cacheKey = `${novelId}:${chStr}`;
+  const pageKey = `${containerId}:${novelId}:${chStr}`;
+  window._commentsPageState = window._commentsPageState || {};
+
+  let page = targetPage !== null && targetPage !== undefined ? Number(targetPage) : (window._commentsPageState[pageKey] || 1);
+  if (isNaN(page) || page < 1) page = 1;
+
+  let comments = [];
+  let pagination = { page, limit: 7, total: 0, totalPages: 1 };
 
   try {
-    const res = await apiFetch(`/api/comments?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(chStr)}`);
+    const res = await apiFetch(`/api/comments?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(chStr)}&page=${page}&limit=7`);
     if (res.ok) {
       const data = await res.json();
-      commentsCache[cacheKey] = data.comments || [];
+      comments = data.comments || [];
+      if (data.pagination) {
+        pagination = data.pagination;
+      } else {
+        const total = Number(data.total || comments.length);
+        pagination = { page, limit: 7, total, totalPages: Math.max(1, Math.ceil(total / 7)) };
+      }
     }
   } catch (err) {
     console.warn('Failed to load comments:', err);
   }
 
-  const comments = (commentsCache[cacheKey] || []).slice();
-  comments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  comments.forEach(c => {
-    if (c.replies && c.replies.length > 1) {
-      c.replies.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }
-  });
-  const totalCommentsCount = comments.reduce((acc, c) => acc + 1 + (c.replies ? c.replies.length : 0), 0);
+  // Clamp page if out of bounds (e.g. after deletion)
+  if (page > pagination.totalPages && pagination.totalPages >= 1) {
+    page = pagination.totalPages;
+    window._commentsPageState[pageKey] = page;
+    return renderCommentsWidget(containerId, novelId, chapterNum, page);
+  }
+  window._commentsPageState[pageKey] = page;
+
+  const totalCommentsCount = pagination.total;
   const isGuest = !window.IS_LOGGED_IN;
   const user = window.CURRENT_USER;
   const currentAvatar = getAvatarUrl(user?.avatar);
@@ -894,13 +1341,6 @@ export async function renderCommentsWidget(containerId, novelId, chapterNum = 0)
 
               <span class="rp-tb-divider"></span>
 
-              <!-- Insert Link -->
-              <div class="rp-tb-group">
-                <button type="button" class="rp-tb-btn" onmousedown="event.preventDefault(); openLinkPrompt(event, '${containerId}');" title="Insert Link (Ctrl+K)" aria-label="Insert Link">
-                  🔗
-                </button>
-              </div>
-
               <!-- Emoji Picker -->
               <div class="rp-tb-group" style="position:relative;">
                 <button type="button" class="rp-tb-btn" id="rp-emoji-btn-${containerId}" onmousedown="event.preventDefault(); toggleCommentEmojiPicker('${containerId}');" title="Insert Emoji" aria-label="Insert Emoji">
@@ -941,9 +1381,6 @@ export async function renderCommentsWidget(containerId, novelId, chapterNum = 0)
             <input type="file" id="comment-image-input-${containerId}" style="display:none;" accept="image/jpeg,image/png,image/webp" onchange="handleCommentFileUpload(event, '${containerId}', 'image')" />
             <input type="file" id="comment-gif-input-${containerId}" style="display:none;" accept="image/gif" onchange="handleCommentFileUpload(event, '${containerId}', 'gif')" />
 
-            <!-- WordPress-Style Inline Link Popover -->
-            ${renderLinkPopoverHtml(containerId)}
-
             <!-- Attachment Preview Tray -->
             <div class="rp-attachment-tray" id="rp-attachment-tray-${containerId}" style="display:none;"></div>
 
@@ -968,8 +1405,6 @@ export async function renderCommentsWidget(containerId, novelId, chapterNum = 0)
           </div>
         </div>
       `}
-
-      <!-- Comments Stream -->
       <div class="rp-ig-feed" id="ig-feed-${containerId}">
         ${comments.length === 0 ? `
           <div class="rp-ig-empty-state">
@@ -979,6 +1414,33 @@ export async function renderCommentsWidget(containerId, novelId, chapterNum = 0)
           </div>
         ` : comments.map(c => renderSingleIgComment(c, novelId, chStr, containerId)).join('')}
       </div>
+
+      <!-- Chronological Comments Pagination (7 entries per page) -->
+      ${pagination.totalPages > 1 ? `
+        <div class="rp-comments-pagination" role="navigation" aria-label="Comments pagination">
+          <button type="button" 
+                  class="rp-page-btn rp-page-prev" 
+                  ${pagination.page <= 1 ? 'disabled' : ''} 
+                  onclick="window.changeCommentsPage('${containerId}', '${escapeQuotes(novelId)}', '${escapeQuotes(chStr)}', ${pagination.page - 1})">
+            ‹ Prev
+          </button>
+          <div class="rp-page-numbers">
+            ${Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(p => `
+              <button type="button" 
+                      class="rp-page-num-btn ${p === pagination.page ? 'active' : ''}" 
+                      onclick="window.changeCommentsPage('${containerId}', '${escapeQuotes(novelId)}', '${escapeQuotes(chStr)}', ${p})">
+                ${p}
+              </button>
+            `).join('')}
+          </div>
+          <button type="button" 
+                  class="rp-page-btn rp-page-next" 
+                  ${pagination.page >= pagination.totalPages ? 'disabled' : ''} 
+                  onclick="window.changeCommentsPage('${containerId}', '${escapeQuotes(novelId)}', '${escapeQuotes(chStr)}', ${pagination.page + 1})">
+            Next ›
+          </button>
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -989,12 +1451,15 @@ export async function renderCommentsWidget(containerId, novelId, chapterNum = 0)
       renderAttachmentPreview(containerId);
     }
   }
+
+  // Hydrate external website link previews
+  hydrateLinkPreviews(container);
 }
 
 /**
- * Render a single Instagram-style comment (or reply)
+ * Render a single Instagram-style comment (or reply) in the single chronological timeline
  */
-function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = false, parentAuthorName = null) {
+function renderSingleIgComment(c, novelId, chapterNum, containerId) {
   const authorAvatar = getAvatarUrl(c.avatar);
   const authorName = c.displayName || c.username;
   const timeDisplay = c.timeAgo || 'now';
@@ -1020,8 +1485,8 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = fa
   const heartIcon = hasLiked ? '❤️' : '🤍';
   const likeAria = hasLiked ? 'Unlike comment' : 'Like comment';
 
-  const replyCount = (c.replies && c.replies.length) || 0;
-  const isRepliesExpanded = window._rpExpandedReplies.has(c.id);
+  const isReply = Boolean(c.parentId);
+  const replyParentAuthor = c.parentAuthor || 'Author';
 
   return `
     <div class="rp-ig-comment-row ${isReply ? 'is-reply' : ''}" id="ig-comment-${c.id}">
@@ -1029,12 +1494,21 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = fa
         <img src="${authorAvatar}" class="${isReply ? 'rp-ig-reply-avatar' : 'rp-ig-comment-avatar'}" alt="${escapeQuotes(authorName)}" onerror="this.src='/profile.png';">
         
         <div class="rp-ig-comment-bubble">
+          ${isReply ? `
+            <div class="rp-ig-reply-context-tag">
+              <span class="rp-reply-arrow">↳</span> Replying to <strong>@${escapeHtml(replyParentAuthor)}</strong>
+            </div>
+          ` : ''}
+
           <!-- Text and Author line -->
           <div class="rp-ig-comment-text-wrap" id="ig-comment-text-${c.id}">
             <a href="#members" class="rp-ig-comment-author-name">${escapeHtml(authorName)}</a>
             ${roleBadge}
             <span>${sanitizedContent}</span>
           </div>
+
+          <!-- Inline Media / URL Embed Previews -->
+          ${renderCommentEmbeds(c.content, c.id)}
 
           <!-- Inline Edit Box (Hidden by Default) -->
           <div class="rp-ig-edit-box" id="ig-edit-box-${c.id}" style="display:none;">
@@ -1053,7 +1527,7 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = fa
               ${likesCount} ${likesCount === 1 ? 'like' : 'likes'}
             </span>
 
-            <button type="button" class="rp-ig-meta-action" onclick="openCommentReply(${isReply ? (c.parentId || c.id) : c.id}, '${escapeQuotes(authorName)}')">
+            <button type="button" class="rp-ig-meta-action" onclick="openCommentReply(${c.id}, '${escapeQuotes(authorName)}')">
               Reply
             </button>
 
@@ -1071,7 +1545,7 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = fa
         <!-- Right-side Heart Like Button -->
         <button type="button" 
                 class="rp-ig-heart-btn ${hasLiked ? 'liked' : ''}" 
-                id="ig-heart-btn-${c.id}"
+                id="ig-heart-btn-${c.id}" 
                 title="${likeAria}" 
                 aria-label="${likeAria}"
                 onclick="handleCommentLike(${c.id}, '${escapeQuotes(novelId)}', '${escapeQuotes(chapterNum)}', '${escapeQuotes(containerId)}')">
@@ -1080,56 +1554,38 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId, isReply = fa
       </div>
 
       <!-- Inline Reply Box for this comment (Hidden by Default) -->
-      ${!isReply ? `
-        <div class="rp-ig-inline-reply-box" id="ig-reply-box-${c.id}" style="display:none;">
-          <div class="rp-ig-replying-pill">
-            <span>Replying to <strong id="ig-reply-to-user-${c.id}">@${escapeHtml(authorName)}</strong></span>
-            <button type="button" class="rp-ig-replying-cancel" onclick="closeCommentReply(${c.id})" title="Cancel reply">✕</button>
-          </div>
-          
-          <div class="rp-comment-editor-box rp-reply-editor-box" id="rp-comment-editor-box-reply-${c.id}">
-            ${renderCommentToolbarHtml(`reply-${c.id}`)}
-            <input type="file" id="comment-image-input-reply-${c.id}" style="display:none;" accept="image/jpeg,image/png,image/webp" onchange="handleCommentFileUpload(event, 'reply-${c.id}', 'image')" />
-            <input type="file" id="comment-gif-input-reply-${c.id}" style="display:none;" accept="image/gif" onchange="handleCommentFileUpload(event, 'reply-${c.id}', 'gif')" />
-            ${renderLinkPopoverHtml(`reply-${c.id}`)}
-            <div class="rp-attachment-tray" id="rp-attachment-tray-reply-${c.id}" style="display:none;"></div>
-            <div class="rp-rich-editor rp-reply-rich-editor" 
-                 id="comment-editor-reply-${c.id}" 
-                 contenteditable="true" 
-                 role="textbox" 
-                 aria-multiline="true" 
-                 data-placeholder="Write a reply to @${escapeQuotes(authorName)}..."></div>
-          </div>
+      <div class="rp-ig-inline-reply-box" id="ig-reply-box-${c.id}" style="display:none;">
+        <div class="rp-ig-replying-pill">
+          <span>Replying to <strong id="ig-reply-to-user-${c.id}">@${escapeHtml(authorName)}</strong></span>
+          <button type="button" class="rp-ig-replying-cancel" onclick="closeCommentReply(${c.id})" title="Cancel reply">✕</button>
+        </div>
+        
+        <div class="rp-comment-editor-box rp-reply-editor-box" id="rp-comment-editor-box-reply-${c.id}">
+          ${renderCommentToolbarHtml(`reply-${c.id}`)}
+          <input type="file" id="comment-image-input-reply-${c.id}" style="display:none;" accept="image/jpeg,image/png,image/webp" onchange="handleCommentFileUpload(event, 'reply-${c.id}', 'image')" />
+          <input type="file" id="comment-gif-input-reply-${c.id}" style="display:none;" accept="image/gif" onchange="handleCommentFileUpload(event, 'reply-${c.id}', 'gif')" />
+          <div class="rp-attachment-tray" id="rp-attachment-tray-reply-${c.id}" style="display:none;"></div>
+          <div class="rp-rich-editor rp-reply-rich-editor" 
+               id="comment-editor-reply-${c.id}" 
+               contenteditable="true" 
+               role="textbox" 
+               aria-multiline="true" 
+               data-placeholder="Write a reply to @${escapeQuotes(authorName)}..."></div>
+        </div>
 
-          <div class="rp-reply-actions-bar">
-            <span class="rp-editor-tip">Press Ctrl+Enter to post • Formatting &amp; media enabled</span>
-            <div style="display:flex; gap:8px;">
-              <button type="button" class="btn btn-outline btn-sm" onclick="closeCommentReply(${c.id})">Cancel</button>
-              <button type="button" 
-                      id="ig-reply-submit-${c.id}" 
-                      class="btn btn-gold btn-sm" 
-                      onclick="handleReplySubmit(${c.id}, '${escapeQuotes(novelId)}', '${escapeQuotes(chapterNum)}', '${escapeQuotes(containerId)}')">
-                Post Reply
-              </button>
-            </div>
+        <div class="rp-reply-actions-bar">
+          <span class="rp-editor-tip">Press Ctrl+Enter to post • Formatting &amp; media enabled</span>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeCommentReply(${c.id})">Cancel</button>
+            <button type="button" 
+                    id="ig-reply-submit-${c.id}" 
+                    class="btn btn-gold btn-sm" 
+                    onclick="handleReplySubmit(${c.id}, '${escapeQuotes(novelId)}', '${escapeQuotes(chapterNum)}', '${escapeQuotes(containerId)}')">
+              Post Reply
+            </button>
           </div>
         </div>
-      ` : ''}
-
-      <!-- Nested Replies Section -->
-      ${!isReply && replyCount > 0 ? `
-        <div class="rp-ig-replies-container">
-          <button type="button" class="rp-ig-toggle-replies-btn" id="ig-toggle-replies-btn-${c.id}" onclick="toggleReplies(${c.id})">
-            <span class="rp-ig-toggle-dash"></span>
-            <span id="ig-toggle-text-${c.id}">
-              ${isRepliesExpanded ? 'Hide replies' : `View ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
-            </span>
-          </button>
-          <div class="rp-ig-replies-list" id="ig-replies-list-${c.id}" style="${isRepliesExpanded ? 'display:flex;' : 'display:none;'}">
-            ${c.replies.map(rep => renderSingleIgComment(rep, novelId, chapterNum, containerId, true, authorName)).join('')}
-          </div>
-        </div>
-      ` : ''}
+      </div>
     </div>
   `;
 }
@@ -1150,8 +1606,27 @@ function attachEditorListeners(editorId) {
   editor.addEventListener('input', handleUpdate);
   editor.addEventListener('focus', handleUpdate);
 
-  // Ctrl+Enter / Cmd+Enter keyboard shortcut to post
+  // Auto-detect pasted URLs and embed them directly into editor
+  editor.addEventListener('paste', (e) => {
+    const clipData = e.clipboardData || window.clipboardData;
+    if (!clipData) return;
+    const text = clipData.getData('text/plain');
+    if (!text) return;
+
+    const urlPattern = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/i;
+    if (urlPattern.test(text)) {
+      e.preventDefault();
+      const linkifiedHtml = autoLinkifyText(text);
+      insertAtCursor(editorId, linkifiedHtml);
+      saveEditorRange(editorId);
+    }
+  });
+
+  // Ctrl+Enter / Cmd+Enter keyboard shortcut to post & space/Enter URL auto-linkify
   editor.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      autoLinkifyCaretWord(editorId);
+    }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       const submitBtn = document.getElementById(`ig-comment-submit-${editorId}`) || 
@@ -1162,13 +1637,11 @@ function attachEditorListeners(editorId) {
     }
   });
 
-  // Prevent default link navigation inside editor and allow editing/removing links
+  // Prevent default link navigation inside contenteditable editor
   editor.addEventListener('click', (e) => {
     const link = e.target.closest('a');
     if (link && editor.contains(link)) {
       e.preventDefault();
-      e.stopPropagation();
-      window.openLinkPrompt(e, editorId, link);
     }
   });
 }
@@ -1920,6 +2393,8 @@ window.handleCommentSubmit = async function(novelId, chapterNum, containerId) {
     }
   }
 
+  contentToPost = ensureAllUrlsLinked(contentToPost);
+
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Posting...';
@@ -1944,7 +2419,13 @@ window.handleCommentSubmit = async function(novelId, chapterNum, containerId) {
       delete window.rpDraftAttachments[containerId];
     }
     showToast(t('comments_post_success') || 'Comment posted successfully! 💬');
-    await renderCommentsWidget(containerId, novelId, chapterNum);
+    await renderCommentsWidget(containerId, novelId, chapterNum, 999999);
+    setTimeout(() => {
+      const feed = document.getElementById(`ig-feed-${containerId}`);
+      if (feed && feed.lastElementChild) {
+        feed.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 250);
   } catch (err) {
     console.error('Comment submit error:', err);
     showToast('Network error posting comment.');
@@ -1953,6 +2434,18 @@ window.handleCommentSubmit = async function(novelId, chapterNum, containerId) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Post Comment';
     }
+  }
+};
+
+window.changeCommentsPage = async function(containerId, novelId, chapterNum, page) {
+  window._commentsPageState = window._commentsPageState || {};
+  const chStr = chapterNum !== undefined ? String(chapterNum).trim() : '0';
+  const pageKey = `${containerId}:${novelId}:${chStr}`;
+  window._commentsPageState[pageKey] = page;
+  await renderCommentsWidget(containerId, novelId, chapterNum, page);
+  const wrap = document.getElementById(`ig-comments-wrap-${containerId}`);
+  if (wrap) {
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 };
 
@@ -2041,6 +2534,8 @@ window.handleReplySubmit = async function(parentId, novelId, chapterNum, contain
     }
   }
 
+  contentToPost = ensureAllUrlsLinked(contentToPost);
+
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Posting...';
@@ -2071,11 +2566,14 @@ window.handleReplySubmit = async function(parentId, novelId, chapterNum, contain
     }
     window.closeCommentReply(parentId);
 
-    // Keep parent's reply thread expanded
-    window._rpExpandedReplies.add(parentId);
-
     showToast('Reply posted successfully! 💬');
-    await renderCommentsWidget(containerId, novelId, chapterNum);
+    await renderCommentsWidget(containerId, novelId, chapterNum, 999999);
+    setTimeout(() => {
+      const feed = document.getElementById(`ig-feed-${containerId}`);
+      if (feed && feed.lastElementChild) {
+        feed.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 250);
   } catch (err) {
     console.error('Reply submit error:', err);
     showToast('Network error posting reply.');
@@ -2097,6 +2595,7 @@ window.toggleReplies = function(commentId) {
     list.style.display = 'flex';
     window._rpExpandedReplies.add(commentId);
     if (textEl) textEl.textContent = 'Hide replies';
+    hydrateLinkPreviews(list);
   } else {
     list.style.display = 'none';
     window._rpExpandedReplies.delete(commentId);
@@ -2207,11 +2706,13 @@ window.handleCommentSave = async function(commentId, novelId, chapterNum, contai
     return;
   }
 
+  const contentToSave = ensureAllUrlsLinked(autoLinkifyText(rawContent));
+
   try {
     const res = await apiFetch('/api/comments/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commentId, content: rawContent })
+      body: JSON.stringify({ commentId, content: contentToSave })
     });
 
     const data = await res.json();

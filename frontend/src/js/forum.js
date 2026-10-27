@@ -164,6 +164,34 @@ export function initForum() {
   };
 
   /**
+   * Open New Topic Form preselected for a specific category
+   */
+  window.openNewTopicModalForCategory = (categoryId, categoryTitle) => {
+    if (!window.IS_LOGGED_IN) {
+      showToast('Please log in to start a new discussion.');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
+      return;
+    }
+    const form = document.getElementById('new-topic-form-container');
+    const select = document.getElementById('new-topic-category-select');
+    const formTitle = document.getElementById('new-topic-form-title');
+    if (form) {
+      form.style.display = 'block';
+      if (select && categoryId) {
+        select.value = categoryId;
+      }
+      if (formTitle && categoryTitle) {
+        formTitle.textContent = `Start a Discussion in ${categoryTitle}`;
+      }
+      form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const titleInput = document.getElementById('new-topic-title-input');
+      if (titleInput) titleInput.focus();
+    }
+  };
+
+  /**
    * Toggle New Topic Form in Category View
    */
   window.toggleNewTopicForm = () => {
@@ -198,6 +226,9 @@ export function initForum() {
       return;
     }
 
+    const select = document.getElementById('new-topic-category-select');
+    const catId = categoryId || select?.value || 'general';
+
     const titleInput = document.getElementById('new-topic-title-input');
     const contentInput = document.getElementById('new-topic-content-input');
     const submitBtn = document.getElementById('new-topic-submit-btn');
@@ -219,7 +250,7 @@ export function initForum() {
       const res = await apiFetch('/api/forum/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryId, title, content })
+        body: JSON.stringify({ categoryId: catId, title, content })
       });
 
       const data = await res.json();
