@@ -159,6 +159,7 @@ export async function getContentHierarchy(currentUser = null) {
   const novelsWithEpisodes = await query(`
     SELECT n.id, n.title, n.author, n.category, n.status, n.badge, n.cover, n.description,
            n.chapters_count, n.views, n.rating, n.updated_date, n.is_audio, n.audio_voice, n.audio_duration,
+           (SELECT COUNT(*) FROM comments c WHERE c.novel_id = n.id) as comments_count,
            (
              SELECT c.title 
              FROM chapters c 
@@ -198,7 +199,9 @@ export async function getContentHierarchy(currentUser = null) {
       status: mainCat.status || (mainCat.is_active ? 'published' : 'disabled'),
       isActive: Boolean(mainCat.is_active),
       isDisabled: Boolean(mainCat.is_disabled),
-      subcategories: []
+      subcategories: [],
+      novels: [],
+      stats: null
     };
 
     // Subcategories for this Main Category
@@ -218,7 +221,8 @@ export async function getContentHierarchy(currentUser = null) {
         status: sub.status || 'published',
         isActive: Boolean(sub.is_active),
         isDisabled: Boolean(sub.is_disabled),
-        articles: []
+        articles: [],
+        stats: null
       };
 
       // Content Articles under this Subcategory
@@ -242,6 +246,16 @@ export async function getContentHierarchy(currentUser = null) {
         });
       }
 
+      const sortedSubArticles = [...subItem.articles].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      subItem.stats = {
+        totalItems: subItem.articles.length,
+        totalComments: subItem.articles.reduce((sum, a) => sum + Number(a.commentsCount || 0), 0),
+        totalViews: subItem.articles.reduce((sum, a) => sum + Number(a.viewsCount || 0), 0),
+        latestTitle: sortedSubArticles[0]?.title || null,
+        latestLink: sortedSubArticles[0]?.link || null,
+        latestDate: sortedSubArticles[0]?.publishedAt || null
+      };
+
       mainItem.subcategories.push(subItem);
     }
 
@@ -255,6 +269,9 @@ export async function getContentHierarchy(currentUser = null) {
         author: n.author,
         category: n.category,
         cover: n.cover,
+        views: n.views || '0',
+        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+        commentsCount: Number(n.comments_count || 0),
         latestEpisodeTitle: n.latest_episode_title || 'Episode 01',
         latestEpisodeNum: n.latest_episode_num || '1',
         updatedDate: n.latest_published_at ? new Date(n.latest_published_at).toLocaleDateString() : (n.updated_date || 'Recent'),
@@ -272,6 +289,9 @@ export async function getContentHierarchy(currentUser = null) {
         author: n.author,
         category: n.category,
         cover: n.cover,
+        views: n.views || '0',
+        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+        commentsCount: Number(n.comments_count || 0),
         latestEpisodeTitle: n.latest_episode_title || 'Full Novel',
         latestEpisodeNum: n.latest_episode_num || '1',
         updatedDate: n.updated_date || 'Completed',
@@ -288,6 +308,9 @@ export async function getContentHierarchy(currentUser = null) {
         title: n.title,
         author: n.author,
         cover: n.cover,
+        views: n.views || '0',
+        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+        commentsCount: Number(n.comments_count || 0),
         latestEpisodeTitle: n.latest_episode_title || 'Story Collection',
         latestEpisodeNum: n.latest_episode_num || '1',
         updatedDate: n.updated_date || 'Collection',
@@ -306,8 +329,37 @@ export async function getContentHierarchy(currentUser = null) {
         voice: n.audio_voice || n.author,
         duration: n.audio_duration || 'Full Audio',
         cover: n.cover,
+        views: n.views || '0',
+        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+        commentsCount: Number(n.comments_count || 0),
+        latestEpisodeTitle: n.latest_episode_title || 'Audio Episode',
         link: `#audio`
       }));
+    }
+
+    // Precalculate category-level statistics
+    if (mainItem.novels.length > 0) {
+      mainItem.stats = {
+        totalItems: mainItem.novels.length,
+        totalComments: mainItem.novels.reduce((sum, n) => sum + Number(n.commentsCount || 0), 0),
+        totalViews: mainItem.novels.reduce((sum, n) => sum + Number(n.viewsCount || 0), 0),
+        latestTitle: mainItem.novels[0]?.latestEpisodeTitle ? `${mainItem.novels[0].title} — ${mainItem.novels[0].latestEpisodeTitle}` : (mainItem.novels[0]?.title || null),
+        latestNovelTitle: mainItem.novels[0]?.title || null,
+        latestLink: mainItem.novels[0]?.readLink || mainItem.novels[0]?.link || null,
+        latestDate: mainItem.novels[0]?.latestPublishedAt || mainItem.novels[0]?.updatedDate || null
+      };
+    } else if (mainItem.subcategories.length > 0) {
+      const allCatArticles = mainItem.subcategories.flatMap(s => s.articles || []);
+      const sortedArticles = [...allCatArticles].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      mainItem.stats = {
+        totalSubcategories: mainItem.subcategories.length,
+        totalItems: allCatArticles.length,
+        totalComments: allCatArticles.reduce((sum, a) => sum + Number(a.commentsCount || 0), 0),
+        totalViews: allCatArticles.reduce((sum, a) => sum + Number(a.viewsCount || 0), 0),
+        latestTitle: sortedArticles[0]?.title || null,
+        latestLink: sortedArticles[0]?.link || null,
+        latestDate: sortedArticles[0]?.publishedAt || null
+      };
     }
 
     hierarchy.push(mainItem);

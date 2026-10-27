@@ -250,10 +250,12 @@ export function updateStaticDOMElements() {
       const href = link.getAttribute('href');
       const dataNav = link.getAttribute('data-nav');
       const text = (link.textContent || '').trim().toLowerCase();
-      if (dataNav === 'home' || (idx === 0 && (href === '#forms' || href === '#home')) || text === 'home') {
+      if (dataNav === 'home' || idx === 0) {
         link.textContent = t('nav_home') || 'Home';
-      } else if (dataNav === 'forms' || href === '#forms' || href === '#forum') {
+        link.setAttribute('data-nav', 'home');
+      } else if (dataNav === 'forms' || (idx === 1 && (href === '#forms' || href === '#forum'))) {
         link.innerHTML = `Forms <span class="nav-link-badge">New</span>`;
+        link.setAttribute('data-nav', 'forms');
       }
       else if (href === '#novels?category=Ongoing') link.innerText = t('nav_whats_new');
       else if (href === '#members') link.innerText = t('nav_members');
@@ -271,10 +273,12 @@ export function updateStaticDOMElements() {
       const href = link.getAttribute('href');
       const dataNav = link.getAttribute('data-nav');
       const text = (link.textContent || '').trim().toLowerCase();
-      if (dataNav === 'home' || (idx === 0 && (href === '#forms' || href === '#home')) || text === 'home') {
+      if (dataNav === 'home' || idx === 0) {
         link.textContent = t('nav_home') || 'Home';
+        link.setAttribute('data-nav', 'home');
       } else if (dataNav === 'forms' || href === '#forms' || href === '#forum') {
         link.innerText = 'Forms';
+        link.setAttribute('data-nav', 'forms');
       }
       else if (href === '#novels?category=Ongoing') link.innerText = t('nav_whats_new');
       else if (href === '#members') link.innerText = t('nav_members');

@@ -1047,6 +1047,42 @@ async function renderForumView(container, hash = '') {
 
             <!-- Sidebar Panels -->
             <aside class="forum-sidebar">
+              <!-- Subtitle Statistics Panel (Real DB Counts) -->
+              <section class="forum-panel forms-stats-panel" aria-labelledby="sidebar-sub-stats-heading">
+                <div class="forum-panel-header">
+                  <h3 id="sidebar-sub-stats-heading" class="forum-panel-title">
+                    <span>📊</span>
+                    <span>Section Statistics</span>
+                  </h3>
+                  <span class="forum-panel-badge">STATS</span>
+                </div>
+                <div class="forms-stats-grid">
+                  <div class="forms-stat-card">
+                    <div class="forms-stat-num">${currentSub.stats?.totalItems ?? subArticles.length}</div>
+                    <div class="forms-stat-lbl">${(currentSub.stats?.totalItems ?? subArticles.length) === 1 ? 'Note' : 'Notes'}</div>
+                  </div>
+                  <div class="forms-stat-card">
+                    <div class="forms-stat-num">${currentSub.stats?.totalComments ?? subArticles.reduce((s, a) => s + Number(a.commentsCount || 0), 0)}</div>
+                    <div class="forms-stat-lbl">Comments</div>
+                  </div>
+                  <div class="forms-stat-card forms-stat-card-wide">
+                    <span class="forms-stat-lbl">Total Views</span>
+                    <span class="forms-stat-num">${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</span>
+                  </div>
+                </div>
+                ${(currentSub.stats?.latestTitle || subArticles[0]?.title) ? `
+                  <div class="forms-stats-latest">
+                    <div class="forms-stats-latest-lbl">Latest Publication</div>
+                    <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" class="forms-stats-latest-title" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
+                      ${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}
+                    </a>
+                    ${(currentSub.stats?.latestDate || subArticles[0]?.publishedAt) ? `
+                      <div class="forms-stats-latest-date">📅 ${formatLastSeen(currentSub.stats?.latestDate || subArticles[0]?.publishedAt)}</div>
+                    ` : ''}
+                  </div>
+                ` : ''}
+              </section>
+
               <!-- Latest Posts Panel -->
               <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
                 <div class="forum-panel-header">
@@ -1211,7 +1247,7 @@ async function renderForumView(container, hash = '') {
                     <div class="forms-cat-title-group">
                       <div class="forms-cat-icon">${cat.icon || '💬'}</div>
                       <div>
-                        <h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2>
+                        <a href="#forms?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}"><h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2></a>
                         <div class="forms-cat-desc">${escapeHtml(cat.description || '')}</div>
                       </div>
                     </div>
@@ -1220,42 +1256,35 @@ async function renderForumView(container, hash = '') {
                     </div>
                   </div>
 
-                  <!-- 1. Clickable Subcategories (Main Title -> Clickable Sub Titles -> Content Titles) -->
-                  ${subs.length > 0 ? subs.map(sub => {
-                    const subLink = sub.novelId 
-                      ? `#novel?id=${encodeURIComponent(sub.novelId)}`
-                      : `#forms?sub=${encodeURIComponent(sub.id)}`;
+                  <!-- 1. Clickable Subcategories (Main Title -> Clickable Sub Titles -> Dedicated Content Pages) -->
+                  ${subs.length > 0 ? `
+                    <div class="forms-subs-container">
+                      ${subs.map(sub => {
+                        const subLink = sub.novelId 
+                          ? `#novel?id=${encodeURIComponent(sub.novelId)}`
+                          : `#forms?sub=${encodeURIComponent(sub.id)}`;
+                        const noteCount = sub.articles?.length || 0;
 
-                    return `
-                      <div class="forms-sub-section">
-                        <div class="forms-sub-header">
-                          <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)} section">
-                            <span class="forms-sub-icon">${sub.icon || '📌'}</span>
-                            <h3 class="forms-sub-title">${escapeHtml(sub.title)}</h3>
-                            <span class="forms-sub-link-arrow">➔</span>
-                          </a>
-                          <a href="${subLink}" class="forms-sub-badge-link">
-                            ${sub.articles?.length || 0} Notes »
-                          </a>
-                        </div>
-
-                        <div class="forms-articles-grid" style="margin-top:10px;">
-                          ${sub.articles && sub.articles.length > 0 ? sub.articles.map(art => `
-                            <a href="${art.link}" class="forms-article-card">
-                              <div class="forms-article-title">${escapeHtml(art.title)}</div>
-                              <div class="forms-article-meta">
-                                <span class="forms-article-tag">✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}</span>
-                                <span>📅 ${formatLastSeen(art.publishedAt)}</span>
-                                <span>💬 ${art.commentsCount || 0} comments</span>
+                        return `
+                          <div class="forms-sub-row-card">
+                            <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)} section">
+                              <div class="forms-sub-row-left">
+                                <span class="forms-sub-row-icon">${sub.icon || '📌'}</span>
+                                <h3 class="forms-sub-row-title">${escapeHtml(sub.title)}</h3>
                               </div>
                             </a>
-                          `).join('') : `
-                            <div style="font-size:12px; color:#94A3B8; padding:8px 0;">No published notes in this section yet.</div>
-                          `}
-                        </div>
-                      </div>
-                    `;
-                  }).join('') : ''}
+                            <div style="display:flex; align-items:center; gap:12px;">
+                              <span class="forms-sub-row-count">${noteCount} ${noteCount === 1 ? 'Note' : 'Notes'}</span>
+                              <a href="${subLink}" class="forms-sub-row-action">
+                                <span>View Content</span>
+                                <span>➔</span>
+                              </a>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
 
                   <!-- 2. Novels List (Ongoing Novels, Completed Novels, Short Stories, Audio Novels) -->
                   ${novels.length > 0 ? `
@@ -1287,6 +1316,44 @@ async function renderForumView(container, hash = '') {
 
         <!-- Sidebar Panels -->
         <aside class="forum-sidebar">
+          ${currentCategory ? `
+            <!-- Category Statistics Panel (Real DB Counts) -->
+            <section class="forum-panel forms-stats-panel" aria-labelledby="sidebar-cat-stats-heading">
+              <div class="forum-panel-header">
+                <h3 id="sidebar-cat-stats-heading" class="forum-panel-title">
+                  <span>📊</span>
+                  <span>${escapeHtml(currentCategory.title)} Statistics</span>
+                </h3>
+                <span class="forum-panel-badge">STATS</span>
+              </div>
+              <div class="forms-stats-grid">
+                <div class="forms-stat-card">
+                  <div class="forms-stat-num">${currentCategory.stats?.totalItems ?? (currentCategory.novels?.length || currentCategory.subcategories?.length || 0)}</div>
+                  <div class="forms-stat-lbl">${currentCategory.novels?.length > 0 ? (currentCategory.novels.length === 1 ? 'Novel' : 'Novels') : 'Items'}</div>
+                </div>
+                <div class="forms-stat-card">
+                  <div class="forms-stat-num">${currentCategory.stats?.totalComments ?? (currentCategory.novels || []).reduce((s, n) => s + Number(n.commentsCount || 0), 0)}</div>
+                  <div class="forms-stat-lbl">Comments</div>
+                </div>
+                <div class="forms-stat-card forms-stat-card-wide">
+                  <span class="forms-stat-lbl">Total Views</span>
+                  <span class="forms-stat-num">${Number(currentCategory.stats?.totalViews ?? (currentCategory.novels || []).reduce((s, n) => s + Number(n.viewsCount || 0), 0)).toLocaleString()}</span>
+                </div>
+              </div>
+              ${(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title)) ? `
+                <div class="forms-stats-latest">
+                  <div class="forms-stats-latest-lbl">${currentCategory.novels?.length > 0 ? 'Latest Release' : 'Latest Note'}</div>
+                  <a href="${currentCategory.stats?.latestLink || (currentCategory.novels && (currentCategory.novels[0]?.readLink || currentCategory.novels[0]?.link)) || '#'}" class="forms-stats-latest-title" title="${escapeHtml(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title) || '')}">
+                    ${escapeHtml(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title) || '')}
+                  </a>
+                  ${(currentCategory.stats?.latestDate || (currentCategory.novels && (currentCategory.novels[0]?.latestPublishedAt || currentCategory.novels[0]?.updatedDate))) ? `
+                    <div class="forms-stats-latest-date">📅 ${formatLastSeen(currentCategory.stats?.latestDate || (currentCategory.novels && (currentCategory.novels[0]?.latestPublishedAt || currentCategory.novels[0]?.updatedDate)))}</div>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </section>
+          ` : ''}
+
           <!-- Latest Posts Panel -->
           <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
             <div class="forum-panel-header">
