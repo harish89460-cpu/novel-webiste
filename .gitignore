@@ -37,3 +37,8 @@ npm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Local MySQL Server binaries & data
+mysql_server/
+mysql_data/
+

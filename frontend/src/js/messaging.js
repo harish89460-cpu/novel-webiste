@@ -22,6 +22,24 @@ let globalChatAvailable = true;
 let userSearchTimer = null;
 let chatChannel = null;
 
+// WhatsApp filters, search, & pinned state
+let currentChatFilter = 'all';
+let chatSearchQuery = '';
+
+const PINNED_STORAGE_KEY = 'rp_pinned_chats';
+function getPinnedChatIds() {
+  try {
+    const raw = localStorage.getItem(PINNED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isChatPinned(convId) {
+  return getPinnedChatIds().includes(Number(convId));
+}
+
 // WhatsApp features state
 let pendingImageAttachment = null;
 let mediaRecorder = null;
@@ -95,6 +113,16 @@ export function initMessaging() {
   window.backToConversationList = backToConversationList;
   window.startChatWithUser = startChatWithUser;
   window.filterLocalConversations = filterLocalConversations;
+  window.setChatFilter = setChatFilter;
+  window.clearChatSearch = clearChatSearch;
+  window.togglePinChat = togglePinChat;
+  window.toggleMarkUnread = toggleMarkUnread;
+  window.toggleThreadActionsMenu = toggleThreadActionsMenu;
+  window.toggleHeaderMenu = toggleHeaderMenu;
+  window.markAllConversationsRead = markAllConversationsRead;
+  window.deleteConversationUi = deleteConversationUi;
+  window.loadConversationsList = loadConversationsList;
+  window.closeAllThreadMenus = closeAllThreadMenus;
 
   // WhatsApp features global handlers
   window.triggerChatAttachment = triggerChatAttachment;
@@ -303,42 +331,267 @@ async function loadConversationsSilently() {
 }
 
 /**
- * Render Base Structure inside Messages Drawer
+ * WhatsApp Chat Pinning & Action Handlers
+ */
+export function togglePinChat(convId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const id = Number(convId);
+  let list = getPinnedChatIds();
+  if (list.includes(id)) {
+    list = list.filter(x => x !== id);
+    showToast('Chat unpinned.');
+  } else {
+    list.unshift(id);
+    showToast('Chat pinned to top.');
+  }
+  localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(list));
+  closeAllThreadMenus();
+  renderConversationsList(conversationsList);
+}
+
+export function setChatFilter(filter) {
+  currentChatFilter = filter;
+  document.querySelectorAll('.wa-filter-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-filter') === filter);
+  });
+  renderConversationsList(conversationsList);
+}
+
+export function clearChatSearch() {
+  const input = document.getElementById('chat-search-threads');
+  if (input) {
+    input.value = '';
+    filterLocalConversations('');
+    input.focus();
+  }
+}
+
+export function toggleThreadActionsMenu(convId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const existing = document.getElementById(`wa-thread-menu-${convId}`);
+  const wasOpen = existing && existing.classList.contains('open');
+  closeAllThreadMenus();
+  if (!wasOpen && existing) {
+    existing.classList.add('open');
+  }
+}
+
+export function closeAllThreadMenus() {
+  document.querySelectorAll('.wa-thread-menu.open').forEach(el => el.classList.remove('open'));
+  const headerMenu = document.getElementById('wa-header-dropdown');
+  if (headerMenu) headerMenu.classList.remove('open');
+}
+
+export function toggleHeaderMenu(event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const headerMenu = document.getElementById('wa-header-dropdown');
+  if (headerMenu) {
+    headerMenu.classList.toggle('open');
+  }
+}
+
+export async function markAllConversationsRead(event) {
+  if (event) event.stopPropagation();
+  closeAllThreadMenus();
+  try {
+    conversationsList.forEach(c => {
+      c.unreadCount = 0;
+      c.unread_count = 0;
+    });
+    updateBadgeDisplay(0);
+    renderConversationsList(conversationsList);
+    showToast('All conversations marked as read.');
+  } catch (err) {
+    showToast('Failed to mark all as read: ' + err.message);
+  }
+}
+
+export function toggleMarkUnread(convId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  closeAllThreadMenus();
+  const c = conversationsList.find(x => Number(x.id ?? x.conversationId) === Number(convId));
+  if (c) {
+    const isCurrentlyUnread = Number(c.unreadCount ?? c.unread_count ?? 0) > 0;
+    if (isCurrentlyUnread) {
+      c.unreadCount = 0;
+      c.unread_count = 0;
+      showToast('Marked as read');
+    } else {
+      c.unreadCount = 1;
+      c.unread_count = 1;
+      showToast('Marked as unread');
+    }
+    renderConversationsList(conversationsList);
+    updateUnreadMessageBadge();
+  }
+}
+
+export async function deleteConversationUi(convId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  closeAllThreadMenus();
+  if (!confirm('Are you sure you want to delete this chat conversation?')) return;
+  try {
+    conversationsList = conversationsList.filter(c => Number(c.id ?? c.conversationId) !== Number(convId));
+    renderConversationsList(conversationsList);
+    showToast('Conversation removed.');
+  } catch (err) {
+    showToast('Could not delete conversation: ' + err.message);
+  }
+}
+
+/**
+ * Render Base Structure inside Messages Drawer (WhatsApp Dark Desktop Style)
  */
 function renderDrawerStructure() {
   const container = document.getElementById('messages-body-container');
   if (!container) return;
 
+  const myAvatar = window.CURRENT_USER?.avatar || '/profile.png';
+  const myName = escapeHtml(window.CURRENT_USER?.displayName || window.CURRENT_USER?.username || 'You');
+
+  // Calculate unread total and pinned count for filter pills
+  const unreadTotal = (conversationsList || []).reduce((acc, c) => acc + Number(c?.unreadCount ?? c?.unread_count ?? 0), 0);
+  const pinnedTotal = getPinnedChatIds().length;
+
   container.innerHTML = `
-    <!-- Global Chat Availability Bar -->
-    <div class="chat-availability-bar">
-      <div class="chat-availability-toggle">
-        <span>Chat Available</span>
-        <label class="chat-switch" title="Toggle your chat availability">
+    <!-- WhatsApp Dark Header -->
+    <div class="wa-header">
+      <div class="wa-header-left">
+        <div class="wa-header-avatar-wrap" title="${myName}">
+          <img src="${myAvatar}" class="wa-header-avatar" alt="${myName}" onerror="this.src='/profile.png'">
+        </div>
+        <div class="wa-header-title">Chats</div>
+      </div>
+
+      <div class="wa-header-actions">
+        <!-- Chat Availability Switch (WhatsApp Dark style) -->
+        <label class="wa-header-toggle" title="Chat Available: Toggle incoming messaging availability">
           <input type="checkbox" id="chat-global-toggle-input" ${globalChatAvailable ? 'checked' : ''} 
                  onchange="toggleChatAvailability(this.checked)">
-          <span class="chat-slider"></span>
+          <span class="wa-header-toggle-track"></span>
+          <span class="wa-header-toggle-label">${globalChatAvailable ? 'ON' : 'OFF'}</span>
         </label>
-        <span class="chat-availability-badge ${globalChatAvailable ? 'on' : 'off'}">
-          ${globalChatAvailable ? 'ON' : 'OFF'}
-        </span>
+
+        <!-- New Chat Button -->
+        <button type="button" class="wa-icon-btn" onclick="openNewChatModal()" title="New chat" aria-label="New chat">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+        </button>
+
+        <!-- 3-Dots Menu Button -->
+        <div style="position:relative;">
+          <button type="button" class="wa-icon-btn" onclick="toggleHeaderMenu(event)" title="Menu" aria-label="Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2"></circle>
+              <circle cx="12" cy="12" r="2"></circle>
+              <circle cx="12" cy="19" r="2"></circle>
+            </svg>
+          </button>
+          <div class="wa-thread-menu" id="wa-header-dropdown" style="top:38px; right:0; min-width:175px;">
+            <button type="button" onclick="closeAllThreadMenus(); openNewChatModal();">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              New chat
+            </button>
+            <button type="button" onclick="markAllConversationsRead(event)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Mark all read
+            </button>
+            <button type="button" onclick="closeAllThreadMenus(); loadConversationsList();">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Refresh chats
+            </button>
+          </div>
+        </div>
+
+        <!-- Close Drawer Button -->
+        <button type="button" class="wa-icon-btn" onclick="closeMessagesDrawer()" title="Close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
-      <button class="btn-primary-sm" onclick="openNewChatModal()" style="display:flex; align-items:center; gap:4px; font-size:11.5px; padding:4px 10px;">
-        <span>✏️</span> New Chat
-      </button>
     </div>
 
-    <!-- Main Dynamic Area: Conversation List OR Active Conversation -->
+    <!-- Main WhatsApp Dynamic Area: Conversation List OR Active Conversation -->
     <div id="messages-main-area" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
-      <!-- Search Filter Bar -->
-      <div class="chat-search-wrap">
-        <input type="text" class="chat-search-input" id="chat-search-threads" 
-               placeholder="Search conversations..." 
-               oninput="filterLocalConversations(this.value)">
+      <!-- Search or start a new chat (WhatsApp pill style) -->
+      <div class="wa-search-section">
+        <div class="wa-search-box">
+          <span class="wa-search-icon">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <input type="text" class="wa-search-input" id="chat-search-threads" 
+                 placeholder="Search or start a new chat" 
+                 value="${escapeHtml(chatSearchQuery)}"
+                 oninput="filterLocalConversations(this.value)">
+          <button type="button" class="wa-search-clear" id="chat-search-clear-btn" 
+                  style="${chatSearchQuery ? 'display:block;' : 'display:none;'}"
+                  onclick="clearChatSearch()" title="Clear search">✕</button>
+        </div>
       </div>
 
-      <!-- Threads List Scrollable Area -->
-      <div class="threads-list" id="threads-list-content"></div>
+      <!-- Filter Pills Row: All, Unread, Favourites, Groups, + -->
+      <div class="wa-filter-row">
+        <button type="button" class="wa-filter-pill ${currentChatFilter === 'all' ? 'active' : ''}" 
+                data-filter="all" onclick="setChatFilter('all')">
+          All
+        </button>
+        <button type="button" class="wa-filter-pill ${currentChatFilter === 'unread' ? 'active' : ''}" 
+                data-filter="unread" onclick="setChatFilter('unread')">
+          Unread
+          ${unreadTotal > 0 ? `<span class="wa-pill-badge">${unreadTotal}</span>` : ''}
+        </button>
+        <button type="button" class="wa-filter-pill ${currentChatFilter === 'favourites' ? 'active' : ''}" 
+                data-filter="favourites" onclick="setChatFilter('favourites')">
+          Favourites
+          ${pinnedTotal > 0 ? `<span class="wa-pill-badge">${pinnedTotal}</span>` : ''}
+        </button>
+        <button type="button" class="wa-filter-pill ${currentChatFilter === 'groups' ? 'active' : ''}" 
+                data-filter="groups" onclick="setChatFilter('groups')">
+          Groups
+        </button>
+        <button type="button" class="wa-filter-pill icon-only" onclick="openNewChatModal()" title="New chat / Start conversation">
+          +
+        </button>
+      </div>
+
+      <!-- WhatsApp Conversation Items Scrollable List -->
+      <div class="wa-threads-container" id="threads-list-content"></div>
+
+      <!-- WhatsApp Web Desktop Encrypted Footer Banner -->
+      <div class="wa-footer-banner">
+        <span>🔒 Your personal messages are end-to-end encrypted</span>
+      </div>
     </div>
   `;
 }
@@ -347,13 +600,28 @@ function renderDrawerStructure() {
  * Filter Conversations in Drawer
  */
 export function filterLocalConversations(keyword) {
-  const query = (keyword || '').toLowerCase().trim();
-  if (!query) {
-    renderConversationsList(conversationsList);
-    return;
+  chatSearchQuery = keyword || '';
+  const clearBtn = document.getElementById('chat-search-clear-btn');
+  if (clearBtn) {
+    clearBtn.style.display = chatSearchQuery.trim() ? 'block' : 'none';
   }
-  const filtered = (conversationsList || []).filter((c) => {
+  renderConversationsList(conversationsList);
+}
+
+/**
+ * Render WhatsApp Web Style Conversation Threads List
+ */
+function renderConversationsList(list) {
+  const listArea = document.getElementById('threads-list-content');
+  if (!listArea) return;
+
+  const query = (chatSearchQuery || '').toLowerCase().trim();
+  const pinnedIds = getPinnedChatIds();
+
+  // 1. Filter by search query
+  let filtered = (list || []).filter((c) => {
     if (!c) return false;
+    if (!query) return true;
     const user = c.otherUser || c.other_user || {};
     const name = (user.displayName || user.display_name || user.username || '').toLowerCase();
     let lastMsg = '';
@@ -362,34 +630,94 @@ export function filterLocalConversations(keyword) {
     else if (typeof c.last_message === 'string') lastMsg = c.last_message;
     return name.includes(query) || lastMsg.toLowerCase().includes(query);
   });
-  renderConversationsList(filtered);
-}
 
-/**
- * Render the Threads List
- */
-function renderConversationsList(list) {
-  const listArea = document.getElementById('threads-list-content');
-  if (!listArea) return;
+  // 2. Filter by tab filter
+  if (currentChatFilter === 'unread') {
+    filtered = filtered.filter(c => Number(c?.unreadCount ?? c?.unread_count ?? 0) > 0);
+  } else if (currentChatFilter === 'favourites') {
+    filtered = filtered.filter(c => pinnedIds.includes(Number(c.id ?? c.conversationId)));
+  } else if (currentChatFilter === 'groups') {
+    filtered = filtered.filter(c => Boolean(c?.isGroup ?? c?.is_group));
+  }
 
-  if (!list || list.length === 0) {
+  // 3. Sort: Pinned first, then by lastMessageAt descending
+  filtered.sort((a, b) => {
+    const aId = Number(a.id ?? a.conversationId);
+    const bId = Number(b.id ?? b.conversationId);
+    const aPinned = pinnedIds.includes(aId);
+    const bPinned = pinnedIds.includes(bId);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
+    const timeA = new Date(a.lastMessageAt || a.last_message_at || a.updatedAt || a.updated_at || 0).getTime();
+    const timeB = new Date(b.lastMessageAt || b.last_message_at || b.updatedAt || b.updated_at || 0).getTime();
+    return timeB - timeA;
+  });
+
+  if (filtered.length === 0) {
+    let emptyIcon = `
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+    `;
+    let emptyTitle = 'No chats found';
+    let emptyDesc = 'You have no active conversations matching this filter.';
+    if (currentChatFilter === 'unread') {
+      emptyIcon = `
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#00A884" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 6 7 17 2 12"></polyline>
+          <polyline points="22 10 14.5 17.5 13 16"></polyline>
+        </svg>
+      `;
+      emptyTitle = 'No unread chats';
+      emptyDesc = 'You are all caught up on all your conversations.';
+    } else if (currentChatFilter === 'favourites') {
+      emptyIcon = `
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="#EAB308" stroke="#CA8A04" stroke-width="1.2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+      `;
+      emptyTitle = 'No favourites yet';
+      emptyDesc = 'Hover over any chat and select "Pin chat" to add it here.';
+    } else if (currentChatFilter === 'groups') {
+      emptyIcon = `
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+      `;
+      emptyTitle = 'No group chats';
+      emptyDesc = 'Group conversations will appear here.';
+    } else if (query) {
+      emptyIcon = `
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      `;
+      emptyTitle = `No results for "${escapeHtml(query)}"`;
+      emptyDesc = 'Check the spelling or try searching with a different name.';
+    }
+
     listArea.innerHTML = `
       <div class="chat-empty-state">
-        <div class="chat-empty-icon">💬</div>
-        <div class="chat-empty-title">No conversations yet</div>
-        <div class="chat-empty-desc">
-          Connect privately with fellow members, authors, and writers.
-        </div>
-        <button class="btn btn-gold btn-sm" onclick="openNewChatModal()" style="margin-top:16px;">
-          Start a Conversation
+        <div class="chat-empty-icon">${emptyIcon}</div>
+        <div class="chat-empty-title">${emptyTitle}</div>
+        <div class="chat-empty-desc">${emptyDesc}</div>
+        <button class="btn-wa-green" onclick="openNewChatModal()">
+          Start a new chat
         </button>
       </div>
     `;
     return;
   }
 
-  listArea.innerHTML = list.map((c) => {
+  listArea.innerHTML = filtered.map((c) => {
     if (!c) return '';
+    const convId = c.id ?? c.conversationId;
+    const isPinned = pinnedIds.includes(Number(convId));
     const user = c.otherUser || c.other_user || {};
     const unread = Number(c.unreadCount ?? c.unread_count ?? 0);
     const avatar = user.avatar || '/profile.png';
@@ -397,18 +725,39 @@ function renderConversationsList(list) {
     const role = (user.role || '').toLowerCase();
     const isOnline = Boolean(user.isOnline ?? user.is_online);
 
+    // Status ticks & message snippet
     let snippet = 'Started a conversation';
-    if (typeof c.last_message === 'string' && c.last_message) {
+    let isMe = false;
+    let isRead = false;
+    let messageType = 'text';
+
+    if (c.lastMessage && typeof c.lastMessage === 'object') {
+      snippet = c.lastMessage.content || snippet;
+      isMe = Boolean(c.lastMessage.isMe || c.lastMessage.is_me);
+      isRead = Boolean(c.lastMessage.isRead || c.lastMessage.is_read);
+      messageType = c.lastMessage.messageType || c.lastMessage.message_type || 'text';
+    } else if (typeof c.last_message === 'string' && c.last_message) {
       snippet = c.last_message;
+      isMe = Boolean(c.last_message_is_me);
+      isRead = Boolean(c.last_message_is_read);
     } else if (typeof c.lastMessage === 'string' && c.lastMessage) {
       snippet = c.lastMessage;
-    } else if (c.lastMessage && c.lastMessage.content) {
-      snippet = c.lastMessage.content;
     }
-    snippet = escapeHtml(snippet);
+
+    let snippetPrefix = '';
+    if (messageType === 'image') {
+      snippetPrefix = '📷 Photo ';
+    } else if (messageType === 'audio') {
+      snippetPrefix = '🎙️ Voice note ';
+    }
+
+    // Double ticks ✓✓ for outgoing messages (blue #53bdeb if read, grey #8696a0 if delivered)
+    let ticksHtml = '';
+    if (isMe) {
+      ticksHtml = `<span class="wa-msg-status ${isRead ? 'read' : ''}" title="${isRead ? 'Read' : 'Delivered'}">✓✓</span>`;
+    }
 
     const time = formatChatTime(c.lastMessageAt || c.last_message_at || c.updatedAt || c.updated_at);
-    const convId = c.id ?? c.conversationId;
 
     let roleBadge = '';
     if (role === 'author' || role === 'admin') {
@@ -418,22 +767,60 @@ function renderConversationsList(list) {
     }
 
     return `
-      <div class="thread-item ${unread > 0 ? 'unread' : ''}" onclick="selectConversation(${convId})">
-        <div class="thread-avatar-wrap">
-          <img src="${avatar}" class="thread-avatar" alt="${name}" onerror="this.src='/profile.png'">
-          <span class="online-dot ${isOnline ? '' : 'offline'}" title="${isOnline ? 'Online' : 'Offline'}"></span>
+      <div class="wa-thread-item ${unread > 0 ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" 
+           onclick="selectConversation(${convId})">
+        <!-- Circular Avatar with online indicator -->
+        <div class="wa-thread-avatar-wrap">
+          <img src="${avatar}" class="wa-thread-avatar" alt="${name}" onerror="this.src='/profile.png'">
+          <span class="wa-online-dot ${isOnline ? '' : 'offline'}" title="${isOnline ? 'Online' : 'Offline'}"></span>
         </div>
-        <div class="thread-content">
-          <div class="thread-user-row">
-            <span class="thread-name">
+
+        <!-- Thread Info Center Column -->
+        <div class="wa-thread-info">
+          <!-- Top Row: Contact Name + Role Badge & Time -->
+          <div class="wa-thread-top">
+            <div class="wa-thread-name">
               ${name}
               ${roleBadge}
-            </span>
-            <span class="thread-time">${time}</span>
+            </div>
+            <div class="wa-thread-time ${unread > 0 ? 'unread' : ''}">
+              ${time}
+            </div>
           </div>
-          <div class="thread-bottom-row">
-            <span class="thread-snippet">${snippet}</span>
-            ${unread > 0 ? `<span class="thread-unread-badge">${unread}</span>` : ''}
+
+          <!-- Bottom Row: Status Checkmark, Message Preview, Meta (Pin, Badge, Chevron) -->
+          <div class="wa-thread-bottom">
+            <div class="wa-thread-snippet-wrap">
+              ${ticksHtml}
+              <span class="wa-thread-snippet">${snippetPrefix}${escapeHtml(snippet)}</span>
+            </div>
+
+            <div class="wa-thread-meta">
+              ${isPinned ? `<span class="wa-pin-icon" title="Pinned chat">📌</span>` : ''}
+              ${unread > 0 ? `<span class="wa-unread-badge">${unread}</span>` : ''}
+              
+              <!-- Hover Chevron Button & Dropdown Context Menu -->
+              <div style="position:relative;">
+                <button type="button" class="wa-thread-chevron-btn" 
+                        onclick="toggleThreadActionsMenu(${convId}, event)" 
+                        title="Chat options" aria-label="Chat options">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="wa-thread-menu" id="wa-thread-menu-${convId}">
+                  <button type="button" onclick="togglePinChat(${convId}, event)">
+                    <span>${isPinned ? '📌' : '📍'}</span> ${isPinned ? 'Unpin chat' : 'Pin chat'}
+                  </button>
+                  <button type="button" onclick="toggleMarkUnread(${convId}, event)">
+                    <span>✓✓</span> ${unread > 0 ? 'Mark as read' : 'Mark as unread'}
+                  </button>
+                  <button type="button" class="danger" onclick="deleteConversationUi(${convId}, event)">
+                    <span>🗑️</span> Delete chat
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -605,43 +992,54 @@ function renderActiveConversation(data) {
 
   mainArea.innerHTML = `
     <div class="conversation-view">
-      <!-- Chat Top Header -->
+      <!-- Chat Top Header (WhatsApp Dark) -->
       <div class="conversation-chat-header">
-        <button class="chat-action-btn" onclick="backToConversationList()" title="Back to conversations">
-          ←
+        <button class="chat-back-btn" onclick="backToConversationList()" title="Back to chats">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
         </button>
+
         <div class="chat-user-meta">
-          <div class="thread-avatar-wrap" style="width:36px; height:36px;">
-            <img src="${avatar}" class="thread-avatar" style="width:36px; height:36px;" alt="${name}" onerror="this.src='/profile.png'">
-            <span class="online-dot ${isOnline ? '' : 'offline'}" style="width:10px; height:10px;"></span>
+          <div class="wa-thread-avatar-wrap" style="width:40px; height:40px;">
+            <img src="${avatar}" class="wa-thread-avatar" style="width:40px; height:40px;" alt="${name}" onerror="this.src='/profile.png'">
+            <span class="wa-online-dot ${isOnline ? '' : 'offline'}" style="width:11px; height:11px; bottom:1px; right:1px;"></span>
           </div>
           <div>
-            <div style="font-weight:700; font-size:13.5px; color:var(--color-navy-deep); display:flex; align-items:center; gap:6px;">
+            <div style="font-weight:600; font-size:15px; color:#e9edef; display:flex; align-items:center; gap:6px; line-height:1.2;">
               ${name}
               ${roleBadge}
             </div>
-            <div style="font-size:10.5px; color:${isOnline ? 'var(--color-success)' : '#94A3B8'};">
-              ${isOnline ? '● Online' : '○ Offline'}
+            <div style="font-size:12px; color:${isOnline ? '#00a884' : '#8696a0'}; margin-top:2px;">
+              ${isOnline ? 'online' : 'offline'}
             </div>
           </div>
         </div>
 
         <div class="chat-header-actions">
           ${otherUserId ? `
-            <button class="chat-action-btn ${isLockedByMe ? 'locked' : ''}" 
+            <button class="wa-icon-btn ${isLockedByMe ? 'locked' : ''}" 
                     onclick="toggleChatLock(${otherUserId}, '${isLockedByMe ? 'unlock' : 'lock'}')"
-                    title="${isLockedByMe ? 'Unlock this conversation' : 'Lock messaging with this user'}">
-              ${isLockedByMe ? '🔓 Unlock User' : '🔒 Lock User'}
+                    title="${isLockedByMe ? 'Unlock this user' : 'Lock messaging with this user'}">
+              ${isLockedByMe ? '🔓' : '🔒'}
             </button>
           ` : ''}
 
           ${(window.CURRENT_USER?.role === 'admin' || window.CURRENT_USER?.is_admin) ? `
-            <button class="chat-action-btn ${isConvLocked ? 'locked' : ''}" 
+            <button class="wa-icon-btn ${isConvLocked ? 'locked' : ''}" 
                     onclick="toggleConversationLockUi(${activeConversationId}, ${isConvLocked ? 'false' : 'true'})"
                     title="${isConvLocked ? 'Unlock entire conversation' : 'Lock entire conversation'}">
-              ${isConvLocked ? '🔓 Restore Chat' : '🔒 Lock Chat'}
+              ${isConvLocked ? '🔓' : '🔒'}
             </button>
           ` : ''}
+
+          <button class="wa-icon-btn" onclick="closeMessagesDrawer()" title="Close chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -806,6 +1204,11 @@ function handleGlobalClickDismiss(e) {
   if (!e.target.closest('.bubble-actions-trigger') && !e.target.closest('.bubble-action-menu')) {
     const menus = document.querySelectorAll('.bubble-action-menu');
     menus.forEach(m => m.remove());
+  }
+
+  // Dismiss WhatsApp thread context menus and header dropdown
+  if (!e.target.closest('.wa-thread-chevron-btn') && !e.target.closest('.wa-thread-menu') && !e.target.closest('[onclick*="toggleHeaderMenu"]')) {
+    closeAllThreadMenus();
   }
 }
 
@@ -1867,19 +2270,21 @@ export async function searchEligibleChatUsers(query) {
         }
 
         return `
-          <div class="thread-item" onclick="startChatWithUser(${u.id})" style="border-radius:8px; margin-bottom:6px;">
-            <div class="thread-avatar-wrap" style="width:38px; height:38px;">
-              <img src="${avatar}" class="thread-avatar" style="width:38px; height:38px;" alt="${name}" onerror="this.src='/profile.png'">
+          <div class="wa-thread-item" onclick="startChatWithUser(${u.id})" style="border-radius:10px; margin-bottom:4px; padding:10px 12px; background:rgba(255,255,255,0.03);">
+            <div class="wa-thread-avatar-wrap" style="width:42px; height:42px; flex:0 0 42px;">
+              <img src="${avatar}" class="wa-thread-avatar" style="width:42px; height:42px;" alt="${name}" onerror="this.src='/profile.png'">
             </div>
-            <div class="thread-content">
-              <div class="thread-user-row">
-                <span class="thread-name">
+            <div class="wa-thread-info" style="border:none;">
+              <div class="wa-thread-top">
+                <div class="wa-thread-name">
                   ${name}
                   ${roleBadge}
-                </span>
-                <span style="font-size:11px; color:var(--color-gold-warm);">Message ➔</span>
+                </div>
+                <span style="font-size:12px; color:#00a884; font-weight:500;">Chat ➔</span>
               </div>
-              <span style="font-size:11.5px; color:#94A3B8;">@${escapeHtml(u.username)}</span>
+              <div class="wa-thread-bottom">
+                <span class="wa-thread-snippet">@${escapeHtml(u.username)}</span>
+              </div>
             </div>
           </div>
         `;

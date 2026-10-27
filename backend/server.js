@@ -4,6 +4,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { apiMiddleware } from './api.js';
 import { getDb, loadEnv, testDbConnection } from './db.js';
@@ -168,8 +170,66 @@ const server = http.createServer(async (req, res) => {
   res.end('Not Found');
 });
 
+// Ensure local MySQL daemon is running if configured for localhost
+async function ensureLocalMysqlRunning() {
+  const host = process.env.DB_HOST || 'localhost';
+  const port = Number(process.env.DB_PORT) || 3306;
+  if (host !== 'localhost' && host !== '127.0.0.1') return;
+
+  const isOpen = await new Promise(resolve => {
+    const sock = net.connect({ host: '127.0.0.1', port }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on('error', () => resolve(false));
+    sock.setTimeout(600, () => {
+      sock.destroy();
+      resolve(false);
+    });
+  });
+
+  if (isOpen) return;
+
+  const mysqldCandidates = [
+    path.resolve(rootDir, 'mysql_server/bin/mysqld.exe'),
+    path.resolve(rootDir, '../mysql_server/bin/mysqld.exe')
+  ];
+  const mysqldPath = mysqldCandidates.find(p => fs.existsSync(p));
+  const dataDirCandidates = [
+    path.resolve(rootDir, 'mysql_data'),
+    path.resolve(rootDir, '../mysql_data')
+  ];
+  const dataDir = dataDirCandidates.find(p => fs.existsSync(p));
+
+  if (mysqldPath && dataDir) {
+    console.log('[Server] Auto-starting local MySQL database daemon on port ' + port + '...');
+    try {
+      const proc = spawn(mysqldPath, [`--datadir=${dataDir}`, `--port=${port}`], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      proc.unref();
+
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 250));
+        const ready = await new Promise(resolve => {
+          const s = net.connect({ host: '127.0.0.1', port }, () => {
+            s.destroy();
+            resolve(true);
+          });
+          s.on('error', () => resolve(false));
+        });
+        if (ready) break;
+      }
+    } catch (e) {
+      console.warn('[Server] Failed to auto-start local MySQL daemon:', e.message);
+    }
+  }
+}
+
 // Verify MySQL connection and start server
 async function startServer() {
+  await ensureLocalMysqlRunning();
   const dbHealth = await testDbConnection();
   if (dbHealth.ok) {
     console.log(`✓ MySQL Database Connected successfully [Host: ${dbHealth.host}:${dbHealth.port}, DB: ${dbHealth.database}, Ver: ${dbHealth.version}, Tables: ${dbHealth.tableCount}]`);
