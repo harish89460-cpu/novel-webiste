@@ -1827,6 +1827,11 @@ async function renderTopicView(container, hash) {
     return;
   }
 
+  // Track member topic read activity
+  if (window.IS_LOGGED_IN && topicId) {
+    apiFetch(`/api/forum/topics/${encodeURIComponent(topicId)}/read`, { method: 'POST' }).catch(() => {});
+  }
+
   const topic = await getForumTopicById(topicId);
   if (!topic) {
     renderNotFound(container);
@@ -2113,7 +2118,7 @@ async function renderMembersView(container) {
   `;
 }
 
-// 8. MEMBER PROFILE VIEW WITH USER-CONTROLLED EDITING & PROFILE PICTURE UPLOAD
+// 8. MEMBER PROFILE VIEW WITH INSTAGRAM-STYLE REDESIGN
 async function renderMemberProfileView(container, hash) {
   const urlParams = new URLSearchParams(hash.split('?')[1] || '');
   const memberParam = urlParams.get('id') || (window.CURRENT_USER ? window.CURRENT_USER.username : 'rudhra');
@@ -2127,8 +2132,8 @@ async function renderMemberProfileView(container, hash) {
 
   try {
     const profileData = await getMemberProfile(memberParam);
-    if (profileData && profileData.member) {
-      member = profileData.member;
+    if (profileData) {
+      member = profileData.member || profileData || member;
     }
   } catch (e) {
     console.warn('Using local member profile fallback', e);
@@ -2164,16 +2169,65 @@ async function renderMemberProfileView(container, hash) {
   const mBio = escapeHtml(member.bio || 'No bio added yet.');
   const joinedDate = member.joinedDate || member.joined || 'Jan 2024';
   const isActEnabled = window.CURRENT_USER?.activityStatusEnabled ?? (member.activityStatusEnabled ?? true);
+  const mAvatar = getAvatarUrl(member.avatar);
 
   const avatarDot = (!member.statusHidden && member.isOnline)
-    ? `<span class="status-dot green profile-avatar-dot"></span>`
+    ? `<span class="status-dot green profile-ig-dot"></span>`
     : '';
-
-  const mAvatar = getAvatarUrl(member.avatar);
 
   // Setup Global profile editing and photo upload state
   window._pendingAvatarAction = undefined;
 
+  // Initialize Profile State for Tabs, Stats, and Pagination
+  window._profileState = {
+    memberParam: memberParam,
+    memberId: member.id,
+    isCurrentUser: isCurrentUser,
+    activeTab: urlParams.get('tab') || 'saved', // 'saved' | 'activity' | 'recent-topics'
+    savedPage: 1,
+    activityPage: 1,
+    recentPage: 1,
+    isFollowing: Boolean(member.isFollowing),
+    followersCount: Number(member.followers || member.followersCount || 0),
+    followingCount: Number(member.following || member.followingCount || 0),
+    totalComments: Number(member.totalComments || (member.posts || 0))
+  };
+
+  // Follow / Unfollow Toggle Handler
+  window.handleProfileFollowToggle = async (targetId) => {
+    if (!window.IS_LOGGED_IN) {
+      showToast('Please log in to follow members.');
+      openAuthModal('login');
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/members/${encodeURIComponent(targetId)}/follow`, { method: 'POST' });
+      if (res && res.success) {
+        window._profileState.isFollowing = res.isFollowing;
+        window._profileState.followersCount = res.followersCount;
+        
+        // Update stats counter & button in DOM
+        const numEl = document.getElementById('profile-followers-num');
+        if (numEl) numEl.textContent = res.followersCount;
+        
+        const btn = document.getElementById('profile-follow-toggle-btn');
+        if (btn) {
+          if (res.isFollowing) {
+            btn.className = 'btn btn-outline btn-sm';
+            btn.textContent = '✓ Following';
+          } else {
+            btn.className = 'btn btn-gold btn-sm';
+            btn.textContent = '➕ Follow';
+          }
+        }
+        showToast(res.isFollowing ? `Following ${mName}!` : `Unfollowed ${mName}.`);
+      }
+    } catch (err) {
+      showToast('Could not update follow status: ' + err.message);
+    }
+  };
+
+  // Chat Settings Toggle
   window.handleProfileChatToggle = async (checked) => {
     try {
       const res = await apiFetch('/api/chat/settings', {
@@ -2213,7 +2267,6 @@ async function renderMemberProfileView(container, hash) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
 
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
       showToast('Only JPG, PNG, WEBP, and GIF images are allowed.');
@@ -2221,7 +2274,6 @@ async function renderMemberProfileView(container, hash) {
       return;
     }
 
-    // Validate file size (max 2MB)
     const maxSize = 2 * 1024 * 1024;
     if (file.size > maxSize) {
       showToast('Image size must be less than 2MB.');
@@ -2229,7 +2281,6 @@ async function renderMemberProfileView(container, hash) {
       return;
     }
 
-    // Immediate preview using FileReader
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target.result;
@@ -2289,58 +2340,443 @@ async function renderMemberProfileView(container, hash) {
     }
   };
 
-  container.innerHTML = `
-    <div class="container section">
-      <div class="profile-card-container">
-        <!-- Cover Banner -->
-        <div class="profile-cover-banner">
-          <div class="profile-cover-pattern"></div>
+  // Tab Switching Function
+  window.switchProfileTab = (tabName) => {
+    window._profileState.activeTab = tabName;
+    document.querySelectorAll('.profile-clean-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+    });
+
+    const targetEl = document.getElementById('profile-tab-content-area');
+    if (!targetEl) return;
+
+    if (tabName === 'saved') {
+      window.loadProfileSavedNovels(window._profileState.savedPage);
+    } else if (tabName === 'activity') {
+      window.loadProfileActivity(window._profileState.activityPage);
+    } else if (tabName === 'recent-topics') {
+      window.loadProfileRecentTopics(window._profileState.recentPage);
+    }
+  };
+
+  // 1. Load Saved Novels (10 per page)
+  window.loadProfileSavedNovels = async (page = 1) => {
+    window._profileState.savedPage = page;
+    const targetEl = document.getElementById('profile-tab-content-area');
+    if (!targetEl) return;
+
+    targetEl.innerHTML = `
+      <div style="text-align:center; padding:40px; color:#64748B;">
+        <div style="width:32px; height:32px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:rpSpinLogo 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading saved novels…</div>
+      </div>
+    `;
+
+    try {
+      const res = await apiFetch(`/api/members/${encodeURIComponent(memberParam)}/saved-novels?page=${page}&limit=10`);
+      const data = await res.json();
+      const items = data.items || [];
+      const total = data.pagination?.total || 0;
+      const totalPages = data.pagination?.totalPages || 1;
+
+      // Update badge count
+      const badge = document.getElementById('badge-count-saved');
+      if (badge) badge.textContent = total;
+
+      if (items.length === 0) {
+        targetEl.innerHTML = `
+          <div class="profile-empty-state">
+            <div class="profile-empty-icon">🔖</div>
+            <div class="profile-empty-title">No Saved Novels Yet</div>
+            <p class="profile-empty-desc">${isCurrentUser ? 'Novels you bookmark or save while reading will appear here.' : 'This member has not saved any novels yet.'}</p>
+            <a href="#forms" class="btn btn-gold btn-sm">Explore Novels ➔</a>
+          </div>
+        `;
+        return;
+      }
+
+      targetEl.innerHTML = `
+        <div class="saved-novels-grid">
+          ${items.map(item => `
+            <div class="saved-novel-card">
+              ${isCurrentUser ? `
+                <button type="button" class="saved-novel-remove-btn" 
+                        onclick="window.handleRemoveSavedNovel('${escapeHtml(item.novelId)}')" 
+                        title="Remove from saved list" aria-label="Remove novel">
+                  ✕
+                </button>
+              ` : ''}
+              <a href="#novel?id=${encodeURIComponent(item.novelId)}" class="saved-novel-cover-wrap">
+                <img src="${escapeHtml(item.coverImage || '/images/logo.png')}" alt="${escapeHtml(item.title)}" class="saved-novel-cover" onerror="this.src='/images/logo.png'">
+              </a>
+              <div class="saved-novel-body">
+                <a href="#novel?id=${encodeURIComponent(item.novelId)}" class="saved-novel-title" style="text-decoration:none;">
+                  ${escapeHtml(item.title)}
+                </a>
+                <div class="saved-novel-author">By ${escapeHtml(item.author || 'Rudhra Prarthana')}</div>
+                <div class="saved-novel-meta">
+                  <span>📖 ${item.episodesCount} Episodes</span>
+                  <span>👁️ ${item.totalViews} views</span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
         </div>
 
-        <!-- Main Header Card -->
-        <div class="profile-header-main">
-          <div class="profile-header-top-row">
-            <!-- Large Avatar overlapping cover with green status dot -->
-            <div class="profile-avatar-container">
-              <div class="profile-avatar-inner">
-                <img src="${mAvatar}" class="profile-large-avatar" alt="${mName}" onerror="this.src='/profile.png';">
-                ${avatarDot}
+        ${renderPaginationHtml('loadProfileSavedNovels', page, totalPages, total, 'novels')}
+      `;
+    } catch (err) {
+      targetEl.innerHTML = `<div class="profile-empty-state"><p style="color:#EF4444;">Failed to load saved novels: ${escapeHtml(err.message)}</p></div>`;
+    }
+  };
+
+  // Remove Saved Novel
+  window.handleRemoveSavedNovel = async (novelId) => {
+    if (!confirm('Remove this novel from your saved list?')) return;
+    try {
+      const res = await apiFetch(`/api/members/me/saved-novels/${encodeURIComponent(novelId)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Novel removed from saved list.');
+        window.loadProfileSavedNovels(window._profileState.savedPage);
+      } else {
+        throw new Error(data.error || 'Failed to remove');
+      }
+    } catch (err) {
+      showToast('Error removing novel: ' + err.message);
+    }
+  };
+
+  // 2. Load Activity Timeline (10 per page)
+  window.loadProfileActivity = async (page = 1) => {
+    window._profileState.activityPage = page;
+    const targetEl = document.getElementById('profile-tab-content-area');
+    if (!targetEl) return;
+
+    targetEl.innerHTML = `
+      <div style="text-align:center; padding:40px; color:#64748B;">
+        <div style="width:32px; height:32px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:rpSpinLogo 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading activity timeline…</div>
+      </div>
+    `;
+
+    try {
+      const res = await apiFetch(`/api/members/${encodeURIComponent(memberParam)}/activity?page=${page}&limit=10`);
+      const data = await res.json();
+      const items = data.items || [];
+      const total = data.pagination?.total || 0;
+      const totalPages = data.pagination?.totalPages || 1;
+
+      const badge = document.getElementById('badge-count-activity');
+      if (badge) badge.textContent = total;
+
+      if (items.length === 0) {
+        targetEl.innerHTML = `
+          <div class="profile-empty-state">
+            <div class="profile-empty-icon">⚡</div>
+            <div class="profile-empty-title">No Activity Recorded</div>
+            <p class="profile-empty-desc">${isCurrentUser ? 'Comments, replies, reactions, and forum discussions you create will appear here.' : 'No public activity recorded for this member yet.'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      const typeMeta = {
+        novel_comment: { icon: '💬', label: 'Novel Comment' },
+        content_comment: { icon: '💬', label: 'Article Comment' },
+        short_story_comment: { icon: '📝', label: 'Story Comment' },
+        forum_topic: { icon: '💡', label: 'Forum Topic' },
+        forum_post: { icon: '💭', label: 'Forum Reply' },
+        reaction: { icon: '❤️', label: 'Reaction' },
+        like: { icon: '👍', label: 'Like' }
+      };
+
+      targetEl.innerHTML = `
+        <div class="activity-timeline-list">
+          ${items.map(item => {
+            const meta = typeMeta[item.activityType] || { icon: '📌', label: 'Activity' };
+            const timeAgo = escapeHtml(item.createdAt || 'Recently');
+            return `
+              <div class="activity-card" id="activity-row-${escapeHtml(item.activityType)}-${escapeHtml(item.id)}">
+                <div class="activity-icon-badge">${meta.icon}</div>
+                <div class="activity-content-col">
+                  <div class="activity-header-row">
+                    <span class="activity-type-pill">${meta.label}</span>
+                    <span class="activity-time-stamp">⏱ ${timeAgo}</span>
+                  </div>
+                  <div>
+                    <a href="${escapeHtml(item.targetUrl || '#forms')}" class="activity-target-link">
+                      ${escapeHtml(item.targetTitle || 'View Discussion')}
+                    </a>
+                  </div>
+                  ${item.content ? `
+                    <div class="activity-excerpt" id="activity-content-${escapeHtml(item.activityType)}-${escapeHtml(item.id)}">
+                      ${escapeHtml(item.content)}
+                    </div>
+                  ` : ''}
+                  ${(item.canEdit || item.canDelete) ? `
+                    <div class="activity-actions-bar">
+                      ${item.canEdit ? `
+                        <button type="button" class="activity-action-btn edit" 
+                                onclick="window.handleEditActivityItem('${escapeHtml(item.activityType)}', '${escapeHtml(item.id)}')" title="Edit your content">
+                          ✏️ Edit
+                        </button>
+                      ` : ''}
+                      ${item.canDelete ? `
+                        <button type="button" class="activity-action-btn delete" 
+                                onclick="window.handleDeleteActivityItem('${escapeHtml(item.activityType)}', '${escapeHtml(item.id)}')" title="Delete this record">
+                          🗑️ Delete
+                        </button>
+                      ` : ''}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        ${renderPaginationHtml('loadProfileActivity', page, totalPages, total, 'activities')}
+      `;
+    } catch (err) {
+      targetEl.innerHTML = `<div class="profile-empty-state"><p style="color:#EF4444;">Failed to load activity: ${escapeHtml(err.message)}</p></div>`;
+    }
+  };
+
+  // Edit Activity Item Handler
+  window.handleEditActivityItem = async (type, id) => {
+    const contentEl = document.getElementById(`activity-content-${type}-${id}`);
+    const currentText = contentEl ? contentEl.textContent.trim() : '';
+    const newText = prompt('Edit your comment / post content:', currentText);
+    if (newText === null || newText.trim() === '' || newText.trim() === currentText) return;
+
+    try {
+      const res = await apiFetch(`/api/members/activity/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newText.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Activity content updated successfully.');
+        if (contentEl) contentEl.textContent = newText.trim();
+      } else {
+        throw new Error(data.error || 'Update failed');
+      }
+    } catch (err) {
+      showToast('Error updating content: ' + err.message);
+    }
+  };
+
+  // Delete Activity Item Handler
+  window.handleDeleteActivityItem = async (type, id) => {
+    if (!confirm('Are you sure you want to permanently delete this comment or post? This cannot be undone.')) return;
+    try {
+      const res = await apiFetch(`/api/members/activity/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Activity record deleted.');
+        const row = document.getElementById(`activity-row-${type}-${id}`);
+        if (row) row.remove();
+        // Refresh activity to keep page count accurate
+        window.loadProfileActivity(window._profileState.activityPage);
+      } else {
+        throw new Error(data.error || 'Delete failed');
+      }
+    } catch (err) {
+      showToast('Error deleting item: ' + err.message);
+    }
+  };
+
+  // 3. Load Recently Read Topics (10 per page)
+  window.loadProfileRecentTopics = async (page = 1) => {
+    window._profileState.recentPage = page;
+    const targetEl = document.getElementById('profile-tab-content-area');
+    if (!targetEl) return;
+
+    targetEl.innerHTML = `
+      <div style="text-align:center; padding:40px; color:#64748B;">
+        <div style="width:32px; height:32px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:rpSpinLogo 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading recent topics…</div>
+      </div>
+    `;
+
+    try {
+      const res = await apiFetch(`/api/members/${encodeURIComponent(memberParam)}/recent-topics?page=${page}&limit=10`);
+      const data = await res.json();
+      const items = data.items || [];
+      const total = data.pagination?.total || 0;
+      const totalPages = data.pagination?.totalPages || 1;
+
+      const badge = document.getElementById('badge-count-recent');
+      if (badge) badge.textContent = total;
+
+      if (items.length === 0) {
+        targetEl.innerHTML = `
+          <div class="profile-empty-state">
+            <div class="profile-empty-icon">📖</div>
+            <div class="profile-empty-title">No Recently Read Topics</div>
+            <p class="profile-empty-desc">${isCurrentUser ? 'Forum discussion topics you read or open in the community will appear here.' : 'No recently read topics for this member.'}</p>
+            <a href="#forms" class="btn btn-gold btn-sm">Explore Community Forum ➔</a>
+          </div>
+        `;
+        return;
+      }
+
+      targetEl.innerHTML = `
+        <div class="recent-topics-list">
+          ${items.map(topic => `
+            <a href="#topic?id=${encodeURIComponent(topic.topicId)}" class="recent-topic-card">
+              <div class="recent-topic-main">
+                <div class="recent-topic-title">${escapeHtml(topic.title)}</div>
+                <div class="recent-topic-meta-row">
+                  ${topic.categoryTitle ? `<span class="recent-topic-category-badge">${escapeHtml(topic.categoryTitle)}</span>` : ''}
+                  <span>💬 ${topic.repliesCount} replies</span>
+                  <span>👁️ ${topic.viewsCount} views</span>
+                  <span class="recent-topic-last-read">⏱️ Last read ${escapeHtml(topic.lastReadAt || 'recently')}</span>
+                </div>
+              </div>
+              <div style="color:#C89B3C; font-size:18px;">➔</div>
+            </a>
+          `).join('')}
+        </div>
+
+        ${renderPaginationHtml('loadProfileRecentTopics', page, totalPages, total, 'topics')}
+      `;
+    } catch (err) {
+      targetEl.innerHTML = `<div class="profile-empty-state"><p style="color:#EF4444;">Failed to load recent topics: ${escapeHtml(err.message)}</p></div>`;
+    }
+  };
+
+  // Helper function to render consistent 10-item pagination controls
+  function renderPaginationHtml(fnName, currentPage, totalPages, totalCount, label) {
+    if (totalPages <= 1) return '';
+    const startItem = (currentPage - 1) * 10 + 1;
+    const endItem = Math.min(currentPage * 10, totalCount);
+
+    let pages = [];
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || (p >= currentPage - 2 && p <= currentPage + 2)) {
+        pages.push(p);
+      } else if (pages[pages.length - 1] !== '...') {
+        pages.push('...');
+      }
+    }
+
+    return `
+      <div class="profile-pagination-wrap">
+        <div class="profile-pagination-info">
+          Showing <strong>${startItem}–${endItem}</strong> of <strong>${totalCount}</strong> ${label}
+        </div>
+        <div class="profile-pagination-controls">
+          <button type="button" class="profile-page-btn" 
+                  ${currentPage <= 1 ? 'disabled' : ''} 
+                  onclick="${fnName}(${currentPage - 1})">
+            « Prev
+          </button>
+          ${pages.map(p => {
+            if (p === '...') return '<span style="padding:0 4px; color:#94A3B8;">...</span>';
+            return `
+              <button type="button" class="profile-page-btn ${p === currentPage ? 'active' : ''}" 
+                      onclick="${fnName}(${p})">
+                ${p}
+              </button>
+            `;
+          }).join('')}
+          <button type="button" class="profile-page-btn" 
+                  ${currentPage >= totalPages ? 'disabled' : ''} 
+                  onclick="${fnName}(${currentPage + 1})">
+            Next »
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Render Full Instagram-Style Profile Shell
+  container.innerHTML = `
+    <div class="container section">
+      <div class="profile-clean-container">
+        <!-- Clean Solid Background Accent (No heavy blue banner) -->
+        <div class="profile-clean-cover"></div>
+
+        <!-- Instagram-Inspired Profile Header -->
+        <div class="profile-ig-header">
+          <!-- Avatar Column -->
+          <div class="profile-ig-avatar-wrap">
+            <div class="profile-ig-avatar-ring">
+              <img src="${mAvatar}" class="profile-ig-avatar" alt="${mName}" onerror="this.src='/profile.png';">
+            </div>
+            ${avatarDot}
+          </div>
+
+          <!-- Main Info Column -->
+          <div class="profile-ig-main-col">
+            <!-- Top Bar: Display Name & Actions -->
+            <div class="profile-ig-top-bar">
+              <div class="profile-ig-user-headline">
+                <h1 class="profile-ig-title">${mName}</h1>
+                <span class="profile-ig-handle">@${escapeHtml(member.username)}</span>
+              </div>
+
+              <!-- Action Controls -->
+              <div class="profile-ig-actions">
+                ${isCurrentUser ? `
+                  <button type="button" class="btn btn-outline btn-sm" onclick="toggleProfileEditCard()" style="border-color:#C89B3C; color:#0B1F33; font-weight:700;">
+                    ✏️ Edit Profile
+                  </button>
+                  ${(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.role === 'Admin' || window.CURRENT_USER?.isAuthorSession) ? `
+                    <button type="button" class="btn btn-gold btn-sm" onclick="window.location.hash='#admin';" style="padding:4px 10px; font-weight:700;">
+                      👑 AD
+                    </button>
+                  ` : (window.CURRENT_USER?.isWriter || window.CURRENT_USER?.role === 'writer') ? `
+                    <button type="button" class="btn btn-gold btn-sm" onclick="window.location.hash='#writer';" style="padding:4px 10px; font-weight:700;">
+                      ✍️ WD
+                    </button>
+                  ` : ''}
+                  <button type="button" class="btn btn-outline btn-sm" onclick="handleLogout()" style="color:#EF4444; border-color:#FCA5A5;" title="Logout">
+                    🚪 Logout
+                  </button>
+                ` : `
+                  <button type="button" class="btn btn-gold btn-sm" onclick="openDirectChatWithUser(${JSON.stringify(member.id)})" title="Send a private message">
+                    💬 Message
+                  </button>
+                  <button type="button" id="profile-follow-toggle-btn" 
+                          class="btn ${window._profileState.isFollowing ? 'btn-outline' : 'btn-gold'} btn-sm" 
+                          onclick="window.handleProfileFollowToggle(${JSON.stringify(member.id)})">
+                    ${window._profileState.isFollowing ? '✓ Following' : '➕ Follow'}
+                  </button>
+                `}
               </div>
             </div>
 
-            <!-- Action Buttons Bar (User Dashboard Controls) -->
-            <div class="profile-header-actions">
-              ${isCurrentUser ? `
-                <button class="btn btn-gold btn-sm" onclick="toggleProfileEditCard()">
-                  ✏️ Edit Profile
-                </button>
-                ${(window.CURRENT_USER?.isAdmin && window.CURRENT_USER?.isAuthorSession) ? `
-                  <button class="btn btn-outline btn-sm" onclick="window.location.hash='#admin';" style="border-color:var(--color-gold); color:var(--color-gold-warm);">
-                    👑 AD
-                  </button>
-                ` : ''}
-                <button class="btn btn-outline btn-sm" onclick="handleLogout()" style="color:#EF4444; border-color:#FCA5A5;" title="Logout and invalidate session">
-                  🚪 Logout
-                </button>
-              ` : `
-                <button class="btn btn-gold btn-sm" onclick="openDirectChatWithUser(${JSON.stringify(member.id)})" title="Send a private message to this member">💬 Message</button>
-                <button class="btn btn-outline btn-sm" onclick="showToast('Following member!')">➕ Follow</button>
-              `}
-            </div>
-          </div>
-
-          <!-- User Details (display name, username, roles, joined date, status) -->
-          <div class="profile-details-section">
-            <div class="profile-name-row">
-              <h1 class="profile-display-name">${mName}</h1>
-              <span class="profile-username-tag">@${escapeHtml(member.username)}</span>
+            <!-- Instagram-Style Metrics Row (Followers, Following, Total Comments) -->
+            <div class="profile-ig-stats-row">
+              <div class="profile-ig-stat-box" title="Followers">
+                <span class="profile-ig-stat-num" id="profile-followers-num">${window._profileState.followersCount}</span>
+                <span class="profile-ig-stat-lbl">Followers</span>
+              </div>
+              <div class="profile-ig-stat-box" title="Following">
+                <span class="profile-ig-stat-num" id="profile-following-num">${window._profileState.followingCount}</span>
+                <span class="profile-ig-stat-lbl">Following</span>
+              </div>
+              <div class="profile-ig-stat-box" title="Total Community Comments">
+                <span class="profile-ig-stat-num" id="profile-comments-num">${window._profileState.totalComments}</span>
+                <span class="profile-ig-stat-lbl">Comments</span>
+              </div>
             </div>
 
-            <div class="profile-meta-chips">
-              <span class="profile-chip role">👑 ${escapeHtml(member.title || 'Member')}</span>
-              <span class="profile-chip joined">📅 Joined ${escapeHtml(joinedDate)}</span>
+            <!-- Bio -->
+            <div class="profile-ig-bio">${mBio}</div>
+
+            <!-- Role & Meta Chips -->
+            <div class="profile-ig-meta-chips">
+              <span class="profile-ig-chip role">👑 ${escapeHtml(member.title || member.role || 'Member')}</span>
+              <span class="profile-ig-chip joined">📅 Joined ${escapeHtml(joinedDate)}</span>
               ${!member.statusHidden ? `
-                <span class="profile-chip status">
+                <span class="profile-ig-chip" style="background:transparent; padding:0;">
                   ${member.isOnline
                     ? `<span class="status-indicator online"><span class="status-dot green"></span> Active now</span>`
                     : (member.lastSeen
@@ -2352,159 +2788,147 @@ async function renderMemberProfileView(container, hash) {
               ` : ''}
             </div>
 
-            <!-- Compact Member Reading Activity (Active Status Protected) -->
-            ${(!member.statusHidden && (member.currentReading || member.lastRead)) ? `
-              <div class="profile-reading-activity-wrap">
-                ${member.currentReading ? `
-                  <div class="profile-reading-chip reading-now">
-                    <div class="reading-chip-badge"><span class="status-dot green"></span> Reading Now</div>
-                    <div class="reading-chip-body">
-                      <div class="reading-chip-row"><span class="chip-lbl">Reading:</span> <strong class="chip-title">${escapeHtml(member.currentReading.novelTitle)}${member.currentReading.chapterNum ? ` (${member.currentReading.chapterNum})` : ''}</strong></div>
-                      <div class="reading-chip-row"><span class="chip-lbl">Reading for:</span> <span class="chip-duration">${escapeHtml(member.currentReading.duration)}</span></div>
+            <!-- Active Status & Chat Availability Controls (For Current User only) -->
+            ${isCurrentUser ? `
+              <div style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">
+                <!-- Active Status Toggle -->
+                <div class="activity-status-card">
+                  <div class="activity-status-info">
+                    <span class="activity-status-icon">${isActEnabled ? '🟢' : '🔒'}</span>
+                    <div>
+                      <div class="activity-status-title-row">
+                        <span class="activity-status-title">Active Status</span>
+                        <span id="activity-status-label" class="activity-status-badge ${isActEnabled ? 'enabled' : 'hidden'}">
+                          ${isActEnabled ? 'Enabled' : 'Hidden'}
+                        </span>
+                      </div>
+                      <p id="activity-status-desc-text" class="activity-status-desc">
+                        ${isActEnabled
+                          ? 'When enabled, other readers can see when you are online, your reading duration, and your current or last read story.'
+                          : 'When hidden, your online status, current story, duration, and last-read activity remain completely private.'
+                        }
+                      </p>
                     </div>
                   </div>
-                ` : `
-                  <div class="profile-reading-chip last-read">
-                    <div class="reading-chip-badge">📚 Recent Activity</div>
-                    <div class="reading-chip-body">
-                      <div class="reading-chip-row"><span class="chip-lbl">Last read:</span> <strong class="chip-title">${escapeHtml(member.lastRead.novelTitle)}${member.lastRead.chapterNum ? ` (${member.lastRead.chapterNum})` : ''}</strong></div>
-                      <div class="reading-chip-row"><span class="chip-lbl">Last read time:</span> <span class="chip-duration">${escapeHtml(member.lastRead.lastReadAgo || 'Recently')}</span></div>
+                  <label class="switch" aria-label="Toggle Active Status">
+                    <input type="checkbox" id="profile-activity-toggle" ${isActEnabled ? 'checked' : ''} onchange="toggleActivityStatus(this.checked)">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <!-- Chat Availability Toggle -->
+                <div class="activity-status-card">
+                  <div class="activity-status-info">
+                    <span class="activity-status-icon">💬</span>
+                    <div>
+                      <div class="activity-status-title-row">
+                        <span class="activity-status-title">Chat Availability</span>
+                        <span id="profile-chat-status-label" class="activity-status-badge ${window.CURRENT_USER?.isChatAvailable !== false ? 'enabled' : 'hidden'}">
+                          ${window.CURRENT_USER?.isChatAvailable !== false ? 'Available' : 'Paused'}
+                        </span>
+                      </div>
+                      <p class="activity-status-desc">
+                        When enabled, other eligible members and authors can send you direct private messages. When paused, new incoming messages are blocked.
+                      </p>
                     </div>
                   </div>
-                `}
+                  <label class="switch" aria-label="Toggle Chat Availability">
+                    <input type="checkbox" id="profile-chat-toggle" ${window.CURRENT_USER?.isChatAvailable !== false ? 'checked' : ''} onchange="handleProfileChatToggle(this.checked)">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
               </div>
             ` : ''}
           </div>
-
-          <!-- Activity Status Privacy Control (For Current User only) -->
-          ${isCurrentUser ? `
-            <div class="activity-status-card">
-              <div class="activity-status-info">
-                <span class="activity-status-icon">${isActEnabled ? '🟢' : '🔒'}</span>
-                <div>
-                  <div class="activity-status-title-row">
-                    <span class="activity-status-title">Active Status</span>
-                    <span id="activity-status-label" class="activity-status-badge ${isActEnabled ? 'enabled' : 'hidden'}">
-                      ${isActEnabled ? 'Enabled' : 'Hidden'}
-                    </span>
-                  </div>
-                  <p id="activity-status-desc-text" class="activity-status-desc">
-                    ${isActEnabled
-                      ? 'When enabled, other readers can see when you are online, your reading duration, and your current or last read story.'
-                      : 'When hidden, your online status, current story, duration, and last-read activity remain completely private.'
-                    }
-                  </p>
-                </div>
-              </div>
-              <label class="switch" aria-label="Toggle Active Status">
-                <input type="checkbox" id="profile-activity-toggle" ${isActEnabled ? 'checked' : ''} onchange="toggleActivityStatus(this.checked)">
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <!-- Global Chat Availability Setting -->
-            <div class="activity-status-card" style="margin-top:12px;">
-              <div class="activity-status-info">
-                <span class="activity-status-icon">💬</span>
-                <div>
-                  <div class="activity-status-title-row">
-                    <span class="activity-status-title">Chat Availability</span>
-                    <span id="profile-chat-status-label" class="activity-status-badge ${window.CURRENT_USER?.isChatAvailable !== false ? 'enabled' : 'hidden'}">
-                      ${window.CURRENT_USER?.isChatAvailable !== false ? 'Available' : 'Paused'}
-                    </span>
-                  </div>
-                  <p class="activity-status-desc">
-                    When enabled, other eligible members and authors can send you direct private messages. When paused, new incoming messages are blocked.
-                  </p>
-                </div>
-              </div>
-              <label class="switch" aria-label="Toggle Chat Availability">
-                <input type="checkbox" id="profile-chat-toggle" ${window.CURRENT_USER?.isChatAvailable !== false ? 'checked' : ''} onchange="handleProfileChatToggle(this.checked)">
-                <span class="slider round"></span>
-              </label>
-            </div>
-          ` : ''}
         </div>
-      </div>
 
-      <!-- User-Controlled Profile Edit Card (Collapsible) -->
-      ${isCurrentUser ? `
-        <div id="edit-profile-card" style="display:none; background:#FFFFFF; border:1px solid var(--color-border); border-radius:var(--radius-lg); padding:var(--space-6); margin:20px 0 28px; box-shadow:var(--shadow-md);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--color-border-light); padding-bottom:12px;">
-            <h3 style="margin:0; font-family:var(--font-serif); color:var(--color-navy-deep); font-size:1.3rem;">
-              ✏️ Edit Your Profile
-            </h3>
-            <button class="action-btn" onclick="toggleProfileEditCard()" style="border:none; background:transparent; font-size:18px; cursor:pointer;" title="Close">✕</button>
+        <!-- User-Controlled Profile Edit Card (Collapsible) -->
+        ${isCurrentUser ? `
+          <div id="edit-profile-card" style="display:none; background:#FAF5EC; border-top:1px solid rgba(200,155,60,0.25); border-bottom:1px solid rgba(200,155,60,0.25); padding:24px 36px; box-shadow:inset 0 2px 8px rgba(0,0,0,0.02);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+              <h3 style="margin:0; font-family:var(--font-serif); color:#0B1F33; font-size:1.3rem;">
+                ✏️ Edit Your Profile
+              </h3>
+              <button type="button" class="action-btn" onclick="toggleProfileEditCard()" style="border:none; background:transparent; font-size:18px; cursor:pointer;" title="Close">✕</button>
+            </div>
+            
+            <form id="profile-edit-form" onsubmit="event.preventDefault(); window.handleSaveProfile();">
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:16px;">
+                <div class="form-group">
+                  <label class="form-label" style="font-weight:700; color:#0B1F33; font-size:13px;">Display Name <span style="color:#EF4444;">*</span></label>
+                  <input type="text" id="edit-display-name" class="form-input" value="${escapeHtml(member.displayName || member.username || '')}" required style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px;">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="font-weight:700; color:#0B1F33; font-size:13px;">Username <span style="color:#EF4444;">*</span></label>
+                  <input type="text" id="edit-username" class="form-input" value="${escapeHtml(member.username || '')}" required pattern="[a-zA-Z0-9_]{3,20}" style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px;">
+                  <small style="color:#64748B; font-size:11px;">3-20 characters, letters, numbers or _</small>
+                </div>
+              </div>
+
+              <!-- Profile Picture Upload, Preview, and Removal -->
+              <div class="form-group" style="margin-bottom:20px;">
+                <label class="form-label" style="font-weight:700; color:#0B1F33; font-size:13px;">Profile Photo</label>
+                <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; background:#FFFFFF; padding:16px; border-radius:10px; border:1px dashed #CBD5E1;">
+                  <img id="edit-avatar-preview" src="${mAvatar}" style="width:68px; height:68px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C; box-shadow:0 2px 8px rgba(0,0,0,0.1); flex-shrink:0;" onerror="this.src='/profile.png'">
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="file" id="edit-avatar-file-input" accept="image/png, image/jpeg, image/jpg, image/webp, image/gif" style="display:none;" onchange="window.handleProfileFileChange(event)">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                      <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('edit-avatar-file-input').click()">
+                        📷 Upload Photo
+                      </button>
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-remove-avatar" onclick="window.handleRemoveProfileAvatar()" style="color:#DC2626; border-color:#FECACA;">
+                        🗑️ Remove Photo
+                      </button>
+                    </div>
+                    <small style="color:#64748B; font-size:11px;">
+                      JPG, PNG, WEBP or GIF (Max 2MB)
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label" style="font-weight:700; color:#0B1F33; font-size:13px;">About / Bio</label>
+                <textarea id="edit-bio" class="form-input" rows="3" placeholder="Write a few lines about yourself..." style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px;">${escapeHtml(member.bio || '')}</textarea>
+              </div>
+
+              <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-outline" onclick="toggleProfileEditCard()">Cancel</button>
+                <button type="submit" id="save-profile-btn" class="btn btn-gold">💾 Save Changes</button>
+              </div>
+            </form>
           </div>
-          
-          <form id="profile-edit-form" onsubmit="event.preventDefault(); window.handleSaveProfile();">
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:16px;">
-              <div class="form-group">
-                <label class="form-label">Display Name <span style="color:#EF4444;">*</span></label>
-                <input type="text" id="edit-display-name" class="form-input" value="${escapeHtml(member.displayName || member.username || '')}" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Username <span style="color:#EF4444;">*</span></label>
-                <input type="text" id="edit-username" class="form-input" value="${escapeHtml(member.username || '')}" required pattern="[a-zA-Z0-9_]{3,20}">
-                <small style="color:var(--color-text-muted); font-size:11px;">3-20 characters, numbers or _</small>
-              </div>
-            </div>
+        ` : ''}
 
-            <!-- Profile Picture Upload, Preview, and Removal -->
-            <div class="form-group" style="margin-bottom:20px;">
-              <label class="form-label">Profile Picture</label>
-              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; background:rgba(0,0,0,0.02); padding:16px; border-radius:var(--radius-md); border:1px dashed var(--color-border);">
-                <img id="edit-avatar-preview" src="${mAvatar}" style="width:72px; height:72px; border-radius:var(--radius-full); object-fit:cover; border:3px solid var(--color-gold-warm); box-shadow:var(--shadow-sm); flex-shrink:0;" onerror="this.src='/profile.png'">
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                  <input type="file" id="edit-avatar-file-input" accept="image/png, image/jpeg, image/jpg, image/webp, image/gif" style="display:none;" onchange="window.handleProfileFileChange(event)">
-                  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('edit-avatar-file-input').click()">
-                      📷 Upload Photo
-                    </button>
-                    <button type="button" class="btn btn-outline btn-sm" id="btn-remove-avatar" onclick="window.handleRemoveProfileAvatar()" style="color:#DC2626; border-color:#FECACA;">
-                      🗑️ Remove Photo
-                    </button>
-                  </div>
-                  <small style="color:var(--color-text-muted); font-size:11px;">
-                    JPG, PNG, WEBP or GIF (Max 2MB)
-                  </small>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-group" style="margin-bottom:16px;">
-              <label class="form-label">About / Bio</label>
-              <textarea id="edit-bio" class="form-input" rows="3" placeholder="Write a few lines about yourself...">${escapeHtml(member.bio || '')}</textarea>
-            </div>
-
-            <div style="display:flex; gap:12px; justify-content:flex-end;">
-              <button type="button" class="btn btn-outline" onclick="toggleProfileEditCard()">Cancel</button>
-              <button type="submit" id="save-profile-btn" class="btn btn-gold">💾 Save Changes</button>
-            </div>
-          </form>
+        <!-- 2. Profile Navigation Tabs (Strictly: 1. Saved Novels, 2. Activity, 3. Recently Read Topics) -->
+        <div class="profile-clean-tabs-nav" role="tablist">
+          <button type="button" class="profile-clean-tab-btn ${window._profileState.activeTab === 'saved' ? 'active' : ''}" 
+                  data-tab="saved" onclick="switchProfileTab('saved')" role="tab">
+            <span>🔖 Saved Novels</span>
+            <span class="tab-count-badge" id="badge-count-saved">0</span>
+          </button>
+          <button type="button" class="profile-clean-tab-btn ${window._profileState.activeTab === 'activity' ? 'active' : ''}" 
+                  data-tab="activity" onclick="switchProfileTab('activity')" role="tab">
+            <span>⚡ Activity</span>
+            <span class="tab-count-badge" id="badge-count-activity">0</span>
+          </button>
+          <button type="button" class="profile-clean-tab-btn ${window._profileState.activeTab === 'recent-topics' ? 'active' : ''}" 
+                  data-tab="recent-topics" onclick="switchProfileTab('recent-topics')" role="tab">
+            <span>📖 Recently Read Topics</span>
+            <span class="tab-count-badge" id="badge-count-recent">0</span>
+          </button>
         </div>
-      ` : ''}
 
-      <!-- Profile Tabs Navigation -->
-      <div class="profile-tabs-nav">
-        <div class="profile-tab-btn active">Overview</div>
-        <div class="profile-tab-btn" onclick="showToast('Loading topics...')">${t('forum_topics')} (${member.topicsCount ?? 0})</div>
-        <div class="profile-tab-btn" onclick="showToast('Loading bookmarks...')">Bookmarks</div>
-      </div>
-
-      <!-- About Me & Community Stats Card -->
-      <div style="background:#FFFFFF; border:1px solid var(--color-border); border-radius:var(--radius-lg); padding:var(--space-6); box-shadow:var(--shadow-sm);">
-        <h3 style="font-family:var(--font-serif); font-size:1.35rem; color:var(--color-navy-deep); margin-bottom:10px;">About Me</h3>
-        <p style="font-size:15px; line-height:1.8; color:var(--color-text-main); margin-bottom:0;">${mBio}</p>
-
-        <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--color-border-light); display:flex; gap:32px; flex-wrap:wrap;">
-          <div><strong>${member.postsCount ?? 0}</strong> <span style="color:var(--color-text-muted); font-size:12px;">Forum Replies</span></div>
-          <div><strong>${member.topicsCount ?? 0}</strong> <span style="color:var(--color-text-muted); font-size:12px;">Created Topics</span></div>
-          <div><strong>${member.followersCount ?? 0}</strong> <span style="color:var(--color-text-muted); font-size:12px;">Readers</span></div>
+        <!-- 3. Dynamic Tab Content Area -->
+        <div id="profile-tab-content-area" style="padding:0 36px 36px;">
+          <!-- Loaded dynamically via window.switchProfileTab() -->
         </div>
       </div>
     </div>
   `;
+
+  // Trigger initial tab load
+  window.switchProfileTab(window._profileState.activeTab);
 }
 
 // 9. ABOUT VIEW (Fallback route)
