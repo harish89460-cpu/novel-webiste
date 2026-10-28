@@ -304,6 +304,9 @@ function getAdminAuthHtml(member) {
         <a href="#member?id=me" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()" role="menuitem">
           <span class="item-icon">⚙️</span> Profile Settings
         </a>
+        <a href="#followers" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()" role="menuitem">
+          <span class="item-icon">👥</span> Followers &amp; Following
+        </a>
 
         <div class="author-dropdown-divider"></div>
 
@@ -374,6 +377,9 @@ function getWriterAuthHtml(member) {
         <a href="#member?id=me" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()" role="menuitem">
           <span class="item-icon">⚙️</span> Profile Settings
         </a>
+        <a href="#followers" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()" role="menuitem">
+          <span class="item-icon">👥</span> Followers &amp; Following
+        </a>
 
         <div class="author-dropdown-divider"></div>
 
@@ -440,6 +446,9 @@ function getAuthorProfileAuthHtml(member) {
         </a>
         <a href="#member?id=me" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()">
           <span class="item-icon">⚙️</span> Profile Settings
+        </a>
+        <a href="#followers" class="author-dropdown-item" onclick="window.closeAuthorProfileMenu()" role="menuitem">
+          <span class="item-icon">👥</span> Followers &amp; Following
         </a>
 
         <div class="author-dropdown-divider"></div>

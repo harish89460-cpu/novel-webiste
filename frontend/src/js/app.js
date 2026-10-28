@@ -1,3 +1,14 @@
+
+export function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+}
+
+if (typeof window !== 'undefined') {
+  window.escapeQuote = escapeQuote;
+  window.escapeQuotes = escapeQuotes;
+}
+
 // Main Application Engine & Client Router
 
 import {
@@ -235,6 +246,8 @@ export async function renderAppView() {
       await renderStoryReadingView(main, hash);
     } else if (hash.startsWith('#topic?')) {
       await renderTopicView(main, hash);
+    } else if (hash.startsWith('#followers') || hash.startsWith('#following') || hash.startsWith('#connections') || hash.startsWith('#network')) {
+      await renderFollowersFollowingView(main, hash);
     } else if (hash.startsWith('#members')) {
       await renderMembersView(main);
     } else if (hash.startsWith('#member?')) {
@@ -424,6 +437,159 @@ async function renderNovelDetailView(container, hash) {
     ? (firstEpisode.chapterNum || firstEpisode.episodeNumber || String(firstEpisode.num || '1')) 
     : null;
 
+  // Real-Time Save Novel Handler
+  window.toggleSaveNovel = async (targetNovelId) => {
+    if (!window.IS_LOGGED_IN) {
+      showToast('Please log in to save novels.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+      return;
+    }
+    const btn = document.getElementById('novel-save-btn');
+    const icon = btn?.querySelector('.save-icon');
+    const label = btn?.querySelector('.save-text');
+    try {
+      const res = await apiFetch(`/api/novels/${encodeURIComponent(targetNovelId)}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ novelId: targetNovelId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        novel.isSaved = data.isSaved;
+        if (btn) {
+          if (data.isSaved) {
+            btn.classList.add('is-saved');
+            btn.title = 'Saved in your library';
+            if (icon) icon.textContent = '🔖';
+            if (label) label.textContent = 'Saved';
+          } else {
+            btn.classList.remove('is-saved');
+            btn.title = 'Save novel to your profile';
+            if (icon) icon.textContent = '📑';
+            if (label) label.textContent = 'Save Novel';
+          }
+        }
+        showToast(data.message || (data.isSaved ? 'Novel added to your Saved Novels!' : 'Novel removed from Saved Novels.'));
+      } else {
+        showToast(data?.error || 'Failed to update save status');
+      }
+    } catch (err) {
+      showToast('Could not save novel: ' + err.message);
+    }
+  };
+
+  // Author Follow / Unfollow Handler on Novel Page
+  window.toggleAuthorFollow = async (authorId) => {
+    if (!window.IS_LOGGED_IN) {
+      showToast('Please log in to follow the author.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/members/${encodeURIComponent(authorId)}/follow`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        novel.isFollowingAuthor = data.isFollowing;
+        novel.authorFollowersCount = data.followersCount;
+
+        const btn = document.getElementById('author-follow-btn');
+        if (btn) {
+          if (data.isFollowing) {
+            btn.className = 'btn btn-outline btn-sm is-following';
+            btn.textContent = '✓ Following';
+          } else {
+            btn.className = 'btn btn-gold btn-sm';
+            btn.textContent = '➕ Follow';
+          }
+        }
+        const countEl = document.getElementById('author-followers-count');
+        if (countEl) countEl.textContent = data.followersCount;
+        showToast(data.isFollowing ? `Now following ${novel.author || 'Author'}!` : `Unfollowed ${novel.author || 'Author'}.`);
+      } else {
+        showToast(data?.error || 'Failed to update follow status');
+      }
+    } catch (err) {
+      showToast('Could not follow author: ' + err.message);
+    }
+  };
+
+  // Interactive 5-Star Rating Handlers
+  window.hoverNovelRating = (hoverVal) => {
+    const starsGroup = document.getElementById('rating-stars-group');
+    if (!starsGroup) return;
+    const stars = starsGroup.querySelectorAll('.star-item');
+    stars.forEach(s => {
+      const val = parseInt(s.dataset.val, 10);
+      if (val <= hoverVal) {
+        s.classList.add('hovered');
+      } else {
+        s.classList.remove('hovered');
+      }
+    });
+  };
+
+  window.resetHoverNovelRating = () => {
+    const starsGroup = document.getElementById('rating-stars-group');
+    if (!starsGroup) return;
+    const stars = starsGroup.querySelectorAll('.star-item');
+    stars.forEach(s => s.classList.remove('hovered'));
+  };
+
+  window.submitNovelRating = async (targetNovelId, ratingVal) => {
+    if (!window.IS_LOGGED_IN) {
+      showToast('Please log in to rate this novel.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/novels/${encodeURIComponent(targetNovelId)}/rating`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: ratingVal })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        novel.userRating = data.userRating;
+        novel.averageRating = data.averageRating;
+        novel.totalRatings = data.totalRatings;
+
+        // Update stars state
+        const starsGroup = document.getElementById('rating-stars-group');
+        if (starsGroup) {
+          starsGroup.dataset.userRating = String(data.userRating);
+          const stars = starsGroup.querySelectorAll('.star-item');
+          stars.forEach(s => {
+            const val = parseInt(s.dataset.val, 10);
+            if (val <= data.userRating) {
+              s.classList.add('filled');
+            } else {
+              s.classList.remove('filled');
+            }
+          });
+        }
+
+        // Update ratings summary
+        const avgEl = document.getElementById('novel-avg-rating');
+        if (avgEl) avgEl.textContent = data.averageRating;
+        const totEl = document.getElementById('novel-total-ratings');
+        if (totEl) totEl.textContent = data.totalRatings;
+        const userMsgEl = document.getElementById('novel-user-rating-msg');
+        if (userMsgEl) {
+          userMsgEl.textContent = `Your rating: ${data.userRating}★`;
+          userMsgEl.className = 'user-rating-badge has-rated';
+          userMsgEl.style.background = '#E6F4EA';
+          userMsgEl.style.color = '#137333';
+        }
+
+        showToast(`Rating saved: ${ratingVal} ★. Average is now ${data.averageRating}!`);
+      } else {
+        showToast(data?.error || 'Failed to submit rating');
+      }
+    } catch (err) {
+      showToast('Could not submit rating: ' + err.message);
+    }
+  };
+
   // -------------------------------------------------------------
   // DEDICATED CHAPTER VIEW: When a specific chapter is selected
   // -------------------------------------------------------------
@@ -594,7 +760,10 @@ async function renderNovelDetailView(container, hash) {
             ` : `
               <button class="btn btn-gold" disabled style="opacity:0.6; cursor:not-allowed;">${t('novel_start_reading')} (Coming Soon)</button>
             `}
-            <button class="btn btn-outline bookmark-btn" onclick="bookmarkChapter('${escapeQuotes(novel.id)}', '${escapeQuotes(firstChapterNum || '1')}')" title="Bookmark">🔖</button>
+            <button id="novel-save-btn" class="btn btn-save-novel ${novel.isSaved ? 'is-saved' : ''}" onclick="window.toggleSaveNovel('${escapeQuotes(novel.id)}')" title="${novel.isSaved ? 'Saved in your library' : 'Save novel to your profile'}">
+              <span class="save-icon">${novel.isSaved ? '🔖' : '📑'}</span>
+              <span class="save-text">${novel.isSaved ? 'Saved' : 'Save Novel'}</span>
+            </button>
           </div>
         </div>
 
@@ -606,8 +775,39 @@ async function renderNovelDetailView(container, hash) {
 
           <h1 class="novel-detail-title">${escapeHtml(novel.title)}</h1>
 
-          <div style="font-size:var(--text-sm); color:var(--color-text-muted);">
-            ${novel.author ? `${t('novel_author')}: <strong style="color:var(--color-navy-deep);">${escapeHtml(novel.author)}</strong>` : ''}${novel.views ? ` • Views: <strong>${escapeHtml(String(novel.views))}</strong>` : ''}${novel.rating ? ` • Rating: <strong>★ ${escapeHtml(String(novel.rating))}</strong>` : ''}
+          <!-- Author Row with Real-Time Follow / Unfollow -->
+          <div class="novel-author-row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="font-size:14px; color:var(--color-text-muted);">
+              ${t('novel_author')}: <a href="#member?id=${encodeURIComponent(novel.authorId || novel.author_id || 2)}" style="color:var(--color-navy-deep); font-weight:700; text-decoration:none;">${escapeHtml(novel.author || 'Rudhra Prarthana')}</a>
+            </span>
+            ${(!window.CURRENT_USER || String(window.CURRENT_USER.id) !== String(novel.authorId || novel.author_id || 2)) ? `
+              <button id="author-follow-btn" class="btn btn-sm ${novel.isFollowingAuthor ? 'btn-outline is-following' : 'btn-gold'}" style="font-size:11px; padding:3px 12px; border-radius:20px; font-weight:700;" onclick="window.toggleAuthorFollow('${escapeQuotes(novel.authorId || novel.author_id || 2)}')">
+                ${novel.isFollowingAuthor ? '✓ Following' : '➕ Follow'}
+              </button>
+            ` : ''}
+            <span id="author-followers-badge" style="font-size:12px; color:var(--color-text-muted); font-weight:500;">
+              (<span id="author-followers-count">${novel.authorFollowersCount || 0}</span> followers)
+            </span>
+            ${novel.views ? `<span style="color:var(--color-text-muted); font-size:13px;">• Views: <strong>${escapeHtml(String(novel.views))}</strong></span>` : ''}
+          </div>
+
+          <!-- Interactive 5-Star Novel Rating Component -->
+          <div class="novel-rating-container" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:4px 0 8px 0; background:#FFFDF8; border:1px solid rgba(200,155,60,0.25); border-radius:8px; padding:10px 14px; box-shadow:0 1px 4px rgba(0,0,0,0.02);">
+            <div class="rating-stars-group" id="rating-stars-group" data-user-rating="${novel.userRating || 0}" style="display:inline-flex; gap:4px; font-size:22px; line-height:1; cursor:pointer;" title="Click star to rate">
+              <span class="star-item ${novel.userRating >= 1 ? 'filled' : ''}" data-val="1" onclick="window.submitNovelRating('${escapeQuotes(novel.id)}', 1)" onmouseenter="window.hoverNovelRating(1)" onmouseleave="window.resetHoverNovelRating()" title="Rate 1 star">★</span>
+              <span class="star-item ${novel.userRating >= 2 ? 'filled' : ''}" data-val="2" onclick="window.submitNovelRating('${escapeQuotes(novel.id)}', 2)" onmouseenter="window.hoverNovelRating(2)" onmouseleave="window.resetHoverNovelRating()" title="Rate 2 stars">★</span>
+              <span class="star-item ${novel.userRating >= 3 ? 'filled' : ''}" data-val="3" onclick="window.submitNovelRating('${escapeQuotes(novel.id)}', 3)" onmouseenter="window.hoverNovelRating(3)" onmouseleave="window.resetHoverNovelRating()" title="Rate 3 stars">★</span>
+              <span class="star-item ${novel.userRating >= 4 ? 'filled' : ''}" data-val="4" onclick="window.submitNovelRating('${escapeQuotes(novel.id)}', 4)" onmouseenter="window.hoverNovelRating(4)" onmouseleave="window.resetHoverNovelRating()" title="Rate 4 stars">★</span>
+              <span class="star-item ${novel.userRating >= 5 ? 'filled' : ''}" data-val="5" onclick="window.submitNovelRating('${escapeQuotes(novel.id)}', 5)" onmouseenter="window.hoverNovelRating(5)" onmouseleave="window.resetHoverNovelRating()" title="Rate 5 stars">★</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; font-size:13.5px; flex-wrap:wrap;">
+              <strong id="novel-avg-rating" style="font-size:16px; color:var(--color-navy-deep);">${novel.averageRating || novel.rating || '5.0'}</strong>
+              <span style="color:var(--color-text-muted); font-size:12px;">/ 5.0</span>
+              <span style="color:var(--color-text-muted); font-size:12px;">(<span id="novel-total-ratings">${novel.totalRatings || 0}</span> ${novel.totalRatings === 1 ? 'rating' : 'ratings'})</span>
+              <span id="novel-user-rating-msg" class="user-rating-badge ${novel.userRating ? 'has-rated' : ''}" style="margin-left:6px; font-size:11.5px; padding:2px 8px; border-radius:12px; background:${novel.userRating ? '#E6F4EA' : '#F1F3F4'}; color:${novel.userRating ? '#137333' : '#5F6368'}; font-weight:600;">
+                ${novel.userRating ? `Your rating: ${novel.userRating}★` : 'Click stars to rate'}
+              </span>
+            </div>
           </div>
 
           <div style="margin:var(--space-4) 0; padding:var(--space-5); background:var(--color-card-bg); border-left:3px solid var(--color-gold); border-radius:0 var(--radius-md) var(--radius-md) 0; line-height:1.8;">
@@ -2197,30 +2397,33 @@ async function renderMemberProfileView(container, hash) {
   window.handleProfileFollowToggle = async (targetId) => {
     if (!window.IS_LOGGED_IN) {
       showToast('Please log in to follow members.');
-      openAuthModal('login');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
       return;
     }
     try {
       const res = await apiFetch(`/api/members/${encodeURIComponent(targetId)}/follow`, { method: 'POST' });
-      if (res && res.success) {
-        window._profileState.isFollowing = res.isFollowing;
-        window._profileState.followersCount = res.followersCount;
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window._profileState.isFollowing = data.isFollowing;
+        window._profileState.followersCount = data.followersCount;
         
         // Update stats counter & button in DOM
         const numEl = document.getElementById('profile-followers-num');
-        if (numEl) numEl.textContent = res.followersCount;
+        if (numEl) numEl.textContent = data.followersCount;
         
         const btn = document.getElementById('profile-follow-toggle-btn');
         if (btn) {
-          if (res.isFollowing) {
-            btn.className = 'btn btn-outline btn-sm';
+          if (data.isFollowing) {
+            btn.className = 'btn btn-outline btn-sm is-following';
             btn.textContent = '✓ Following';
           } else {
             btn.className = 'btn btn-gold btn-sm';
             btn.textContent = '➕ Follow';
           }
         }
-        showToast(res.isFollowing ? `Following ${mName}!` : `Unfollowed ${mName}.`);
+        showToast(data.isFollowing ? `Following ${mName}!` : `Unfollowed ${mName}.`);
+      } else {
+        showToast(data?.error || 'Failed to update follow status');
       }
     } catch (err) {
       showToast('Could not update follow status: ' + err.message);
@@ -2232,9 +2435,11 @@ async function renderMemberProfileView(container, hash) {
     try {
       const res = await apiFetch('/api/chat/settings', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_chat_available: checked ? 1 : 0 })
       });
-      if (res && res.success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         if (window.CURRENT_USER) window.CURRENT_USER.isChatAvailable = checked;
         const lbl = document.getElementById('profile-chat-status-label');
         if (lbl) {
@@ -2243,7 +2448,7 @@ async function renderMemberProfileView(container, hash) {
         }
         showToast(checked ? 'Chat is now Available! Members can message you.' : 'Chat is now Paused. Direct messages are blocked.');
       } else {
-        throw new Error(res?.error || 'Failed to update chat setting');
+        throw new Error(data?.error || 'Failed to update chat setting');
       }
     } catch (err) {
       showToast('Error updating chat setting: ' + err.message);
@@ -2754,11 +2959,11 @@ async function renderMemberProfileView(container, hash) {
 
             <!-- Instagram-Style Metrics Row (Followers, Following, Total Comments) -->
             <div class="profile-ig-stats-row">
-              <div class="profile-ig-stat-box" title="Followers">
+              <div class="profile-ig-stat-box" onclick="window.location.hash='#followers?id=' + encodeURIComponent(window._profileState?.member?.username || 'me');" style="cursor:pointer;" title="View Followers">
                 <span class="profile-ig-stat-num" id="profile-followers-num">${window._profileState.followersCount}</span>
                 <span class="profile-ig-stat-lbl">Followers</span>
               </div>
-              <div class="profile-ig-stat-box" title="Following">
+              <div class="profile-ig-stat-box" onclick="window.location.hash='#following?id=' + encodeURIComponent(window._profileState?.member?.username || 'me');" style="cursor:pointer;" title="View Following">
                 <span class="profile-ig-stat-num" id="profile-following-num">${window._profileState.followingCount}</span>
                 <span class="profile-ig-stat-lbl">Following</span>
               </div>
@@ -4994,5 +5199,455 @@ window.submitStoryReply = async (storyId, parentId) => {
     }
   } catch (err) {
     alert(err.message || 'Error submitting reply');
+  }
+};
+
+
+// ============================================================================
+// DEDICATED FOLLOWERS & FOLLOWING PAGE CONTROLLER
+// ============================================================================
+
+window._connectionsState = {
+  tab: 'followers', // 'followers' | 'following'
+  targetUserParam: null,
+  targetUser: null,
+  search: '',
+  followersCount: 0,
+  followingCount: 0,
+  users: [],
+  loading: false,
+  searchTimer: null
+};
+
+async function renderFollowersFollowingView(container, hash) {
+  const urlParts = (hash || '').split('?');
+  const path = urlParts[0].toLowerCase();
+  const params = new URLSearchParams(urlParts[1] || '');
+
+  // Determine active tab
+  let initialTab = 'followers';
+  if (path.startsWith('#following') || params.get('tab') === 'following') {
+    initialTab = 'following';
+  } else if (params.get('tab') === 'followers') {
+    initialTab = 'followers';
+  }
+
+  const targetParam = params.get('id') || (window.CURRENT_USER?.username || 'me');
+  window._connectionsState.tab = initialTab;
+  window._connectionsState.targetUserParam = targetParam;
+  window._connectionsState.search = '';
+
+  const isGuest = !window.IS_LOGGED_IN;
+  const isSelf = isGuest ? false : (!targetParam || targetParam === 'me' || targetParam === window.CURRENT_USER?.username || String(targetParam) === String(window.CURRENT_USER?.id));
+
+  // If viewing own connections as guest -> require login
+  if (isGuest && (!targetParam || targetParam === 'me')) {
+    container.innerHTML = `
+      <div class="container connections-page-wrap">
+        <div class="connections-header-card" style="text-align:center; padding:56px 24px;">
+          <div style="font-size:48px; margin-bottom:14px;">👥</div>
+          <h2 style="font-family:var(--font-serif); color:var(--color-navy-deep); margin-bottom:8px;">Followers &amp; Following</h2>
+          <p style="color:var(--color-text-muted); font-size:14px; max-width:440px; margin:0 auto 20px;">
+            Please log in to your account to view your followers, manage who you follow, and connect with members.
+          </p>
+          <div style="display:flex; justify-content:center; gap:12px;">
+            <button type="button" class="btn btn-gold btn-sm" onclick="openAuthModal('login')">${t('btn_login') || 'Log In'}</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openAuthModal('register')">${t('btn_register') || 'Register'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Render initial page shell
+  const titleText = isSelf ? 'My Community Network' : 'Member Connections';
+  const subtitleText = isSelf 
+    ? 'View your followers and manage everyone you follow on Rudhra Prarthana Novels.'
+    : `Viewing connections for @${escapeHtml(targetParam)}`;
+
+  container.innerHTML = `
+    <div class="container connections-page-wrap">
+      <!-- Breadcrumb navigation -->
+      <div class="breadcrumbs" style="margin-bottom:16px;">
+        <a href="#forms">Home</a>
+        <span class="breadcrumb-separator">/</span>
+        <a href="#members">Members</a>
+        <span class="breadcrumb-separator">/</span>
+        ${isSelf ? `
+          <a href="#member?id=me">My Profile</a>
+          <span class="breadcrumb-separator">/</span>
+        ` : `
+          <a href="#member?id=${encodeURIComponent(targetParam)}">@${escapeHtml(targetParam)}</a>
+          <span class="breadcrumb-separator">/</span>
+        `}
+        <span>Connections</span>
+      </div>
+
+      <!-- Main Connections Card Shell -->
+      <div class="connections-header-card">
+        <div class="connections-title-row">
+          <div class="connections-title-group">
+            <h1>${titleText}</h1>
+            <p>${subtitleText}</p>
+          </div>
+          <div>
+            ${isSelf ? `
+              <a href="#member?id=me" class="btn btn-outline btn-sm" style="font-size:12.5px;">
+                👤 View My Profile
+              </a>
+            ` : `
+              <a href="#member?id=${encodeURIComponent(targetParam)}" class="btn btn-outline btn-sm" style="font-size:12.5px;">
+                👤 View Profile
+              </a>
+            `}
+          </div>
+        </div>
+
+        <!-- Separate Tabs for Followers and Following -->
+        <div class="connections-tabs-row" role="tablist">
+          <button type="button" 
+                  id="conn-tab-followers" 
+                  class="connections-tab-btn ${initialTab === 'followers' ? 'active' : ''}" 
+                  onclick="window.switchConnectionsTab('followers')">
+            <span>Followers</span>
+            <span class="connections-tab-count-badge" id="conn-followers-badge">...</span>
+          </button>
+          <button type="button" 
+                  id="conn-tab-following" 
+                  class="connections-tab-btn ${initialTab === 'following' ? 'active' : ''}" 
+                  onclick="window.switchConnectionsTab('following')">
+            <span>Following</span>
+            <span class="connections-tab-count-badge" id="conn-following-badge">...</span>
+          </button>
+        </div>
+
+        <!-- Live Instant Search Bar -->
+        <div class="connections-search-bar">
+          <span class="connections-search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <input type="text" 
+                 id="conn-search-input" 
+                 class="connections-search-input" 
+                 placeholder="Search by name or username..." 
+                 oninput="window.handleConnectionsSearch(this.value)">
+          <button type="button" 
+                  id="conn-search-clear" 
+                  onclick="window.clearConnectionSearch()" 
+                  style="display:none; position:absolute; right:12px; background:none; border:none; color:#94A3B8; cursor:pointer; font-size:16px;">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Mount point for users list -->
+      <div id="connections-list-mount">
+        ${renderConnectionsSkeleton()}
+      </div>
+    </div>
+  `;
+
+  // Fetch initial data
+  await loadConnectionsList();
+}
+
+function renderConnectionsSkeleton() {
+  return `
+    <div class="connections-list">
+      ${[1, 2, 3, 4].map(() => `
+        <div class="connection-user-card" style="opacity:0.6; pointer-events:none;">
+          <div class="connection-user-info-wrap">
+            <div class="skeleton-avatar" style="width:52px; height:52px; border-radius:50%; background:#E2E8F0;"></div>
+            <div class="connection-user-text-col" style="flex:1;">
+              <div class="skeleton-line" style="height:16px; width:140px; background:#E2E8F0; border-radius:4px; margin-bottom:6px;"></div>
+              <div class="skeleton-line" style="height:12px; width:90px; background:#E2E8F0; border-radius:4px; margin-bottom:6px;"></div>
+              <div class="skeleton-line" style="height:12px; width:220px; background:#F1F5F9; border-radius:4px;"></div>
+            </div>
+          </div>
+          <div style="width:80px; height:32px; background:#E2E8F0; border-radius:8px;"></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function loadConnectionsList() {
+  const state = window._connectionsState;
+  const mount = document.getElementById('connections-list-mount');
+  const followersBadge = document.getElementById('conn-followers-badge');
+  const followingBadge = document.getElementById('conn-following-badge');
+
+  if (!mount) return;
+
+  const endpoint = state.targetUserParam && state.targetUserParam !== 'me'
+    ? `/api/members/${encodeURIComponent(state.targetUserParam)}/${state.tab}?search=${encodeURIComponent(state.search)}`
+    : `/api/user/${state.tab}?search=${encodeURIComponent(state.search)}`;
+
+  try {
+    const res = await apiFetch(endpoint);
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      mount.innerHTML = `
+        <div class="profile-empty-state">
+          <div class="profile-empty-icon" style="color:#DC2626;">⚠️</div>
+          <div class="profile-empty-title">Failed to Load ${state.tab === 'followers' ? 'Followers' : 'Following'}</div>
+          <div class="profile-empty-desc">${escapeHtml(data.error || 'A network error occurred. Please try again.')}</div>
+          <button type="button" class="btn btn-gold btn-sm" onclick="loadConnectionsList()">Try Again</button>
+        </div>
+      `;
+      return;
+    }
+
+    state.followersCount = data.followersCount || 0;
+    state.followingCount = data.followingCount || 0;
+    state.users = data.users || [];
+    state.targetUser = data.targetUser;
+
+    if (followersBadge) followersBadge.textContent = state.followersCount;
+    if (followingBadge) followingBadge.textContent = state.followingCount;
+
+    renderConnectionsUsers();
+  } catch (err) {
+    mount.innerHTML = `
+      <div class="profile-empty-state">
+        <div class="profile-empty-icon" style="color:#DC2626;">⚠️</div>
+        <div class="profile-empty-title">Connection Error</div>
+        <div class="profile-empty-desc">${escapeHtml(err.message)}</div>
+        <button type="button" class="btn btn-gold btn-sm" onclick="loadConnectionsList()">Retry</button>
+      </div>
+    `;
+  }
+}
+
+function renderConnectionsUsers() {
+  const state = window._connectionsState;
+  const mount = document.getElementById('connections-list-mount');
+  if (!mount) return;
+
+  const users = state.users;
+  const isSearch = Boolean(state.search.trim());
+
+  if (users.length === 0) {
+    if (isSearch) {
+      mount.innerHTML = `
+        <div class="profile-empty-state">
+          <div class="profile-empty-icon">🔍</div>
+          <div class="profile-empty-title">No Members Found</div>
+          <div class="profile-empty-desc">No ${state.tab === 'followers' ? 'followers' : 'following'} matching "${escapeHtml(state.search)}".</div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.clearConnectionSearch()">Clear Search</button>
+        </div>
+      `;
+    } else if (state.tab === 'followers') {
+      mount.innerHTML = `
+        <div class="profile-empty-state">
+          <div class="profile-empty-icon">👥</div>
+          <div class="profile-empty-title">No Followers Yet</div>
+          <div class="profile-empty-desc">When other members follow you, they will be listed here.</div>
+        </div>
+      `;
+    } else {
+      mount.innerHTML = `
+        <div class="profile-empty-state">
+          <div class="profile-empty-icon">🌟</div>
+          <div class="profile-empty-title">Not Following Anyone Yet</div>
+          <div class="profile-empty-desc">You are not following any members or authors yet. Explore the community directory to connect with your favorite authors and readers!</div>
+          <a href="#members" class="btn btn-gold btn-sm" style="display:inline-block; margin-top:8px;">Explore Members Directory ➔</a>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  mount.innerHTML = `
+    <div class="connections-list" id="conn-active-list">
+      ${users.map(u => {
+        const profileLink = `#member?id=${encodeURIComponent(u.username)}`;
+        const avatarUrl = getAvatarUrl(u.avatar);
+        const nameText = escapeHtml(u.displayName || u.username);
+        const userText = escapeHtml(u.username);
+        const bioText = u.bio ? escapeHtml(u.bio) : '';
+
+        return `
+          <div class="connection-user-card" id="conn-card-${u.id}">
+            <a href="${profileLink}" class="connection-user-info-wrap" title="View ${nameText}'s Profile">
+              <img src="${avatarUrl}" class="connection-user-avatar" alt="${nameText}" onerror="this.src='/profile.png'">
+              <div class="connection-user-text-col">
+                <div class="connection-user-name">
+                  <span>${nameText}</span>
+                  ${u.role && u.role !== 'Member' ? `<span class="connection-user-role-badge">${escapeHtml(u.role)}</span>` : ''}
+                </div>
+                <div class="connection-user-username">@${userText}</div>
+                ${bioText ? `<div class="connection-user-bio">${bioText}</div>` : ''}
+              </div>
+            </a>
+
+            <div class="connection-action-wrap">
+              ${u.isSelf ? `
+                <span style="font-size:12px; color:#94A3B8; font-weight:600; padding:4px 8px;">(You)</span>
+              ` : state.tab === 'following' ? `
+                <button type="button" 
+                        id="conn-btn-${u.id}"
+                        class="connection-action-btn unfollow" 
+                        onclick="window.handleDirectUnfollow(${u.id}, '${escapeQuote(u.username)}', event)">
+                  Unfollow
+                </button>
+              ` : `
+                <button type="button" 
+                        id="conn-btn-${u.id}"
+                        class="connection-action-btn ${u.isFollowing ? 'following' : 'follow'}" 
+                        onclick="window.handleFollowersActionToggle(${u.id}, '${escapeQuote(u.username)}', event)">
+                  ${u.isFollowing ? '✓ Following' : '➕ Follow Back'}
+                </button>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// Interactive Global Handlers
+window.switchConnectionsTab = (tab) => {
+  if (window._connectionsState.tab === tab) return;
+  window._connectionsState.tab = tab;
+  window._connectionsState.search = '';
+
+  const input = document.getElementById('conn-search-input');
+  if (input) input.value = '';
+  const clearBtn = document.getElementById('conn-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  document.querySelectorAll('.connections-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById(`conn-tab-${tab}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  const mount = document.getElementById('connections-list-mount');
+  if (mount) mount.innerHTML = renderConnectionsSkeleton();
+
+  loadConnectionsList();
+};
+
+window.handleConnectionsSearch = (val) => {
+  const clearBtn = document.getElementById('conn-search-clear');
+  if (clearBtn) clearBtn.style.display = val.trim() ? 'block' : 'none';
+
+  clearTimeout(window._connectionsState.searchTimer);
+  window._connectionsState.searchTimer = setTimeout(() => {
+    window._connectionsState.search = val.trim();
+    loadConnectionsList();
+  }, 250);
+};
+
+window.clearConnectionSearch = () => {
+  const input = document.getElementById('conn-search-input');
+  if (input) input.value = '';
+  const clearBtn = document.getElementById('conn-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  window._connectionsState.search = '';
+  loadConnectionsList();
+};
+
+window.handleDirectUnfollow = async (targetId, username, event) => {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const btn = document.getElementById(`conn-btn-${targetId}`);
+  const card = document.getElementById(`conn-card-${targetId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Unfollowing…';
+  }
+
+  try {
+    const res = await apiFetch(`/api/user/following/${targetId}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to unfollow member.');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Unfollow';
+      }
+      return;
+    }
+
+    // Update Following count live
+    window._connectionsState.followingCount = Math.max(0, (window._connectionsState.followingCount || 1) - 1);
+    const followingBadge = document.getElementById('conn-following-badge');
+    if (followingBadge) followingBadge.textContent = window._connectionsState.followingCount;
+
+    // Smooth card removal animation
+    if (card) {
+      card.style.transition = 'all 0.3s ease';
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(20px)';
+      setTimeout(() => {
+        card.remove();
+        // Check if list is now empty
+        const activeList = document.getElementById('conn-active-list');
+        if (activeList && activeList.children.length === 0) {
+          renderConnectionsUsers();
+        }
+      }, 300);
+    }
+
+    showToast(`Unfollowed @${username}.`);
+  } catch (err) {
+    showToast('Network error: ' + err.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Unfollow';
+    }
+  }
+};
+
+window.handleFollowersActionToggle = async (targetId, username, event) => {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const btn = document.getElementById(`conn-btn-${targetId}`);
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await apiFetch(`/api/members/${targetId}/follow`, { method: 'POST' });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to update follow status.');
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    const isFollowing = data.isFollowing;
+    if (btn) {
+      btn.disabled = false;
+      btn.className = `connection-action-btn ${isFollowing ? 'following' : 'follow'}`;
+      btn.textContent = isFollowing ? '✓ Following' : '➕ Follow Back';
+    }
+
+    // Update Following badge live
+    if (isFollowing) {
+      window._connectionsState.followingCount = (window._connectionsState.followingCount || 0) + 1;
+    } else {
+      window._connectionsState.followingCount = Math.max(0, (window._connectionsState.followingCount || 1) - 1);
+    }
+    const followingBadge = document.getElementById('conn-following-badge');
+    if (followingBadge) followingBadge.textContent = window._connectionsState.followingCount;
+
+    showToast(data.message || (isFollowing ? `Following @${username}` : `Unfollowed @${username}`));
+  } catch (err) {
+    showToast('Network error: ' + err.message);
+    if (btn) btn.disabled = false;
   }
 };

@@ -1,3 +1,70 @@
+
+export function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+}
+
+if (typeof window !== 'undefined') {
+  window.escapeQuote = escapeQuote;
+  window.escapeQuotes = escapeQuotes;
+  window.onWriterMinuteType = function(inputEl, selectId) {
+    let val = inputEl.value;
+    if (val === '') {
+      window.updateWriterSchedPreview && window.updateWriterSchedPreview();
+      return;
+    }
+    let num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      if (num > 59) { num = 59; inputEl.value = '59'; }
+      if (num < 0) { num = 0; inputEl.value = '00'; }
+      const padded = String(num).padStart(2, '0');
+      const sel = document.getElementById(selectId);
+      if (sel) sel.value = padded;
+    }
+    window.updateWriterSchedPreview && window.updateWriterSchedPreview();
+  };
+  window.normalizeWriterMinuteOnBlur = function(inputEl, selectId) {
+    const normalized = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(inputEl.value) : String(Math.max(0, Math.min(59, parseInt(inputEl.value || 0, 10)))).padStart(2, '0');
+    inputEl.value = normalized;
+    const sel = document.getElementById(selectId);
+    if (sel) sel.value = normalized;
+    window.updateWriterSchedPreview && window.updateWriterSchedPreview();
+  };
+  window.onWriterMinuteSelect = function(selectEl, inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = selectEl.value;
+    window.updateWriterSchedPreview && window.updateWriterSchedPreview();
+  };
+  window.onWriterReschedMinuteType = function(inputEl, selectId) {
+    let val = inputEl.value;
+    if (val === '') {
+      window.updateWriterReschedPreview && window.updateWriterReschedPreview();
+      return;
+    }
+    let num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      if (num > 59) { num = 59; inputEl.value = '59'; }
+      if (num < 0) { num = 0; inputEl.value = '00'; }
+      const padded = String(num).padStart(2, '0');
+      const sel = document.getElementById(selectId);
+      if (sel) sel.value = padded;
+    }
+    window.updateWriterReschedPreview && window.updateWriterReschedPreview();
+  };
+  window.normalizeWriterReschedMinuteOnBlur = function(inputEl, selectId) {
+    const normalized = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(inputEl.value) : String(Math.max(0, Math.min(59, parseInt(inputEl.value || 0, 10)))).padStart(2, '0');
+    inputEl.value = normalized;
+    const sel = document.getElementById(selectId);
+    if (sel) sel.value = normalized;
+    window.updateWriterReschedPreview && window.updateWriterReschedPreview();
+  };
+  window.onWriterReschedMinuteSelect = function(selectEl, inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = selectEl.value;
+    window.updateWriterReschedPreview && window.updateWriterReschedPreview();
+  };
+}
+
 // Rudhra Prarthana Novels — Professional Writer Dashboard & Novel Writing Workspace
 // Minimal, distraction-free writing environment connected directly to MySQL backend
 
@@ -1277,6 +1344,10 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
           <span>Preview</span>
         </button>
 
+        <button type="button" class="btn btn-outline" id="we-schedule-btn" style="border-color:#4F46E5; color:#4F46E5; font-weight:600;" 
+                onclick="openWriterScheduleModal('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'})">
+          ⏰ Schedule Release
+        </button>
         <button type="button" class="btn btn-outline" id="we-save-draft-btn" 
                 onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'draft')">
           Save Draft
@@ -1512,7 +1583,7 @@ async function autosaveDraftSilently() {
   }
 }
 
-window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft') => {
+window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', scheduledAt = null) => {
   const num = document.getElementById('we-number')?.value?.trim();
   const title = document.getElementById('we-title')?.value?.trim() || `Episode ${num}`;
   const canvas = document.getElementById('we-canvas');
@@ -1550,7 +1621,8 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft') =>
         episodeNumber: num,
         title,
         content,
-        status: targetStatus
+        status: targetStatus,
+        scheduledAt: scheduledAt || undefined
       })
     });
     const data = await res.json();
@@ -2350,60 +2422,464 @@ window.submitWriterAudio = async (statusTarget) => {
 
 
 async function renderWriterSchedule(canvas) {
-  const episodes = (writerState.episodes || []).filter(e => e.status === 'scheduled');
-
   canvas.innerHTML = `
     <div class="writer-header-bar">
       <div>
-        <h1 class="writer-header-title">Publication Schedule</h1>
-        <p class="writer-header-subtitle">Upcoming releases and automated publication timeline.</p>
+        <h1 class="writer-header-title">Publication Schedule (Asia/Kolkata)</h1>
+        <p class="writer-header-subtitle">Upcoming releases and automated publication timeline in Indian Standard Time (IST).</p>
       </div>
     </div>
 
-    <div class="writer-card" style="padding:0; overflow:hidden;">
-      ${episodes.length > 0 ? `
+    <div id="writer-schedule-mount">
+      <div style="text-align:center; padding:40px; color:#64748B;">
+        Loading publication schedule...
+      </div>
+    </div>
+  `;
+
+  try {
+    const res = await apiFetch('/api/writer/schedule');
+    const data = await res.json();
+    const scheduled = data.scheduled || [];
+    const mount = document.getElementById('writer-schedule-mount');
+    if (!mount) return;
+
+    if (scheduled.length === 0) {
+      mount.innerHTML = `
+        <div class="writer-card" style="text-align:center; padding:48px 20px; color:#64748B;">
+          <div style="font-size:36px; margin-bottom:8px;">🕒</div>
+          <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Releases Currently Scheduled</div>
+          <p style="font-size:13px; margin:0 0 16px;">Scheduled episodes and stories will appear here.</p>
+          <button type="button" class="btn btn-gold btn-sm" onclick="switchWriterTab('editor')">+ Schedule an Episode</button>
+        </div>
+      `;
+      return;
+    }
+
+    mount.innerHTML = `
+      <div class="writer-card" style="padding:0; overflow:hidden;">
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
               <tr>
                 <th>Novel</th>
                 <th>Episode Title</th>
-                <th>Release Date &amp; Time (Asia/Kolkata)</th>
-                <th>Review Approval</th>
-                <th style="text-align:right;">Action</th>
+                <th>Scheduled Release (IST)</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
               </tr>
             </thead>
             <tbody>
-              ${episodes.map(e => `
-                <tr>
-                  <td><strong>${escapeHtml(e.novel_title || 'Novel')}</strong></td>
-                  <td>${escapeHtml(e.title || `Episode #${e.episode_number}`)}</td>
-                  <td style="color:#1A0B2E; font-weight:600;">
-                    🕒 ${e.scheduled_at ? new Date(e.scheduled_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pending'}
-                  </td>
-                  <td>
-                    <span class="sub-status-pill sub-status-approved">✓ Scheduled for Release</span>
-                  </td>
-                  <td style="text-align:right;">
-                    <button type="button" class="btn btn-outline btn-xs" onclick="switchWriterTab('editor', { episodeId: '${e.id}', novelId: '${e.novel_id}' })">
-                      Edit Release
-                    </button>
-                  </td>
-                </tr>
-              `).join('')}
+              ${scheduled.map(e => {
+                const timeText = e.formattedIST || (typeof window.formatISTDisplay === 'function' ? window.formatISTDisplay(e.scheduledAt) : e.scheduledAt);
+                const isUnderReview = e.status === 'submitted' || e.reviewStatus === 'pending_review';
+                return `
+                  <tr>
+                    <td><strong>${escapeHtml(e.novelTitle || 'Novel')}</strong></td>
+                    <td>${escapeHtml(e.title || `Episode #${e.episodeNumber}`)}</td>
+                    <td style="color:#1A0B2E; font-weight:700;">
+                      🕒 ${timeText}
+                    </td>
+                    <td>
+                      ${isUnderReview ? `
+                        <span class="sub-status-pill sub-status-submitted" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D;">⏳ Pending Admin Approval</span>
+                      ` : `
+                        <span class="sub-status-pill sub-status-approved" style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0;">✓ Scheduled for Release</span>
+                      `}
+                    </td>
+                    <td style="text-align:right;">
+                      <div style="display:inline-flex; align-items:center; gap:6px;">
+                        ${e.canPublishIndependently && !isUnderReview ? `
+                          <button type="button" class="btn btn-gold btn-xs" onclick="writerPublishNowAction(${e.id})" title="Publish live immediately">
+                            🚀 Publish Now
+                          </button>
+                        ` : ''}
+                        <button type="button" class="btn btn-outline btn-xs" onclick="openWriterRescheduleModal(${e.id}, '${escapeQuote(e.title)}', '${e.scheduledAt}')" title="Change date/time">
+                          ✏️ Reschedule
+                        </button>
+                        <button type="button" class="btn btn-outline btn-xs" onclick="writerCancelScheduleAction(${e.id})" style="color:#DC2626;" title="Cancel schedule (revert to draft)">
+                          ✕ Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
-      ` : `
-        <div style="text-align:center; padding:48px 20px; color:#64748B;">
-          <div style="font-size:36px; margin-bottom:8px;">🕒</div>
-          <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Releases Currently Scheduled</div>
-          <p style="font-size:13px; margin:0 0 16px;">Scheduled episodes and stories will appear here.</p>
+      </div>
+    `;
+  } catch (err) {
+    const mount = document.getElementById('writer-schedule-mount');
+    if (mount) mount.innerHTML = `<div style="color:#DC2626; padding:20px;">Failed to load schedule: ${err.message}</div>`;
+  }
+}
+
+window.openWriterScheduleModal = (novelId, episodeId) => {
+  const existing = document.getElementById('modal-writer-schedule');
+  if (existing) existing.remove();
+
+  const isIndependent = writerState.permissions?.accessLevel === 'independent_publish' || writerState.permissions?.canPublishIndependently;
+  const num = document.getElementById('we-number')?.value?.trim() || '1';
+  const title = document.getElementById('we-title')?.value?.trim() || `Episode ${num}`;
+
+  const now = new Date();
+  const future = new Date(now.getTime() + 2 * 3600 * 1000);
+  const yyyy = future.getFullYear();
+  const mm = String(future.getMonth() + 1).padStart(2, '0');
+  const dd = String(future.getDate()).padStart(2, '0');
+  const defaultDate = `${yyyy}-${mm}-${dd}`;
+
+  let defHour = future.getHours();
+  const defAmpm = defHour >= 12 ? 'PM' : 'AM';
+  defHour = defHour % 12 || 12;
+  const defHourStr = String(defHour).padStart(2, '0');
+  const defMin = String(Math.floor(future.getMinutes() / 5) * 5).padStart(2, '0');
+
+  const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const hoursOptions = [1,2,3,4,5,6,7,8,9,10,11,12].map(h => {
+    const val = String(h).padStart(2, '0');
+    return `<option value="${val}" ${val === defHourStr ? 'selected' : ''}>${val}</option>`;
+  }).join('');
+
+  const minsOptions = Array.from({ length: 60 }, (_, i) => {
+    const val = String(i).padStart(2, '0');
+    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>:${val}</option>`;
+  }).join('');
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-writer-schedule" style="position:fixed; inset:0; background:rgba(11,31,51,0.65); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:500px; border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,0.25); overflow:hidden;">
+        <div style="background:#1E1B4B; color:#FFF; padding:18px 22px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">⏰ Schedule Episode Publication (IST)</h3>
+          <button type="button" onclick="document.getElementById('modal-writer-schedule').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
         </div>
-      `}
+
+        <form id="form-writer-sched" onsubmit="event.preventDefault(); submitWriterSchedule('${novelId}', ${episodeId ? `'${episodeId}'` : 'null'});" style="padding:22px;">
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+            <div style="font-size:11.5px; font-weight:700; color:#64748B; text-transform:uppercase;">Episode</div>
+            <strong style="color:#1E1B4B; font-size:14.5px;">${escapeHtml(title)}</strong>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">Publication Date</label>
+            <input type="date" id="wsched-date" class="writer-form-input" min="${todayDate}" value="${defaultDate}" required style="width:100%;" onchange="updateWriterSchedPreview()">
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">Publication Time (12-Hour AM/PM)</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div>
+                <select id="wsched-hour" class="writer-form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateWriterSchedPreview()">
+                  ${hoursOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <input type="number" id="wsched-minute" class="writer-form-input" min="0" max="59" step="1" value="${defMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onWriterMinuteType(this, 'wsched-minute-select')" onblur="normalizeWriterMinuteOnBlur(this, 'wsched-minute-select')" title="Type any minute 00-59">
+                  <select id="wsched-minute-select" class="writer-form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onWriterMinuteSelect(this, 'wsched-minute')" title="Or choose minute 00-59">
+                    ${minsOptions}
+                  </select>
+                </div>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+              </div>
+              <div>
+                <select id="wsched-ampm" class="writer-form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateWriterSchedPreview()">
+                  <option value="AM" ${defAmpm === 'AM' ? 'selected' : ''}>AM</option>
+                  <option value="PM" ${defAmpm === 'PM' ? 'selected' : ''}>PM</option>
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">AM/PM</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="wsched-preview-box" style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+            <div style="font-size:11.5px; font-weight:700; color:#4338CA; text-transform:uppercase;">Scheduled Release Time (IST)</div>
+            <div id="wsched-preview-text" style="font-size:13.5px; font-weight:700; color:#1E1B4B; margin-top:2px;">Loading...</div>
+          </div>
+
+          <div style="margin-bottom:18px;">
+            ${isIndependent ? `
+              <div style="background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; padding:10px 12px; border-radius:8px; font-size:12.5px; line-height:1.4;">
+                ✓ <strong>Independent Publishing Enabled:</strong> This episode will automatically be published live to readers at the scheduled time.
+              </div>
+            ` : `
+              <div style="background:#FFFBEB; border:1px solid #FDE68A; color:#92400E; padding:10px 12px; border-radius:8px; font-size:12.5px; line-height:1.4;">
+                📋 <strong>Editorial Review Required:</strong> This episode and requested release schedule will be submitted for Administrator review. Once approved, it will automatically publish at this time.
+              </div>
+            `}
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-writer-schedule').remove()">Cancel</button>
+            <button type="submit" class="btn btn-gold btn-sm" style="font-weight:700; padding:8px 18px;">Confirm &amp; Schedule</button>
+          </div>
+        </form>
+      </div>
     </div>
   `;
-}
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  updateWriterSchedPreview();
+};
+
+window.updateWriterSchedPreview = () => {
+  const dateVal = document.getElementById('wsched-date')?.value;
+  const hourVal = document.getElementById('wsched-hour')?.value || '12';
+  const rawMin = document.getElementById('wsched-minute')?.value ?? document.getElementById('wsched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('wsched-ampm')?.value || 'PM';
+  const previewText = document.getElementById('wsched-preview-text');
+  const previewBox = document.getElementById('wsched-preview-box');
+  if (!previewText) return;
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m, d] = (dateVal || '').split('-');
+  const monthName = months[parseInt(m, 10) - 1] || m;
+  const formatted = `${d} ${monthName} ${y}, ${hourVal}:${minVal} ${ampmVal} IST (Asia/Kolkata)`;
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const schedStr = `${dateVal} ${hh}:${minVal}:00`;
+
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+  if (schedStr < nowStr) {
+    previewBox.style.background = '#FEF2F2';
+    previewBox.style.borderColor = '#FCA5A5';
+    previewText.innerHTML = `<span style="color:#DC2626;">⚠️ Warning: Time is in the past! (${formatted})</span>`;
+  } else {
+    previewBox.style.background = '#EEF2FF';
+    previewBox.style.borderColor = '#C7D2FE';
+    previewText.innerHTML = `<span style="color:#1E1B4B;">🕒 ${formatted}</span>`;
+  }
+};
+
+window.submitWriterSchedule = async (novelId, episodeId) => {
+  const dateVal = document.getElementById('wsched-date')?.value;
+  const hourVal = document.getElementById('wsched-hour')?.value || '12';
+  const rawMin = document.getElementById('wsched-minute')?.value ?? document.getElementById('wsched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('wsched-ampm')?.value || 'PM';
+
+  if (!dateVal) {
+    showToast('Please select a date.');
+    return;
+  }
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const scheduledAt = `${dateVal} ${hh}:${minVal}:00`;
+
+  document.getElementById('modal-writer-schedule')?.remove();
+  await saveWriterEpisode(novelId, episodeId, 'scheduled', scheduledAt);
+};
+
+window.writerPublishNowAction = async (episodeId) => {
+  if (!confirm('Publish this episode immediately to the website?')) return;
+  try {
+    const res = await apiFetch(`/api/writer/scheduler/${episodeId}/publish-now`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to publish.');
+      return;
+    }
+    showToast('Episode published immediately to the website!');
+    switchWriterTab('schedule');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+};
+
+window.writerCancelScheduleAction = async (episodeId) => {
+  if (!confirm('Cancel schedule and revert episode to draft?')) return;
+  try {
+    const res = await apiFetch(`/api/writer/scheduler/${episodeId}/cancel`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to cancel schedule.');
+      return;
+    }
+    showToast('Schedule cancelled; episode reverted to draft.');
+    switchWriterTab('schedule');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+};
+
+window.openWriterRescheduleModal = (episodeId, title, currentSched) => {
+  const existing = document.getElementById('modal-writer-reschedule');
+  if (existing) existing.remove();
+
+  let curY = '', curM = '', curD = '', curH = '08', curMin = '00', curAmpm = 'PM';
+  if (currentSched) {
+    const match = String(currentSched).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    if (match) {
+      [, curY, curM, curD, curH, curMin] = match;
+      let h = parseInt(curH, 10);
+      curAmpm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      curH = String(h).padStart(2, '0');
+    }
+  }
+
+  const now = new Date();
+  const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const defaultDate = (curY && curM && curD) ? `${curY}-${curM}-${curD}` : todayDate;
+
+  const hoursOptions = [1,2,3,4,5,6,7,8,9,10,11,12].map(h => {
+    const val = String(h).padStart(2, '0');
+    return `<option value="${val}" ${val === curH ? 'selected' : ''}>${val}</option>`;
+  }).join('');
+
+  const minsOptions = Array.from({ length: 60 }, (_, i) => {
+    const val = String(i).padStart(2, '0');
+    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>:${val}</option>`;
+  }).join('');
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-writer-reschedule" style="position:fixed; inset:0; background:rgba(11,31,51,0.65); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:480px; border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,0.25); overflow:hidden;">
+        <div style="background:#1E1B4B; color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">✏️ Reschedule Release (IST)</h3>
+          <button type="button" onclick="document.getElementById('modal-writer-reschedule').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+
+        <form id="form-writer-resched" onsubmit="event.preventDefault(); submitWriterReschedule(${episodeId});" style="padding:20px;">
+          <div style="margin-bottom:14px;">
+            <div style="font-size:12px; color:#64748B;">Episode:</div>
+            <strong style="color:#1E1B4B; font-size:14.5px;">${escapeHtml(title)}</strong>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">New Release Date</label>
+            <input type="date" id="wresched-date" class="writer-form-input" min="${todayDate}" value="${defaultDate}" required style="width:100%;" onchange="updateWriterReschedPreview()">
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">New Release Time (12-Hour AM/PM)</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div>
+                <select id="wresched-hour" class="writer-form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateWriterReschedPreview()">
+                  ${hoursOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <input type="number" id="wresched-minute" class="writer-form-input" min="0" max="59" step="1" value="${curMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onWriterReschedMinuteType(this, 'wresched-minute-select')" onblur="normalizeWriterReschedMinuteOnBlur(this, 'wresched-minute-select')" title="Type any minute 00-59">
+                  <select id="wresched-minute-select" class="writer-form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onWriterReschedMinuteSelect(this, 'wresched-minute')" title="Or choose minute 00-59">
+                    ${minsOptions}
+                  </select>
+                </div>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+              </div>
+              <div>
+                <select id="wresched-ampm" class="writer-form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateWriterReschedPreview()">
+                  <option value="AM" ${curAmpm === 'AM' ? 'selected' : ''}>AM</option>
+                  <option value="PM" ${curAmpm === 'PM' ? 'selected' : ''}>PM</option>
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">AM/PM</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="wresched-preview-box" style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px; padding:10px 12px; margin-bottom:16px;">
+            <div id="wresched-preview-text" style="font-size:13px; font-weight:700; color:#1E1B4B;">Loading...</div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-writer-reschedule').remove()">Cancel</button>
+            <button type="submit" class="btn btn-gold btn-sm" style="font-weight:700;">Save New Schedule</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  updateWriterReschedPreview();
+};
+
+window.updateWriterReschedPreview = () => {
+  const dateVal = document.getElementById('wresched-date')?.value;
+  const hourVal = document.getElementById('wresched-hour')?.value || '12';
+  const rawMin = document.getElementById('wresched-minute')?.value ?? document.getElementById('wresched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('wresched-ampm')?.value || 'PM';
+  const previewText = document.getElementById('wresched-preview-text');
+  const previewBox = document.getElementById('wresched-preview-box');
+  if (!previewText) return;
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m, d] = (dateVal || '').split('-');
+  const monthName = months[parseInt(m, 10) - 1] || m;
+  const formatted = `${d} ${monthName} ${y}, ${hourVal}:${minVal} ${ampmVal} IST (Asia/Kolkata)`;
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const schedStr = `${dateVal} ${hh}:${minVal}:00`;
+
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+  if (schedStr < nowStr) {
+    previewBox.style.background = '#FEF2F2';
+    previewBox.style.borderColor = '#FCA5A5';
+    previewText.innerHTML = `<span style="color:#DC2626;">⚠️ Warning: Time is in the past! (${formatted})</span>`;
+  } else {
+    previewBox.style.background = '#EEF2FF';
+    previewBox.style.borderColor = '#C7D2FE';
+    previewText.innerHTML = `<span style="color:#1E1B4B;">🕒 ${formatted}</span>`;
+  }
+};
+
+window.submitWriterReschedule = async (episodeId) => {
+  const dateVal = document.getElementById('wresched-date')?.value;
+  const hourVal = document.getElementById('wresched-hour')?.value || '12';
+  const rawMin = document.getElementById('wresched-minute')?.value ?? document.getElementById('wresched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('wresched-ampm')?.value || 'PM';
+
+  if (!dateVal) {
+    showToast('Please select a date.');
+    return;
+  }
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const scheduledAt = `${dateVal} ${hh}:${minVal}:00`;
+
+  try {
+    const res = await apiFetch(`/api/writer/scheduler/${episodeId}/reschedule`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduledAt, timezone: 'Asia/Kolkata' })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to reschedule.');
+      return;
+    }
+    document.getElementById('modal-writer-reschedule')?.remove();
+    showToast('Publication schedule updated successfully!');
+    switchWriterTab('schedule');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+};
 
 /**
  * Render Notifications Tab for Writer

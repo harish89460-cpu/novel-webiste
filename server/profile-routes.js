@@ -109,26 +109,114 @@ export async function handleProfileEndpoints(req, res, pathname, method, parsed,
       return sendJson(res, { success: false, error: 'Please log in to save novels.' }, 401);
     }
     const body = await readJsonBody(req);
-    let novelId = pathname.startsWith('/novels/') ? pathname.replace('/novels/', '').replace('/save', '').trim() : (body.novelId || '').trim();
+    let rawNovelId = pathname.startsWith('/novels/') ? pathname.replace('/novels/', '').replace('/save', '').trim() : (body.novelId || '').trim();
+    let novelId = rawNovelId;
+    try { novelId = decodeURIComponent(rawNovelId); } catch {}
     if (!novelId) {
       return sendJson(res, { success: false, error: 'Novel ID is required.' }, 400);
     }
 
-    const existing = await queryOne('SELECT id FROM saved_novels WHERE user_id = ? AND novel_id = ?;', [currentUser.id, novelId]);
+    const novelRow = await queryOne('SELECT id, title FROM novels WHERE id = ? OR LOWER(id) = LOWER(?) LIMIT 1;', [novelId, novelId]);
+    const actualNovelId = novelRow ? novelRow.id : novelId;
+
+    const existing = await queryOne('SELECT id FROM saved_novels WHERE user_id = ? AND novel_id = ?;', [currentUser.id, actualNovelId]);
     let isSaved = false;
     if (existing) {
       await query('DELETE FROM saved_novels WHERE id = ?;', [existing.id]);
       isSaved = false;
     } else {
-      await query('INSERT INTO saved_novels (user_id, novel_id) VALUES (?, ?);', [currentUser.id, novelId]);
+      await query('INSERT INTO saved_novels (user_id, novel_id) VALUES (?, ?);', [currentUser.id, actualNovelId]);
       isSaved = true;
     }
 
     return sendJson(res, {
       success: true,
+      novelId: actualNovelId,
       isSaved,
       message: isSaved ? 'Novel added to your Saved Novels!' : 'Novel removed from Saved Novels.'
     }, 200);
+  }
+
+  // 3b. Novel Save Status Check
+  // GET /api/novels/:id/save-status
+  if (pathname.startsWith('/novels/') && pathname.endsWith('/save-status') && method === 'GET') {
+    const rawNovelId = pathname.replace('/novels/', '').replace('/save-status', '').trim();
+    let novelId = rawNovelId;
+    try { novelId = decodeURIComponent(rawNovelId); } catch {}
+    const novelRow = await queryOne('SELECT id FROM novels WHERE id = ? OR LOWER(id) = LOWER(?) LIMIT 1;', [novelId, novelId]);
+    const actualNovelId = novelRow ? novelRow.id : novelId;
+    let isSaved = false;
+    if (currentUser) {
+      const existing = await queryOne('SELECT id FROM saved_novels WHERE user_id = ? AND novel_id = ?;', [currentUser.id, actualNovelId]);
+      isSaved = Boolean(existing);
+    }
+    return sendJson(res, { success: true, novelId: actualNovelId, isSaved }, 200);
+  }
+
+  // 3c. Novel 1-5 Star Rating Endpoints
+  // GET /api/novels/:id/rating
+  // POST /api/novels/:id/rating
+  if (pathname.startsWith('/novels/') && pathname.endsWith('/rating')) {
+    const rawNovelId = pathname.replace('/novels/', '').replace('/rating', '').trim();
+    let novelId = rawNovelId;
+    try { novelId = decodeURIComponent(rawNovelId); } catch {}
+
+    const novelRow = await queryOne('SELECT id, title, rating FROM novels WHERE id = ? OR LOWER(id) = LOWER(?) LIMIT 1;', [novelId, novelId]);
+    const actualNovelId = novelRow ? novelRow.id : novelId;
+
+    if (method === 'GET') {
+      const stats = await queryOne('SELECT AVG(rating) AS avg_rating, COUNT(*) AS count FROM novel_ratings WHERE novel_id = ?;', [actualNovelId]);
+      let userRating = null;
+      if (currentUser) {
+        const uRow = await queryOne('SELECT rating FROM novel_ratings WHERE user_id = ? AND novel_id = ?;', [currentUser.id, actualNovelId]);
+        if (uRow) userRating = Number(uRow.rating);
+      }
+      const totalRatings = Number(stats?.count || 0);
+      const averageRating = totalRatings > 0 ? Number(stats.avg_rating).toFixed(1) : (novelRow?.rating || '5.0');
+      return sendJson(res, {
+        success: true,
+        novelId: actualNovelId,
+        averageRating,
+        totalRatings,
+        userRating
+      }, 200);
+    }
+
+    if (method === 'POST') {
+      if (!currentUser) {
+        return sendJson(res, { success: false, error: 'Please log in to rate this novel.' }, 401);
+      }
+      const body = await readJsonBody(req);
+      const rating = parseInt(body.rating, 10);
+      if (isNaN(rating) || rating < 1 || rating > 5) {
+        return sendJson(res, { success: false, error: 'Rating must be an integer between 1 and 5.' }, 400);
+      }
+
+      await query(`
+        INSERT INTO novel_ratings (user_id, novel_id, rating)
+        VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE rating = VALUES(rating), updated_at = CURRENT_TIMESTAMP;
+      `, [currentUser.id, actualNovelId, rating]);
+
+      const stats = await queryOne('SELECT AVG(rating) AS avg_rating, COUNT(*) AS count FROM novel_ratings WHERE novel_id = ?;', [actualNovelId]);
+      const totalRatings = Number(stats?.count || 0);
+      const averageRating = totalRatings > 0 ? Number(stats.avg_rating).toFixed(1) : String(rating);
+
+      try {
+        await query('UPDATE novels SET rating = ? WHERE id = ?;', [averageRating, actualNovelId]);
+      } catch (err) {
+        console.warn('Could not update novels cached rating column:', err.message);
+      }
+
+      return sendJson(res, {
+        success: true,
+        message: 'Your rating has been recorded!',
+        novelId: actualNovelId,
+        averageRating,
+        totalRatings,
+        userRating: rating
+      }, 200);
+    }
   }
 
   // 4. Remove from Saved Novels by saved_id or novel_id
@@ -484,6 +572,195 @@ export async function handleProfileEndpoints(req, res, pathname, method, parsed,
         total,
         totalPages: Math.ceil(total / limit) || 1
       }
+    }, 200);
+  }
+
+  
+  // 10. Followers List for a Member or Logged-in User
+  // GET /api/user/followers or GET /api/members/:id/followers
+  if (((pathname === '/user/followers' || pathname === '/api/user/followers') ||
+       (pathname.startsWith('/members/') && pathname.endsWith('/followers'))) && method === 'GET') {
+    let targetUser = null;
+
+    if (pathname === '/user/followers' || pathname === '/api/user/followers') {
+      if (!currentUser) {
+        return sendJson(res, { success: false, error: 'Please log in to view your followers.' }, 401);
+      }
+      targetUser = currentUser;
+    } else {
+      const targetParam = pathname.replace('/members/', '').replace('/followers', '').trim();
+      targetUser = await queryOne('SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?) OR (? = "rudhra" AND LOWER(username) = "rudhra_author");', [targetParam, targetParam, targetParam]);
+      if (!targetUser) {
+        return sendJson(res, { success: false, error: 'Member not found.' }, 404);
+      }
+    }
+
+    const search = String(parsed.query?.search || '').trim();
+    const searchPattern = `%${search}%`;
+    const viewerId = currentUser ? currentUser.id : 0;
+
+    const [followersCountRow, followingCountRow] = await Promise.all([
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [targetUser.id]),
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?;', [targetUser.id])
+    ]);
+
+    const followersCount = Number(followersCountRow?.count || 0);
+    const followingCount = Number(followingCountRow?.count || 0);
+
+    const rows = await query(`
+      SELECT 
+        u.id, u.username, u.role,
+        p.display_name, p.avatar, p.bio, p.title,
+        f.created_at AS followed_at,
+        EXISTS (
+          SELECT 1 FROM follows f2 
+          WHERE f2.follower_id = ? AND f2.following_id = u.id
+        ) AS is_following
+      FROM follows f
+      JOIN users u ON f.follower_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE f.following_id = ?
+        AND (
+          ? = '' OR 
+          LOWER(u.username) LIKE LOWER(?) OR 
+          LOWER(COALESCE(p.display_name, '')) LIKE LOWER(?)
+        )
+      ORDER BY f.created_at DESC;
+    `, [viewerId, targetUser.id, search, searchPattern, searchPattern]);
+
+    const users = rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name || r.username,
+      avatar: (r.avatar && !r.avatar.includes('images.unsplash.com') && !r.avatar.includes('ui-avatars.com')) ? r.avatar : '/profile.png',
+      role: r.title || r.role || 'Member',
+      bio: r.bio || '',
+      followedAt: r.followed_at,
+      isFollowing: Boolean(r.is_following),
+      isSelf: currentUser ? currentUser.id === r.id : false
+    }));
+
+    return sendJson(res, {
+      success: true,
+      targetUser: {
+        id: targetUser.id,
+        username: targetUser.username
+      },
+      followersCount,
+      followingCount,
+      users
+    }, 200);
+  }
+
+  // 11. Following List for a Member or Logged-in User
+  // GET /api/user/following or GET /api/members/:id/following
+  if (((pathname === '/user/following' || pathname === '/api/user/following') ||
+       (pathname.startsWith('/members/') && pathname.endsWith('/following'))) && method === 'GET') {
+    let targetUser = null;
+
+    if (pathname === '/user/following' || pathname === '/api/user/following') {
+      if (!currentUser) {
+        return sendJson(res, { success: false, error: 'Please log in to view who you are following.' }, 401);
+      }
+      targetUser = currentUser;
+    } else {
+      const targetParam = pathname.replace('/members/', '').replace('/following', '').trim();
+      targetUser = await queryOne('SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?) OR (? = "rudhra" AND LOWER(username) = "rudhra_author");', [targetParam, targetParam, targetParam]);
+      if (!targetUser) {
+        return sendJson(res, { success: false, error: 'Member not found.' }, 404);
+      }
+    }
+
+    const search = String(parsed.query?.search || '').trim();
+    const searchPattern = `%${search}%`;
+    const viewerId = currentUser ? currentUser.id : 0;
+
+    const [followersCountRow, followingCountRow] = await Promise.all([
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [targetUser.id]),
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?;', [targetUser.id])
+    ]);
+
+    const followersCount = Number(followersCountRow?.count || 0);
+    const followingCount = Number(followingCountRow?.count || 0);
+
+    const rows = await query(`
+      SELECT 
+        u.id, u.username, u.role,
+        p.display_name, p.avatar, p.bio, p.title,
+        f.created_at AS followed_at,
+        EXISTS (
+          SELECT 1 FROM follows f2 
+          WHERE f2.follower_id = ? AND f2.following_id = u.id
+        ) AS is_following
+      FROM follows f
+      JOIN users u ON f.following_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE f.follower_id = ?
+        AND (
+          ? = '' OR 
+          LOWER(u.username) LIKE LOWER(?) OR 
+          LOWER(COALESCE(p.display_name, '')) LIKE LOWER(?)
+        )
+      ORDER BY f.created_at DESC;
+    `, [viewerId, targetUser.id, search, searchPattern, searchPattern]);
+
+    const users = rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name || r.username,
+      avatar: (r.avatar && !r.avatar.includes('images.unsplash.com') && !r.avatar.includes('ui-avatars.com')) ? r.avatar : '/profile.png',
+      role: r.title || r.role || 'Member',
+      bio: r.bio || '',
+      followedAt: r.followed_at,
+      isFollowing: Boolean(r.is_following),
+      isSelf: currentUser ? currentUser.id === r.id : false
+    }));
+
+    return sendJson(res, {
+      success: true,
+      targetUser: {
+        id: targetUser.id,
+        username: targetUser.username
+      },
+      followersCount,
+      followingCount,
+      users
+    }, 200);
+  }
+
+  // 12. Direct Unfollow Endpoint
+  // DELETE /api/user/following/:id or POST /api/members/:id/unfollow
+  if (((pathname.startsWith('/user/following/') && method === 'DELETE') ||
+       (pathname.startsWith('/members/') && pathname.endsWith('/unfollow') && method === 'POST')) ) {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Please log in to unfollow members.' }, 401);
+    }
+
+    let targetParam = '';
+    if (pathname.startsWith('/user/following/')) {
+      targetParam = pathname.replace('/user/following/', '').trim();
+    } else {
+      targetParam = pathname.replace('/members/', '').replace('/unfollow', '').trim();
+    }
+
+    const targetUser = await queryOne('SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?) OR (? = "rudhra" AND LOWER(username) = "rudhra_author");', [targetParam, targetParam, targetParam]);
+    if (!targetUser) {
+      return sendJson(res, { success: false, error: 'Member not found.' }, 404);
+    }
+
+    await query('DELETE FROM follows WHERE follower_id = ? AND following_id = ?;', [currentUser.id, targetUser.id]);
+
+    const [followersCountRow, followingCountRow] = await Promise.all([
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [targetUser.id]),
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?;', [currentUser.id])
+    ]);
+
+    return sendJson(res, {
+      success: true,
+      isFollowing: false,
+      followersCount: Number(followersCountRow?.count || 0),
+      followingCount: Number(followingCountRow?.count || 0),
+      message: `You have unfollowed ${targetUser.username}.`
     }, 200);
   }
 

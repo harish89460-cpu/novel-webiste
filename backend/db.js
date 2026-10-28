@@ -68,7 +68,8 @@ export function getDb() {
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
-      dateStrings: true
+      dateStrings: true,
+      timezone: '+05:30'
     });
   }
   return poolInstance;

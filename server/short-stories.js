@@ -1,3 +1,4 @@
+import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 /**
  * Rudhra Prarthana Novels — Short Stories Backend Module
  * Comprehensive Database-Connected Short Stories Management,
@@ -713,9 +714,8 @@ export async function checkAndPublishDueShortStories() {
       await query(`
         UPDATE short_stories
         SET status = 'published',
-            published_at = COALESCE(scheduled_at, NOW()),
-            scheduled_at = NULL
-        WHERE id = ?;
+            published_at = COALESCE(scheduled_at, NOW())
+        WHERE id = ? AND status = 'scheduled';
       `, [s.id]);
       publishedIds.push(s.id);
     }

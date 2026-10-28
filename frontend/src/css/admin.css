@@ -3744,3 +3744,77 @@ body.admin-view .site-header {
   }
 }
 
+
+
+/* Forms & Content Category Order Controls */
+.forms-tree-order-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  user-select: none;
+}
+
+.forms-order-badge {
+  font-weight: 800;
+  color: #B45309;
+  letter-spacing: 0.3px;
+  padding: 0 4px;
+}
+
+.forms-order-arrows {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.btn-order-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #D97706;
+  border-radius: 4px;
+  background: #FFFFFF;
+  color: #B45309;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.btn-order-arrow:hover:not(:disabled) {
+  background: #B45309;
+  color: #FFFFFF;
+}
+
+.btn-order-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: #CBD5E1;
+  color: #94A3B8;
+}
+
+.reorder-cat-item {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.reorder-cat-item:hover {
+  background: #F1F5F9 !important;
+}
+
+@media (max-width: 640px) {
+  .forms-tree-order-control {
+    padding: 2px 4px;
+  }
+  .btn-order-arrow {
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+  }
+}

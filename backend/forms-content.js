@@ -365,7 +365,7 @@ export async function getContentHierarchy(currentUser = null) {
     }
 
     // Short Stories
-    if (mainCat.id === 'short-stories') {
+    if (mainCat.id === 'short-stories' || mainCat.id === 'Short stories' || (mainCat.id && mainCat.id.toLowerCase().replace(/[\s_]+/g, '-') === 'short-stories')) {
       try {
         const publicStories = await getPublicShortStories();
         if (publicStories && publicStories.length > 0) {
@@ -822,7 +822,7 @@ export async function deleteContentComment({ commentId, userId, isAdmin }) {
 /**
  * Create a new Main Title (forum_category)
  */
-export async function createMainCategory({ id, title, description, icon = '💬', color = '#2E1065', sortOrder = 0, adminId = 2 }) {
+export async function createMainCategory({ id, title, description, icon = '💬', color = '#2E1065', sortOrder, sort_order, adminId = 2 }) {
   if (!title || !title.trim()) {
     return { success: false, error: 'Main title is required.' };
   }
@@ -835,10 +835,20 @@ export async function createMainCategory({ id, title, description, icon = '💬'
     return { success: false, error: `A category with ID "${cleanId}" already exists.` };
   }
 
+  let finalSortOrder;
+  const inputOrder = sortOrder !== undefined ? sortOrder : sort_order;
+  if (inputOrder !== undefined && inputOrder !== null && inputOrder !== '' && !isNaN(Number(inputOrder))) {
+    finalSortOrder = Number(inputOrder);
+  } else {
+    // Sensible default: place after existing categories
+    const maxRow = await queryOne('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM forum_categories;');
+    finalSortOrder = Number(maxRow?.max_order || 0) + 1;
+  }
+
   await query(`
     INSERT INTO forum_categories (id, title, description, icon, color, sort_order, is_active, status, is_disabled)
     VALUES (?, ?, ?, ?, ?, ?, 1, 'published', 0);
-  `, [cleanId, cleanTitle, description || '', icon, color, Number(sortOrder || 0)]);
+  `, [cleanId, cleanTitle, description || '', icon, color, finalSortOrder]);
 
   await recordAdminAudit({
     adminId,
@@ -846,18 +856,23 @@ export async function createMainCategory({ id, title, description, icon = '💬'
     targetUserId: null,
     ipAddress: null,
     userAgent: null,
-    details: `Created main category "${cleanTitle}" (ID: ${cleanId})`
+    details: `Created main category "${cleanTitle}" (ID: ${cleanId}, Order: ${finalSortOrder})`
   });
 
-  return { success: true, id: cleanId, category: { id: cleanId }, message: 'Main category created successfully!' };
+  return { success: true, id: cleanId, category: { id: cleanId, sortOrder: finalSortOrder }, message: 'Main category created successfully!' };
 }
 
 /**
  * Update an existing Main Title
  */
-export async function updateMainCategory({ id, title, description, icon, color, sortOrder, adminId = 2 }) {
+export async function updateMainCategory({ id, title, description, icon, color, sortOrder, sort_order, adminId = 2 }) {
   const cat = await queryOne(`SELECT * FROM forum_categories WHERE id = ?;`, [id]);
   if (!cat) return { success: false, error: 'Main category not found.' };
+
+  const inputOrder = sortOrder !== undefined ? sortOrder : sort_order;
+  const finalSortOrder = inputOrder !== undefined && inputOrder !== null && inputOrder !== '' && !isNaN(Number(inputOrder))
+    ? Number(inputOrder)
+    : null;
 
   await query(`
     UPDATE forum_categories 
@@ -872,7 +887,7 @@ export async function updateMainCategory({ id, title, description, icon, color, 
     description !== undefined ? description : null,
     icon || null,
     color || null,
-    sortOrder !== undefined ? Number(sortOrder) : null,
+    finalSortOrder,
     id
   ]);
 
@@ -882,10 +897,47 @@ export async function updateMainCategory({ id, title, description, icon, color, 
     targetUserId: null,
     ipAddress: null,
     userAgent: null,
-    details: `Updated main category "${id}"`
+    details: `Updated main category "${id}"${finalSortOrder !== null ? ` (Order: ${finalSortOrder})` : ''}`
   });
 
   return { success: true, message: 'Main category updated successfully!' };
+}
+
+/**
+ * Reorder Main Categories (Bulk Sort Order update)
+ */
+export async function reorderMainCategories(orderList, adminId = 2) {
+  if (!Array.isArray(orderList) || orderList.length === 0) {
+    return { success: false, error: 'Ordered list of categories is required.' };
+  }
+
+  for (let i = 0; i < orderList.length; i++) {
+    const item = orderList[i];
+    const catId = typeof item === 'string' ? item : item.id;
+    const orderNum = typeof item === 'object' && item.sortOrder !== undefined
+      ? Number(item.sortOrder)
+      : (typeof item === 'object' && item.sort_order !== undefined ? Number(item.sort_order) : (i + 1));
+    
+    if (catId) {
+      await query('UPDATE forum_categories SET sort_order = ? WHERE id = ?;', [orderNum, catId]);
+    }
+  }
+
+  await recordAdminAudit({
+    adminId,
+    action: 'main_categories_reordered',
+    targetUserId: null,
+    ipAddress: null,
+    userAgent: null,
+    details: `Updated display order for ${orderList.length} main categories.`
+  });
+
+  const updatedCategories = await query('SELECT * FROM forum_categories ORDER BY sort_order ASC, title ASC;');
+  return {
+    success: true,
+    message: 'Category display order updated successfully!',
+    categories: updatedCategories
+  };
 }
 
 /**

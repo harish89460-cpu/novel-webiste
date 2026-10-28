@@ -1,3 +1,4 @@
+import { formatISTDisplay, parseISTDateTime } from './timezone.js';
 function escapeHtml(str) { return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 // Consolidated REST API Middleware for Rudhra Prarthana Novels
 // Pure MySQL Database Integration with Role-Based Security
@@ -105,6 +106,7 @@ import {
   getScheduledEpisodes,
   publishEpisodeNow,
   cancelEpisodeSchedule,
+  rescheduleEpisode,
   checkAndPublishDueEpisodes
 } from './episodes.js';
 import {
@@ -160,6 +162,9 @@ import {
 ,
   getWriterPermissions,
   updateWriterPermissions,
+  revokeWriterAccess,
+  reactivateWriterAccess,
+  bulkUpdateWriterPermissions,
   getWriterAssignments,
   createWriterAssignment,
   updateWriterAssignmentStatus,
@@ -199,6 +204,7 @@ import {
   deleteContentComment,
   createMainCategory,
   updateMainCategory,
+  reorderMainCategories,
   toggleMainCategoryStatus,
   deleteMainCategory,
   createSubCategory,
@@ -1425,6 +1431,107 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
+  // ============================================================================
+  // WRITER PUBLICATION SCHEDULER ENDPOINTS
+  // ============================================================================
+
+  // Writer Schedule: List Scheduled Releases
+  if (pathname === '/writer/schedule' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const writerId = currentUser.id;
+
+    const perms = await getWriterPermissions(writerId);
+    const isIndependent = currentUser.isAdmin || perms.accessType === 'full' || perms.canPublishIndependently;
+
+    const scheduled = await query(`
+      SELECT 
+        c.id, c.novel_id, c.chapter_num, c.episode_number, c.title, 
+        c.scheduled_at, c.timezone, c.status, c.review_status,
+        n.title AS novel_title, n.cover AS novel_cover
+      FROM chapters c
+      JOIN novels n ON c.novel_id = n.id
+      WHERE (n.author_id = ? OR c.author_id = ? OR EXISTS (
+        SELECT 1 FROM writer_assignments wa 
+        WHERE wa.writer_id = ? AND wa.content_type IN ('novel', 'episode') 
+          AND (wa.content_id = n.id OR wa.content_id = c.id)
+      ))
+      AND (c.status = 'scheduled' OR (c.status = 'submitted' AND c.scheduled_at IS NOT NULL))
+      ORDER BY c.scheduled_at ASC;
+    `, [writerId, writerId, writerId]);
+
+    const formatted = scheduled.map(r => ({
+      id: r.id,
+      novelId: r.novel_id,
+      novelTitle: r.novel_title,
+      novelCover: r.novel_cover,
+      chapterNum: r.chapter_num,
+      episodeNumber: r.episode_number || r.chapter_num,
+      title: r.title,
+      scheduledAt: r.scheduled_at,
+      formattedIST: formatISTDisplay(r.scheduled_at),
+      timezone: r.timezone || 'Asia/Kolkata',
+      status: r.status,
+      reviewStatus: r.review_status,
+      canPublishIndependently: isIndependent
+    }));
+
+    return sendJson(res, { success: true, scheduled: formatted }, 200);
+  }
+
+  // Writer Scheduler: Publish Immediately (if permitted)
+  if (pathname.startsWith('/writer/scheduler/') && pathname.endsWith('/publish-now') && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const episodeId = parseInt(pathname.replace('/writer/scheduler/', '').replace('/publish-now', ''), 10);
+
+    if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'episode', episodeId, 'publish');
+      if (!access.allowed || (!access.canPublishIndependently && access.accessLevel !== 'independent_publish')) {
+        return sendJson(res, { success: false, error: 'Publishing requires administrator review approval.' }, 403);
+      }
+    }
+
+    const result = await publishEpisodeNow(episodeId);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // Writer Scheduler: Cancel Schedule (Revert to Draft)
+  if (pathname.startsWith('/writer/scheduler/') && pathname.endsWith('/cancel') && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const episodeId = parseInt(pathname.replace('/writer/scheduler/', '').replace('/cancel', ''), 10);
+
+    if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'episode', episodeId, 'edit');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied.' }, 403);
+      }
+    }
+
+    const result = await cancelEpisodeSchedule(episodeId);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // Writer Scheduler: Reschedule Episode (Edit Date & Time)
+  if (pathname.startsWith('/writer/scheduler/') && pathname.endsWith('/reschedule') && method === 'PUT') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const episodeId = parseInt(pathname.replace('/writer/scheduler/', '').replace('/reschedule', ''), 10);
+
+    if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'episode', episodeId, 'edit');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied.' }, 403);
+      }
+    }
+
+    const body = await readJsonBody(req);
+    const newScheduledAt = body.scheduledAt || body;
+    const result = await rescheduleEpisode(episodeId, newScheduledAt, body.timezone);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+
   // A9. Publishing Scheduler: List All Scheduled Episodes
   if (pathname === '/admin/scheduler' && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
@@ -1453,6 +1560,19 @@ export async function apiMiddleware(req, res, next) {
     }
     return sendJson(res, result, 200);
   }
+  // A11b. Publishing Scheduler: Reschedule Episode (Edit date/time)
+  if (pathname.startsWith('/admin/scheduler/') && pathname.endsWith('/reschedule') && method === 'PUT') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const episodeId = parseInt(pathname.replace('/admin/scheduler/', '').replace('/reschedule', ''), 10);
+    const body = await readJsonBody(req);
+    const newScheduledAt = body.scheduledAt || body;
+    const result = await rescheduleEpisode(episodeId, newScheduledAt, body.timezone);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
 
   // A12. Media Management: List Uploaded Media
   if (pathname === '/admin/media' && method === 'GET') {
@@ -1995,13 +2115,22 @@ export async function apiMiddleware(req, res, next) {
   if (pathname === '/writer/novels' && method === 'POST') {
     if (requireWriterOrAdmin(currentUser, res)) return;
     const body = await readJsonBody(req);
+    let isIndependent = currentUser.isAdmin;
+    if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'novel', null, 'create');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied: You do not have permission to create novels.' }, 403);
+      }
+      isIndependent = Boolean(access.accessLevel === 'independent_publish' || access.canPublishIndependently);
+    }
+    const shouldPublish = isIndependent && (body.isPublished == 1 || body.visibility === 'public');
     const result = await createNovel({
       ...body,
       authorId: currentUser.id,
       author: currentUser.displayName || currentUser.username,
-      isPublished: 0,
-      visibility: 'draft',
-      status: 'Ongoing'
+      isPublished: shouldPublish ? 1 : 0,
+      visibility: shouldPublish ? 'public' : 'draft',
+      status: body.status || 'Ongoing'
     });
     if (!result.success) {
       return sendJson(res, result, 400);
@@ -2032,8 +2161,16 @@ export async function apiMiddleware(req, res, next) {
     if (!currentUser.isAdmin && existing.author_id !== currentUser.id) {
       return sendJson(res, { success: false, error: 'Access denied: You can only edit your own novels.' }, 403);
     }
-    const body = await readJsonBody(req);
+    let isIndependent = currentUser.isAdmin;
     if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'novel', novelId, 'edit');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied: You cannot edit this novel.' }, 403);
+      }
+      isIndependent = Boolean(access.accessLevel === 'independent_publish' || access.canPublishIndependently);
+    }
+    const body = await readJsonBody(req);
+    if (!currentUser.isAdmin && !isIndependent) {
       body.isPublished = 0;
       body.visibility = 'draft';
     }
@@ -2077,8 +2214,16 @@ export async function apiMiddleware(req, res, next) {
       if (!access.allowed) {
         return sendJson(res, { success: false, error: access.reason || 'Access denied: You do not have active write permissions for this novel.' }, 403);
       }
-      if (body.status === 'published' || body.status === 'scheduled') {
-        if (access.accessLevel !== 'independent_publish') {
+      const canIndep = access.accessLevel === 'independent_publish' || access.canPublishIndependently;
+      if (body.status === 'scheduled') {
+        if (!canIndep) {
+          body.status = 'submitted';
+          body.reviewStatus = 'pending_review';
+        } else {
+          body.reviewStatus = 'approved';
+        }
+      } else if (body.status === 'published') {
+        if (!canIndep) {
           body.status = 'draft';
         }
       }
@@ -2126,10 +2271,29 @@ export async function apiMiddleware(req, res, next) {
     if (!currentUser.isAdmin && Number(existing.author_id) !== Number(currentUser.id)) {
       return sendJson(res, { success: false, error: 'Access denied: You can only edit episodes of your own novels.' }, 403);
     }
+    let isIndependent = currentUser.isAdmin;
+    if (!currentUser.isAdmin) {
+      const access = await canWriterAccessContent(currentUser.id, 'episode', episodeId, 'edit');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied.' }, 403);
+      }
+      isIndependent = Boolean(access.accessLevel === 'independent_publish' || access.canPublishIndependently);
+    }
     const body = await readJsonBody(req);
     if (!currentUser.isAdmin) {
       if (body.status === 'submitted') {
         body.status = 'submitted';
+      } else if (body.status === 'scheduled') {
+        if (!isIndependent) {
+          body.status = 'submitted';
+          body.reviewStatus = 'pending_review';
+        } else {
+          body.reviewStatus = 'approved';
+        }
+      } else if (body.status === 'published') {
+        if (!isIndependent && existing.status !== 'published') {
+          body.status = 'draft';
+        }
       } else {
         body.status = existing.status === 'published' ? 'published' : 'draft';
       }
@@ -2345,6 +2509,16 @@ export async function apiMiddleware(req, res, next) {
     if (requireAdminOrEditor(currentUser, res)) return;
     const categories = await query('SELECT * FROM forum_categories ORDER BY sort_order ASC, title ASC;');
     return sendJson(res, { success: true, categories }, 200);
+  }
+
+  // Reorder Main Categories
+  if ((pathname === '/admin/content/main-categories/reorder' || pathname === '/admin/forum/categories/reorder') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const orderList = body.order || body.categories || body.items || body;
+    const result = await reorderMainCategories(orderList, currentUser.id);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
   }
 
   if (pathname === '/admin/content/main-categories' && method === 'POST') {
@@ -3088,6 +3262,52 @@ export async function apiMiddleware(req, res, next) {
   // WRITER PERMISSIONS, ASSIGNMENTS & REVIEW QUEUE (Admin & Writer APIs)
   // ============================================================================
 
+    // Admin: Writer Content Hierarchy Lookup (Categories, Subcategories, Novels, Stories, Audio)
+  if ((pathname === '/admin/writers/content-lookup' || pathname === '/api/admin/writers/content-lookup') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const mainCategories = await query('SELECT id, title, icon, sort_order FROM forum_categories ORDER BY sort_order ASC, title ASC;');
+    const subCategories = await query('SELECT id, main_category_id, title FROM content_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, title ASC;');
+    const novels = await query("SELECT id, title, category, status FROM novels WHERE (is_audio = 0 OR is_audio IS NULL) ORDER BY title ASC;");
+    const shortStories = await query("SELECT id, slug, title FROM short_stories ORDER BY title ASC;");
+    const audioNovels = await query("SELECT id, title FROM novels WHERE (is_audio = 1 OR category = 'Audio Novels') ORDER BY title ASC;");
+    return sendJson(res, {
+      success: true,
+      mainCategories,
+      subCategories,
+      novels,
+      shortStories,
+      audioNovels
+    }, 200);
+  }
+
+  // Admin: Bulk Update Writer Permissions
+  if ((pathname === '/admin/writers/bulk-permissions' || pathname === '/api/admin/writers/bulk-permissions') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const writerIds = Array.isArray(body.writerIds) ? body.writerIds : [];
+    const permsData = body.permissions || body;
+    const result = await bulkUpdateWriterPermissions(writerIds, permsData, currentUser.id);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // Admin: Revoke Writer Access
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/revoke') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/revoke', ''), 10);
+    const body = await readJsonBody(req).catch(() => ({}));
+    const result = await revokeWriterAccess(writerId, currentUser.id, body.reason || 'Writer access revoked by administrator.');
+    return sendJson(res, result, 200);
+  }
+
+  // Admin: Reactivate Writer Access
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/reactivate') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/reactivate', ''), 10);
+    const result = await reactivateWriterAccess(writerId, currentUser.id);
+    return sendJson(res, result, 200);
+  }
+
   // Admin: Get Writer Permissions
   if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/permissions') && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
@@ -3128,6 +3348,7 @@ export async function apiMiddleware(req, res, next) {
       title: body.title,
       instructions: body.instructions,
       deadline: body.deadline,
+      actions: body.actions,
       assignedBy: currentUser.id
     });
     if (!result.success) return sendJson(res, result, 400);
@@ -3139,11 +3360,12 @@ export async function apiMiddleware(req, res, next) {
     if (requireAdminOrEditor(currentUser, res)) return;
     const parts = pathname.replace('/admin/writers/assignments/', '').split('/');
     const assignmentId = parseInt(parts[0], 10);
-    let newStatus = 'revoked';
-    if (method !== 'DELETE') {
-      const body = await readJsonBody(req).catch(() => ({}));
-      newStatus = body.status || 'revoked';
+    if (method === 'DELETE') {
+      await query('DELETE FROM writer_assignments WHERE id = ?;', [assignmentId]);
+      return sendJson(res, { success: true, message: 'Assignment successfully removed.' }, 200);
     }
+    const body = await readJsonBody(req).catch(() => ({}));
+    const newStatus = body.status || 'revoked';
     const result = await updateWriterAssignmentStatus(assignmentId, newStatus, currentUser.id);
     return sendJson(res, result, 200);
   }

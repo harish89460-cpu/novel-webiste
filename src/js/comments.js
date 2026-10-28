@@ -1,3 +1,14 @@
+
+export function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+}
+
+if (typeof window !== 'undefined') {
+  window.escapeQuote = escapeQuote;
+  window.escapeQuotes = escapeQuotes;
+}
+
 // Novel & Chapter Comments and Emoji Reactions Client Module
 // Rudhra Prarthana Novels — Live Database Integration & WordPress-Style Rich-Text Editor
 

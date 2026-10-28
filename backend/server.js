@@ -7,8 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiMiddleware } from './api.js';
 import { getDb, loadEnv, testDbConnection } from './db.js';
-import { checkAndPublishDueEpisodes } from './episodes.js';
-import { checkAndPublishDueShortStories } from './short-stories.js';
+import { checkAndPublishDueEpisodes, runAutomatedPublishingScheduler } from './scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -183,12 +182,12 @@ async function startServer() {
     console.log(`✓ Rudhra Prarthana Novels Backend running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   });
 
-  // Run initial scheduled publishing check
-  await checkAndPublishDueEpisodes().catch(e => console.warn('Scheduler initial run warning:', e.message));
+  // Run initial automated publishing scheduler
+  await runAutomatedPublishingScheduler().catch(e => console.warn('[Scheduler Initial Run Warning]:', e.message));
 
-  // Automated reliable publishing scheduler (runs every 30 seconds)
+  // Automated reliable publishing scheduler (runs every 30 seconds independently)
   setInterval(() => {
-    checkAndPublishDueEpisodes().catch(e => console.warn('Scheduler interval warning:', e.message));
+    runAutomatedPublishingScheduler().catch(e => console.warn('[Scheduler Interval Warning]:', e.message));
   }, 30000);
 }
 

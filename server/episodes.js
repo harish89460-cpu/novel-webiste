@@ -1,3 +1,4 @@
+import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 // Episode Management & Publishing Scheduler Layer for Rudhra Prarthana Novels
 // Full support for Unlimited Episodes, Nested Sub-Episodes (e.g. 1, 1.1, 1.2),
 // Reader Rich-Text Content, Publishing Queue, and Timezone Scheduling
@@ -455,14 +456,16 @@ export async function createEpisode(data) {
     if (!data.scheduledAt) {
       return { success: false, error: 'A publication date and time is required when scheduling an episode.' };
     }
-    // Normalize scheduled date string
-    const schedDate = new Date(data.scheduledAt);
-    if (isNaN(schedDate.getTime())) {
-      return { success: false, error: 'Invalid scheduled date/time format.' };
+    scheduledAt = parseISTDateTime(data.scheduledAt);
+    if (!scheduledAt) {
+      return { success: false, error: 'Invalid scheduled date/time format. Please select a valid date and 12-hour AM/PM time.' };
     }
-    scheduledAt = schedDate.toISOString().slice(0, 19).replace('T', ' ');
+    if (isPastIST(scheduledAt, 5)) {
+      return { success: false, error: 'Scheduled publication time cannot be in the past.' };
+    }
+    timezone = 'Asia/Kolkata';
   } else if (status === 'published') {
-    publishedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    publishedAt = getISTNowString();
   }
 
   // Word count & Reading time calculation
@@ -473,11 +476,13 @@ export async function createEpisode(data) {
     INSERT INTO chapters (
       novel_id, parent_id, chapter_num, episode_number, title, title_ta,
       content, is_guest_allowed, is_audio, word_count, read_time,
-      release_date, status, scheduled_at, timezone, published_at, sort_order
+      release_date, status, scheduled_at, timezone, published_at, sort_order,
+      author_id, review_status
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?,
+      ?, ?
     );
   `, [
     novelId,
@@ -496,7 +501,9 @@ export async function createEpisode(data) {
     scheduledAt,
     timezone,
     publishedAt,
-    sortOrder
+    sortOrder,
+    data.authorId ? Number(data.authorId) : null,
+    data.reviewStatus || (status === 'published' ? 'published' : (status === 'scheduled' ? 'approved' : 'draft'))
   ]);
 
   const newId = res.insertId;
@@ -589,16 +596,19 @@ export async function updateEpisode(id, data) {
 
   if (status === 'scheduled') {
     if (data.scheduledAt) {
-      const schedDate = new Date(data.scheduledAt);
-      if (isNaN(schedDate.getTime())) {
+      scheduledAt = parseISTDateTime(data.scheduledAt);
+      if (!scheduledAt) {
         return { success: false, error: 'Invalid scheduled date/time format.' };
       }
-      scheduledAt = schedDate.toISOString().slice(0, 19).replace('T', ' ');
+      if (isPastIST(scheduledAt, 5)) {
+        return { success: false, error: 'Scheduled publication time cannot be in the past.' };
+      }
     } else if (!existing.scheduled_at) {
       return { success: false, error: 'A publication date and time is required when scheduling an episode.' };
     }
+    timezone = 'Asia/Kolkata';
   } else if (status === 'published' && (!existing.published_at || existing.status !== 'published')) {
-    publishedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    publishedAt = getISTNowString();
     scheduledAt = null;
   } else if (status === 'draft') {
     scheduledAt = null;
@@ -625,7 +635,8 @@ export async function updateEpisode(id, data) {
       release_date = ?,
       status = ?,
       scheduled_at = ?,
-      timezone = ?,
+        timezone = ?,
+        review_status = COALESCE(?, review_status),
       published_at = ?,
       sort_order = ?
     WHERE id = ?;
@@ -751,6 +762,7 @@ export async function getScheduledEpisodes() {
     episodeNumber: r.episode_number || r.chapter_num,
     title: r.title,
     scheduledAt: r.scheduled_at,
+    formattedIST: formatISTDisplay(r.scheduled_at),
     timezone: r.timezone || 'Asia/Kolkata',
     sortOrder: Number(r.sort_order || 1),
     wordCount: r.word_count,
@@ -793,11 +805,49 @@ export async function cancelEpisodeSchedule(id) {
   await query(`
     UPDATE chapters 
     SET status = 'draft',
-        scheduled_at = NULL
+        scheduled_at = NULL,
+        review_status = 'draft'
     WHERE id = ?;
   `, [id]);
 
   await refreshNovelStats(existing.novel_id);
   const updated = await getEpisodeById(id);
   return { success: true, episode: updated };
+}
+
+/**
+ * Reschedule an episode to a new IST date/time
+ */
+export async function rescheduleEpisode(id, newScheduledAt, timezone = 'Asia/Kolkata') {
+  const existing = await queryOne('SELECT id, novel_id, status FROM chapters WHERE id = ?;', [id]);
+  if (!existing) {
+    return { success: false, error: 'Episode not found.' };
+  }
+
+  const parsedSched = parseISTDateTime(newScheduledAt);
+  if (!parsedSched) {
+    return { success: false, error: 'Invalid scheduled date/time format.' };
+  }
+  if (isPastIST(parsedSched, 5)) {
+    return { success: false, error: 'Scheduled publication time cannot be in the past.' };
+  }
+
+  await query(`
+    UPDATE chapters 
+    SET status = 'scheduled',
+        scheduled_at = ?,
+        timezone = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?;
+  `, [parsedSched, timezone || 'Asia/Kolkata', id]);
+
+  const updated = await getEpisodeById(id);
+  return { 
+    success: true, 
+    episode: {
+      ...updated,
+      scheduledAt: parsedSched,
+      formattedIST: formatISTDisplay(parsedSched)
+    } 
+  };
 }

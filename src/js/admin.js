@@ -8,6 +8,81 @@ import { t } from './i18n.js';
 import { updateHeaderUserArea } from './auth.js';
 import { clearHomepageCache } from './content-service.js';
 
+export function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+}
+
+if (typeof window !== 'undefined') {
+  window.escapeQuote = escapeQuote;
+  window.escapeQuotes = escapeQuotes;
+  window.validateAndNormalizeMinute = function(val) {
+    if (val === undefined || val === null || val === '') return '00';
+    let num = parseInt(String(val).trim(), 10);
+    if (isNaN(num)) num = 0;
+    if (num < 0) num = 0;
+    if (num > 59) num = 59;
+    return String(num).padStart(2, '0');
+  };
+  window.onMinuteType = function(inputEl, selectId) {
+    let val = inputEl.value;
+    if (val === '') {
+      window.updateScheduleModalPreview && window.updateScheduleModalPreview();
+      return;
+    }
+    let num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      if (num > 59) { num = 59; inputEl.value = '59'; }
+      if (num < 0) { num = 0; inputEl.value = '00'; }
+      const padded = String(num).padStart(2, '0');
+      const sel = document.getElementById(selectId);
+      if (sel) sel.value = padded;
+    }
+    window.updateScheduleModalPreview && window.updateScheduleModalPreview();
+  };
+  window.normalizeMinuteOnBlur = function(inputEl, selectId) {
+    const normalized = window.validateAndNormalizeMinute(inputEl.value);
+    inputEl.value = normalized;
+    const sel = document.getElementById(selectId);
+    if (sel) sel.value = normalized;
+    window.updateScheduleModalPreview && window.updateScheduleModalPreview();
+  };
+  window.onMinuteSelect = function(selectEl, inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = selectEl.value;
+    window.updateScheduleModalPreview && window.updateScheduleModalPreview();
+  };
+  window.onAdminReschedMinuteType = function(inputEl, selectId) {
+    let val = inputEl.value;
+    if (val === '') {
+      window.updateAdminReschedPreview && window.updateAdminReschedPreview();
+      return;
+    }
+    let num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      if (num > 59) { num = 59; inputEl.value = '59'; }
+      if (num < 0) { num = 0; inputEl.value = '00'; }
+      const padded = String(num).padStart(2, '0');
+      const sel = document.getElementById(selectId);
+      if (sel) sel.value = padded;
+    }
+    window.updateAdminReschedPreview && window.updateAdminReschedPreview();
+  };
+  window.normalizeAdminReschedMinuteOnBlur = function(inputEl, selectId) {
+    const normalized = window.validateAndNormalizeMinute(inputEl.value);
+    inputEl.value = normalized;
+    const sel = document.getElementById(selectId);
+    if (sel) sel.value = normalized;
+    window.updateAdminReschedPreview && window.updateAdminReschedPreview();
+  };
+  window.onAdminReschedMinuteSelect = function(selectEl, inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = selectEl.value;
+    window.updateAdminReschedPreview && window.updateAdminReschedPreview();
+  };
+}
+
+
 // Global Admin State
 export const adminState = {
   activeTab: 'overview', // 'overview' | 'novels' | 'audio' | 'episodes' | 'editor' | 'scheduler' | 'writers' | 'media' | 'settings'
@@ -5621,70 +5696,101 @@ window.openSchedulePublicationModal = () => {
   const existingModal = document.getElementById('modal-schedule-pub');
   if (existingModal) existingModal.remove();
 
-  const defaultDateObj = new Date(Date.now() + 3600000);
-  const yyyy = defaultDateObj.getFullYear();
-  const mm = String(defaultDateObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(defaultDateObj.getDate()).padStart(2, '0');
-  const hh = String(defaultDateObj.getHours()).padStart(2, '0');
-  const min = String(defaultDateObj.getMinutes()).padStart(2, '0');
-
+  // Initialize with tomorrow at 08:00 PM IST or 2 hours in the future
+  const now = new Date();
+  const future = new Date(now.getTime() + 2 * 3600 * 1000);
+  const yyyy = future.getFullYear();
+  const mm = String(future.getMonth() + 1).padStart(2, '0');
+  const dd = String(future.getDate()).padStart(2, '0');
   const defaultDate = `${yyyy}-${mm}-${dd}`;
-  const defaultTime = `${hh}:${min}`;
-  const todayDate = new Date().toISOString().split('T')[0];
+
+  let defHour = future.getHours();
+  const defAmpm = defHour >= 12 ? 'PM' : 'AM';
+  defHour = defHour % 12 || 12;
+  const defHourStr = String(defHour).padStart(2, '0');
+  const defMin = String(Math.floor(future.getMinutes() / 5) * 5).padStart(2, '0');
+
+  const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const hoursOptions = [1,2,3,4,5,6,7,8,9,10,11,12].map(h => {
+    const val = String(h).padStart(2, '0');
+    return `<option value="${val}" ${val === defHourStr ? 'selected' : ''}>${val}</option>`;
+  }).join('');
+
+  const minsOptions = Array.from({ length: 60 }, (_, i) => {
+    const val = String(i).padStart(2, '0');
+    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>:${val}</option>`;
+  }).join('');
 
   const modalHtml = `
-    <div class="admin-modal-backdrop" id="modal-schedule-pub" style="position:fixed; inset:0; background:rgba(11,31,51,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
-      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:480px; border-radius:12px; box-shadow:0 12px 36px rgba(0,0,0,0.25); overflow:hidden;">
-        <div style="background:var(--color-navy-deep); color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
-          <h3 style="margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
-            <span>⏰</span> Schedule Publication
+    <div class="admin-modal-backdrop" id="modal-schedule-pub" style="position:fixed; inset:0; background:rgba(11,31,51,0.65); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:520px; border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,0.25); overflow:hidden;">
+        <div style="background:var(--color-navy-deep); color:#FFF; padding:18px 22px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16.5px; font-weight:700; display:flex; align-items:center; gap:8px;">
+            <span>⏰</span> Schedule Publication (Asia/Kolkata — IST)
           </h3>
           <button type="button" onclick="document.getElementById('modal-schedule-pub').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
         </div>
 
-        <form id="form-schedule-pub" onsubmit="event.preventDefault(); submitSchedulePublication();" style="padding:20px;">
-          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
-            <div style="font-size:12px; color:var(--color-text-muted);">Scheduling Episode:</div>
-            <strong style="color:var(--color-navy-deep); font-size:14px;">${escapeHtml(ep.title || 'Untitled')}</strong>
-            <div style="font-size:11.5px; color:var(--color-gold-warm); margin-top:2px;">Episode ${escapeHtml(ep.episodeNumber || 'Auto')}</div>
-          </div>
-
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
-            <div>
-              <label class="form-label" style="font-weight:700; font-size:12.5px; margin-bottom:4px; display:block;">
-                Publication Date <span style="color:#EF4444;">*</span>
-              </label>
-              <input type="date" id="sched-input-date" class="form-input" min="${todayDate}" value="${defaultDate}" required style="width:100%;">
-            </div>
-            <div>
-              <label class="form-label" style="font-weight:700; font-size:12.5px; margin-bottom:4px; display:block;">
-                Publication Time <span style="color:#EF4444;">*</span>
-              </label>
-              <input type="time" id="sched-input-time" class="form-input" value="${defaultTime}" required style="width:100%;">
-            </div>
+        <form id="form-schedule-pub" onsubmit="event.preventDefault(); submitSchedulePublication();" style="padding:22px;">
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; margin-bottom:18px;">
+            <div style="font-size:11.5px; text-transform:uppercase; font-weight:700; color:#64748B; letter-spacing:0.5px;">Scheduling Episode</div>
+            <strong style="color:var(--color-navy-deep); font-size:15px; display:block; margin-top:2px;">${escapeHtml(ep.title || 'Untitled')}</strong>
+            <div style="font-size:12px; color:var(--color-gold-warm); margin-top:2px;">Episode ${escapeHtml(ep.episodeNumber || 'Auto')}</div>
           </div>
 
           <div style="margin-bottom:16px;">
-            <label class="form-label" style="font-weight:700; font-size:12.5px; margin-bottom:4px; display:block;">
-              Timezone
+            <label class="form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">
+              Publication Date <span style="color:#EF4444;">*</span>
             </label>
-            <select id="sched-input-timezone" class="form-input" style="width:100%;">
-              <option value="Asia/Kolkata" selected>Asia/Kolkata (IST - Indian Standard Time)</option>
-              <option value="UTC">UTC (Coordinated Universal Time)</option>
-              <option value="America/New_York">America/New_York (EST / EDT)</option>
-              <option value="Europe/London">Europe/London (GMT / BST)</option>
-              <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
-              <option value="Asia/Dubai">Asia/Dubai (GST)</option>
-            </select>
+            <input type="date" id="sched-input-date" class="form-input" min="${todayDate}" value="${defaultDate}" required style="width:100%; padding:9px 12px; font-size:14px;" onchange="updateScheduleModalPreview()">
           </div>
 
-          <div style="font-size:11.5px; color:#64748B; margin-bottom:18px; line-height:1.5;">
-            ℹ️ When the scheduled date and time arrive, the server scheduler will automatically publish this episode to all readers.
+          <div style="margin-bottom:16px;">
+            <label class="form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">
+              Publication Time (12-Hour AM/PM) <span style="color:#EF4444;">*</span>
+            </label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div>
+                <select id="sched-input-hour" class="form-input" style="width:100%; padding:9px 8px; font-weight:600; text-align:center;" onchange="updateScheduleModalPreview()">
+                  ${hoursOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">Hour (1-12)</div>
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <input type="number" id="sched-input-minute" class="form-input" min="0" max="59" step="1" value="${defMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onMinuteType(this, 'sched-minute-select')" onblur="normalizeMinuteOnBlur(this, 'sched-minute-select')" title="Type any minute 00-59">
+                  <select id="sched-minute-select" class="form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onMinuteSelect(this, 'sched-input-minute')" title="Or choose minute 00-59">
+                    ${minsOptions}
+                  </select>
+                </div>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">Minute (00-59, type or select)</div>
+              </div>
+              <div>
+                <select id="sched-input-ampm" class="form-input" style="width:100%; padding:9px 8px; font-weight:700; text-align:center;" onchange="updateScheduleModalPreview()">
+                  <option value="AM" ${defAmpm === 'AM' ? 'selected' : ''}>AM</option>
+                  <option value="PM" ${defAmpm === 'PM' ? 'selected' : ''}>PM</option>
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">AM / PM</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Live IST Preview Banner -->
+          <div id="sched-preview-box" style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+            <div style="font-size:11.5px; font-weight:700; color:#4338CA; text-transform:uppercase; letter-spacing:0.5px;">Confirmed Indian Standard Time (IST)</div>
+            <div id="sched-preview-text" style="font-size:14px; font-weight:700; color:#1E1B4B; margin-top:3px;">
+              Loading preview...
+            </div>
+          </div>
+
+          <div style="font-size:12px; color:#64748B; margin-bottom:20px; line-height:1.5;">
+            🔒 This episode will remain completely private and hidden from members until the exact scheduled date and time arrive.
           </div>
 
           <div style="display:flex; justify-content:flex-end; gap:10px;">
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-schedule-pub').remove()">Cancel</button>
-            <button type="submit" class="btn btn-gold btn-sm" style="font-weight:700;">Confirm & Schedule Release</button>
+            <button type="submit" class="btn btn-gold btn-sm" style="font-weight:700; padding:8px 18px;">Confirm &amp; Schedule Release</button>
           </div>
         </form>
       </div>
@@ -5692,31 +5798,76 @@ window.openSchedulePublicationModal = () => {
   `;
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
+  updateScheduleModalPreview();
+};
+
+window.updateScheduleModalPreview = () => {
+  const dateVal = document.getElementById('sched-input-date')?.value;
+  const hourVal = document.getElementById('sched-input-hour')?.value || '12';
+  const rawMin = document.getElementById('sched-input-minute')?.value ?? document.getElementById('sched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('sched-input-ampm')?.value || 'PM';
+  const previewText = document.getElementById('sched-preview-text');
+  const previewBox = document.getElementById('sched-preview-box');
+
+  if (!previewText) return;
+
+  if (!dateVal) {
+    previewText.textContent = 'Please choose a date.';
+    return;
+  }
+
+  // Calculate 24h for past check
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const schedStr = `${dateVal} ${hh}:${minVal}:00`;
+
+  // Format display
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m, d] = dateVal.split('-');
+  const monthName = months[parseInt(m, 10) - 1] || m;
+  const formatted = `${d} ${monthName} ${y}, ${hourVal}:${minVal} ${ampmVal} IST (Asia/Kolkata)`;
+
+  // Check past
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+  if (schedStr < nowStr) {
+    previewBox.style.background = '#FEF2F2';
+    previewBox.style.borderColor = '#FCA5A5';
+    previewText.innerHTML = `<span style="color:#DC2626;">⚠️ Warning: Selected time is in the past! (${formatted})</span>`;
+  } else {
+    previewBox.style.background = '#EEF2FF';
+    previewBox.style.borderColor = '#C7D2FE';
+    previewText.innerHTML = `<span style="color:#1E1B4B;">🕒 ${formatted}</span>`;
+  }
 };
 
 window.submitSchedulePublication = async () => {
   const dateVal = document.getElementById('sched-input-date')?.value;
-  const timeVal = document.getElementById('sched-input-time')?.value;
-  const timezone = document.getElementById('sched-input-timezone')?.value || 'Asia/Kolkata';
+  const hourVal = document.getElementById('sched-input-hour')?.value || '12';
+  const rawMin = document.getElementById('sched-input-minute')?.value ?? document.getElementById('sched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('sched-input-ampm')?.value || 'PM';
 
-  if (!dateVal || !timeVal) {
-    showToast('Please select both publication date and time.');
+  if (!dateVal) {
+    showToast('Please select a publication date.');
     return;
   }
 
-  const dtStr = `${dateVal}T${timeVal}:00`;
-  const scheduledDate = new Date(dtStr);
-  if (isNaN(scheduledDate.getTime())) {
-    showToast('Invalid publication date/time.');
-    return;
-  }
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const scheduledAt = `${dateVal} ${hh}:${minVal}:00`;
 
-  const scheduledAt = scheduledDate.toISOString();
   document.getElementById('modal-schedule-pub')?.remove();
 
   if (!adminState.editingEpisode) adminState.editingEpisode = {};
   adminState.editingEpisode.scheduledAt = scheduledAt;
-  adminState.editingEpisode.timezone = timezone;
+  adminState.editingEpisode.timezone = 'Asia/Kolkata';
   await saveEpisodePayload('scheduled', true);
 };
 
@@ -5940,28 +6091,26 @@ async function renderSchedulerTab(canvas) {
 }
 
 function renderSchedulerCard(s) {
-  const schedDate = new Date(s.scheduledAt);
-  const dateStr = schedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  const timeStr = schedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const rawSched = s.scheduledAt;
+  const formattedTime = s.formattedIST || (typeof window.formatISTDisplay === 'function' ? window.formatISTDisplay(rawSched) : rawSched);
+  const schedDate = new Date(rawSched);
   const countdown = getCountdownString(schedDate);
 
   return `
-    <div class="scheduler-card">
+    <div class="scheduler-card" style="display:flex; justify-content:space-between; align-items:center; padding:18px 20px; background:#FFF; border:1px solid #E2E8F0; border-radius:12px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
       <div style="display:flex; align-items:center; gap:16px;">
-        <div class="scheduler-time-badge">
-          <span class="scheduler-date-text">${dateStr}</span>
-          <span class="scheduler-hour-text">${timeStr}</span>
-          <span class="scheduler-tz-text">${escapeHtml(s.timezone || 'Asia/Kolkata')}</span>
-          <span class="scheduler-countdown">${countdown}</span>
+        <div class="scheduler-time-badge" style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:10px; padding:10px 14px; text-align:center; min-width:140px;">
+          <span class="scheduler-hour-text" style="font-size:13.5px; font-weight:700; color:#1E293B; display:block;">${formattedTime}</span>
+          <span class="scheduler-countdown" style="font-size:11.5px; font-weight:600; color:#4F46E5; display:block; margin-top:3px;">${countdown}</span>
         </div>
 
         <div>
           <div style="font-weight:700; font-size:16px; color:var(--color-navy-deep);">${escapeHtml(s.title)}</div>
           <div style="font-size:13px; color:var(--color-text-muted); margin-top:2px;">
-            ${escapeHtml(s.novelTitle)} • Episode ${escapeHtml(s.episodeNumber)}
+            ${escapeHtml(s.novelTitle || 'Novel')} • Episode ${escapeHtml(s.episodeNumber || s.chapterNum || '1')}
           </div>
-          <div style="font-size:11px; color:var(--color-gold-warm); margin-top:4px;">
-            🔒 Private & hidden from public until release time
+          <div style="font-size:11.5px; color:#10B981; margin-top:4px; font-weight:600;">
+            🔒 Private &amp; automated release queue (Asia/Kolkata)
           </div>
         </div>
       </div>
@@ -5970,7 +6119,7 @@ function renderSchedulerCard(s) {
         <button class="btn btn-gold btn-sm" onclick="publishScheduledNowAction(${s.id})" title="Publish live immediately">
           🚀 Publish Now
         </button>
-        <button class="btn btn-outline btn-sm" onclick="editEpisodeInEditor(${s.id})" title="Reschedule or Edit">
+        <button class="btn btn-outline btn-sm" onclick="openAdminRescheduleModal(${s.id}, '${escapeQuote(s.title)}', '${s.scheduledAt}')" title="Change publication time">
           ✏️ Edit Schedule
         </button>
         <button class="btn btn-outline btn-sm" onclick="cancelScheduleAction(${s.id})" style="color:#EF4444;" title="Cancel schedule (revert to draft)">
@@ -5980,6 +6129,172 @@ function renderSchedulerCard(s) {
     </div>
   `;
 }
+
+window.openAdminRescheduleModal = (episodeId, title, currentSched) => {
+  const existing = document.getElementById('modal-admin-reschedule');
+  if (existing) existing.remove();
+
+  let curY = '', curM = '', curD = '', curH = '08', curMin = '00', curAmpm = 'PM';
+  if (currentSched) {
+    const match = String(currentSched).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    if (match) {
+      [, curY, curM, curD, curH, curMin] = match;
+      let h = parseInt(curH, 10);
+      curAmpm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      curH = String(h).padStart(2, '0');
+    }
+  }
+
+  const now = new Date();
+  const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const defaultDate = (curY && curM && curD) ? `${curY}-${curM}-${curD}` : todayDate;
+
+  const hoursOptions = [1,2,3,4,5,6,7,8,9,10,11,12].map(h => {
+    const val = String(h).padStart(2, '0');
+    return `<option value="${val}" ${val === curH ? 'selected' : ''}>${val}</option>`;
+  }).join('');
+
+  const minsOptions = Array.from({ length: 60 }, (_, i) => {
+    const val = String(i).padStart(2, '0');
+    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>:${val}</option>`;
+  }).join('');
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-admin-reschedule" style="position:fixed; inset:0; background:rgba(11,31,51,0.65); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:480px; border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,0.25); overflow:hidden;">
+        <div style="background:var(--color-navy-deep); color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">✏️ Reschedule Publication (IST)</h3>
+          <button type="button" onclick="document.getElementById('modal-admin-reschedule').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+
+        <form id="form-admin-resched" onsubmit="event.preventDefault(); submitAdminReschedule(${episodeId});" style="padding:20px;">
+          <div style="margin-bottom:14px;">
+            <div style="font-size:12px; color:#64748B;">Episode:</div>
+            <strong style="color:var(--color-navy-deep); font-size:14.5px;">${escapeHtml(title)}</strong>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">New Release Date</label>
+            <input type="date" id="resched-date" class="form-input" min="${todayDate}" value="${defaultDate}" required style="width:100%;" onchange="updateAdminReschedPreview()">
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label class="form-label" style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">New Release Time (12-Hour AM/PM)</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div>
+                <select id="resched-hour" class="form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateAdminReschedPreview()">
+                  ${hoursOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <input type="number" id="resched-minute" class="form-input" min="0" max="59" step="1" value="${curMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onAdminReschedMinuteType(this, 'resched-minute-select')" onblur="normalizeAdminReschedMinuteOnBlur(this, 'resched-minute-select')" title="Type any minute 00-59">
+                  <select id="resched-minute-select" class="form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onAdminReschedMinuteSelect(this, 'resched-minute')" title="Or choose minute 00-59">
+                    ${minsOptions}
+                  </select>
+                </div>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+              </div>
+              <div>
+                <select id="resched-ampm" class="form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateAdminReschedPreview()">
+                  <option value="AM" ${curAmpm === 'AM' ? 'selected' : ''}>AM</option>
+                  <option value="PM" ${curAmpm === 'PM' ? 'selected' : ''}>PM</option>
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">AM/PM</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="resched-preview-box" style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px; padding:10px 12px; margin-bottom:16px;">
+            <div id="resched-preview-text" style="font-size:13px; font-weight:700; color:#1E1B4B;">Loading...</div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-admin-reschedule').remove()">Cancel</button>
+            <button type="submit" class="btn btn-gold btn-sm" style="font-weight:700;">Save New Schedule</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  updateAdminReschedPreview();
+};
+
+window.updateAdminReschedPreview = () => {
+  const dateVal = document.getElementById('resched-date')?.value;
+  const hourVal = document.getElementById('resched-hour')?.value || '12';
+  const rawMin = document.getElementById('resched-minute')?.value ?? document.getElementById('resched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('resched-ampm')?.value || 'PM';
+  const previewText = document.getElementById('resched-preview-text');
+  const previewBox = document.getElementById('resched-preview-box');
+  if (!previewText) return;
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m, d] = (dateVal || '').split('-');
+  const monthName = months[parseInt(m, 10) - 1] || m;
+  const formatted = `${d} ${monthName} ${y}, ${hourVal}:${minVal} ${ampmVal} IST (Asia/Kolkata)`;
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const schedStr = `${dateVal} ${hh}:${minVal}:00`;
+
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+  if (schedStr < nowStr) {
+    previewBox.style.background = '#FEF2F2';
+    previewBox.style.borderColor = '#FCA5A5';
+    previewText.innerHTML = `<span style="color:#DC2626;">⚠️ Warning: Time is in the past! (${formatted})</span>`;
+  } else {
+    previewBox.style.background = '#EEF2FF';
+    previewBox.style.borderColor = '#C7D2FE';
+    previewText.innerHTML = `<span style="color:#1E1B4B;">🕒 ${formatted}</span>`;
+  }
+};
+
+window.submitAdminReschedule = async (episodeId) => {
+  const dateVal = document.getElementById('resched-date')?.value;
+  const hourVal = document.getElementById('resched-hour')?.value || '12';
+  const rawMin = document.getElementById('resched-minute')?.value ?? document.getElementById('resched-minute-select')?.value ?? '00';
+  const minVal = window.validateAndNormalizeMinute ? window.validateAndNormalizeMinute(rawMin) : String(rawMin).padStart(2, '0');
+  const ampmVal = document.getElementById('resched-ampm')?.value || 'PM';
+
+  if (!dateVal) {
+    showToast('Please select a date.');
+    return;
+  }
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const scheduledAt = `${dateVal} ${hh}:${minVal}:00`;
+
+  try {
+    const res = await apiFetch(`/api/admin/scheduler/${episodeId}/reschedule`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduledAt, timezone: 'Asia/Kolkata' })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to reschedule.');
+      return;
+    }
+    document.getElementById('modal-admin-reschedule')?.remove();
+    showToast('Publication schedule updated successfully!');
+    switchAdminTab('scheduler');
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+};
 
 window.publishScheduledNowAction = async (episodeId) => {
   if (!confirm('Publish this episode immediately to readers?')) return;
@@ -6265,27 +6580,51 @@ async function renderWritersTab(canvas) {
 }
 
 function renderWritersListUI(canvas) {
-  const filter = adminState.writersFilter || { search: '', status: 'all' };
+  const filter = adminState.writersFilter || { search: '', status: 'all', accessType: 'all' };
   const searchLower = (filter.search || '').toLowerCase().trim();
+  adminState.selectedWriterIds = adminState.selectedWriterIds || new Set();
 
   const filteredWriters = (adminState.writers || []).filter(w => {
-    const matchesSearch = !searchLower || 
-      (w.name || '').toLowerCase().includes(searchLower) ||
-      (w.email || '').toLowerCase().includes(searchLower) ||
-      (w.username || '').toLowerCase().includes(searchLower);
+    const writerName = (w.displayName || w.name || '').toLowerCase();
+    const writerEmail = (w.email || '').toLowerCase();
+    const writerUser = (w.username || '').toLowerCase();
 
-    const matchesStatus = filter.status === 'all' || w.status === filter.status;
-    return matchesSearch && matchesStatus;
+    const matchesSearch = !searchLower || 
+      writerName.includes(searchLower) ||
+      writerEmail.includes(searchLower) ||
+      writerUser.includes(searchLower);
+
+    const isRevoked = w.permissionStatus === 'revoked';
+    let matchesStatus = true;
+    if (filter.status === 'active') {
+      matchesStatus = w.status === 'active' && !isRevoked;
+    } else if (filter.status === 'revoked') {
+      matchesStatus = isRevoked;
+    } else if (filter.status === 'blocked') {
+      matchesStatus = w.status === 'blocked';
+    }
+
+    let matchesAccess = true;
+    if (filter.accessType && filter.accessType !== 'all') {
+      matchesAccess = (w.accessType || 'particular') === filter.accessType;
+    }
+
+    return matchesSearch && matchesStatus && matchesAccess;
   });
 
-  const activeCount = adminState.writers.filter(w => w.status === 'active').length;
-  const blockedCount = adminState.writers.filter(w => w.status === 'blocked').length;
+  const totalWriters = adminState.writers.length;
+  const activeCount = adminState.writers.filter(w => w.status === 'active' && w.permissionStatus !== 'revoked').length;
+  const fullAccessCount = adminState.writers.filter(w => w.accessType === 'full').length;
+  const particularCount = adminState.writers.filter(w => (w.accessType || 'particular') === 'particular').length;
+  const revokedCount = adminState.writers.filter(w => w.permissionStatus === 'revoked').length;
+  const selectedCount = adminState.selectedWriterIds.size;
+  const allFilteredSelected = filteredWriters.length > 0 && filteredWriters.every(w => adminState.selectedWriterIds.has(w.id));
 
   canvas.innerHTML = `
     <div class="admin-page-header">
       <div>
         <h2 class="admin-page-title">Writer Management</h2>
-        <p class="admin-page-subtitle">Create, monitor, and manage authorized writer accounts, assigned novels, and security access.</p>
+        <p class="admin-page-subtitle">Manage authorized writer accounts, Full Access / Particular Access permissions, content assignments, and publishing controls.</p>
       </div>
       <div class="admin-header-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
         <button type="button" class="btn btn-outline" onclick="openWriterAuditLogsModal(null)" title="View recent administrative and security audit activity">
@@ -6300,11 +6639,11 @@ function renderWritersListUI(canvas) {
     </div>
 
     <!-- Metrics Strip -->
-    <div class="admin-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom:20px;">
+    <div class="admin-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:20px;">
       <div class="admin-stat-card">
         <div class="stat-meta">
           <span class="stat-label">Total Writers</span>
-          <span class="stat-value">${adminState.writers.length}</span>
+          <span class="stat-value">${totalWriters}</span>
         </div>
       </div>
       <div class="admin-stat-card">
@@ -6315,18 +6654,30 @@ function renderWritersListUI(canvas) {
       </div>
       <div class="admin-stat-card">
         <div class="stat-meta">
-          <span class="stat-label">Temporarily Blocked</span>
-          <span class="stat-value" style="color:#DC2626;">${blockedCount}</span>
+          <span class="stat-label">Full Access</span>
+          <span class="stat-value" style="color:#D97706;">🌟 ${fullAccessCount}</span>
+        </div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="stat-meta">
+          <span class="stat-label">Particular Access</span>
+          <span class="stat-value" style="color:#2563EB;">🎯 ${particularCount}</span>
+        </div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="stat-meta">
+          <span class="stat-label">Access Revoked</span>
+          <span class="stat-value" style="color:#DC2626;">🚫 ${revokedCount}</span>
         </div>
       </div>
     </div>
 
     <!-- Search & Filter Bar -->
-    <div class="admin-card" style="margin-bottom:20px; padding:16px;">
+    <div class="admin-card" style="margin-bottom:16px; padding:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
-        <div style="position:relative; flex:1; min-width:240px; max-width:420px;">
+        <div style="position:relative; flex:1; min-width:240px; max-width:400px;">
           <input type="text" id="writer-search-input" class="form-input" 
-                 placeholder="Search by writer name or email..." 
+                 placeholder="Search by writer name, email, or username..." 
                  value="${escapeHtml(filter.search || '')}"
                  oninput="handleWriterSearchInput(this.value)"
                  style="width:100%; padding:9px 12px 9px 36px; font-size:13.5px; border-radius:8px;">
@@ -6336,53 +6687,100 @@ function renderWritersListUI(canvas) {
           ${filter.search ? `<button type="button" onclick="clearWriterSearch()" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94A3B8; cursor:pointer; font-size:14px;">✕</button>` : ''}
         </div>
 
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:13px; font-weight:600; color:var(--color-navy-deep);">Status:</span>
-          <div class="btn-group" style="display:flex; gap:4px;">
-            <button type="button" class="btn ${filter.status === 'all' ? 'btn-gold' : 'btn-outline'}" 
-                    style="padding:6px 14px; font-size:12.5px; border-radius:6px;"
-                    onclick="filterWritersByStatus('all')">
-              All (${adminState.writers.length})
-            </button>
-            <button type="button" class="btn ${filter.status === 'active' ? 'btn-gold' : 'btn-outline'}" 
-                    style="padding:6px 14px; font-size:12.5px; border-radius:6px;"
-                    onclick="filterWritersByStatus('active')">
-              Active (${activeCount})
-            </button>
-            <button type="button" class="btn ${filter.status === 'blocked' ? 'btn-gold' : 'btn-outline'}" 
-                    style="padding:6px 14px; font-size:12.5px; border-radius:6px;"
-                    onclick="filterWritersByStatus('blocked')">
-              Blocked (${blockedCount})
-            </button>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <!-- Status Filters -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12.5px; font-weight:700; color:var(--color-navy-deep);">Status:</span>
+            <div class="btn-group" style="display:flex; gap:3px;">
+              <button type="button" class="btn ${filter.status === 'all' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByStatus('all')">
+                All (${totalWriters})
+              </button>
+              <button type="button" class="btn ${filter.status === 'active' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByStatus('active')">
+                Active (${activeCount})
+              </button>
+              <button type="button" class="btn ${filter.status === 'revoked' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByStatus('revoked')">
+                Revoked (${revokedCount})
+              </button>
+            </div>
+          </div>
+
+          <!-- Access Type Filters -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12.5px; font-weight:700; color:var(--color-navy-deep);">Access:</span>
+            <div class="btn-group" style="display:flex; gap:3px;">
+              <button type="button" class="btn ${filter.accessType === 'all' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByAccess('all')">
+                All
+              </button>
+              <button type="button" class="btn ${filter.accessType === 'full' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByAccess('full')">
+                Full (${fullAccessCount})
+              </button>
+              <button type="button" class="btn ${filter.accessType === 'particular' ? 'btn-gold' : 'btn-outline'}" 
+                      style="padding:5px 11px; font-size:12px; border-radius:6px;"
+                      onclick="filterWritersByAccess('particular')">
+                Particular (${particularCount})
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- Bulk Selection Toolbar -->
+    ${selectedCount > 0 ? `
+      <div class="admin-card" style="background:#1E293B; color:#FFFFFF; padding:12px 18px; margin-bottom:16px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:0 4px 14px rgba(0,0,0,0.12);">
+        <div style="display:flex; align-items:center; gap:10px; font-size:13.5px; font-weight:600;">
+          <span style="font-size:16px;">☑️</span>
+          <span><strong>${selectedCount}</strong> writer${selectedCount > 1 ? 's' : ''} selected</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-gold btn-sm" onclick="openBulkWriterAccessModal()" style="font-weight:700;">
+            ⚙️ Bulk Edit Access
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" style="color:#FCA5A5; border-color:#EF4444; background:rgba(239,68,68,0.1);" onclick="confirmBulkRevokeWriterAccess()">
+            🚫 Bulk Revoke Access
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" style="color:#FFF; border-color:rgba(255,255,255,0.4);" onclick="clearWriterSelection()">
+            Deselect All
+          </button>
+        </div>
+      </div>
+    ` : ''}
+
     <!-- Writers Table Container -->
     <div class="admin-card" style="padding:0; overflow:hidden;">
       <div class="admin-table-responsive" style="overflow-x:auto;">
-        <table class="admin-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:13.5px;">
+        <table class="admin-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
           <thead>
-            <tr style="background:#F8FAFC; border-bottom:1px solid var(--color-border); color:var(--color-navy-deep); font-weight:700;">
-              <th style="padding:14px 16px;">Writer</th>
-              <th style="padding:14px 16px;">Email</th>
-              <th style="padding:14px 16px; text-align:center;">Status</th>
-              <th style="padding:14px 16px; text-align:center;">Novels</th>
-              <th style="padding:14px 16px; text-align:center;">Episodes</th>
-              <th style="padding:14px 16px;">Last Login</th>
-              <th style="padding:14px 16px;">Created Date</th>
+            <tr style="background:#F8FAFC; border-bottom:2px solid var(--color-border); color:var(--color-navy-deep); font-weight:700;">
+              <th style="padding:14px 16px; width:44px; text-align:center;">
+                <input type="checkbox" id="select-all-writers-cb" ${allFilteredSelected ? 'checked' : ''} onchange="toggleSelectAllWriters(this.checked)" title="Select all writers" style="cursor:pointer; width:16px; height:16px; accent-color:#C89B3C;">
+              </th>
+              <th style="padding:14px 16px;">Writer Name</th>
+              <th style="padding:14px 16px;">Email ID</th>
+              <th style="padding:14px 16px; text-align:center;">Access Type</th>
+              <th style="padding:14px 16px;">Assigned Categories / Content</th>
+              <th style="padding:14px 16px; text-align:center;">Permission Status</th>
               <th style="padding:14px 16px; text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
             ${filteredWriters.length === 0 ? `
               <tr>
-                <td colspan="8" style="padding:48px 16px; text-align:center; color:var(--color-text-muted);">
+                <td colspan="7" style="padding:48px 16px; text-align:center; color:var(--color-text-muted);">
                   <div style="font-size:32px; margin-bottom:8px;">✍️</div>
-                  <div style="font-weight:600; color:var(--color-navy-deep); font-size:15px; margin-bottom:4px;">No Writer Accounts Found</div>
-                  <div style="font-size:13px; max-width:400px; margin:0 auto 16px;">${filter.search || filter.status !== 'all' ? 'Try adjusting your search query or status filter.' : 'No writer accounts have been created yet. Click "+ Create Writer" to add an author.'}</div>
-                  ${filter.search || filter.status !== 'all' ? `
+                  <div style="font-weight:700; color:var(--color-navy-deep); font-size:15px; margin-bottom:4px;">No Writer Accounts Found</div>
+                  <div style="font-size:13px; max-width:420px; margin:0 auto 16px;">${filter.search || filter.status !== 'all' || filter.accessType !== 'all' ? 'Try adjusting your search query, status, or access type filter.' : 'No writer accounts found. Click "+ Create Writer" to add an author.'}</div>
+                  ${filter.search || filter.status !== 'all' || filter.accessType !== 'all' ? `
                     <button class="btn btn-outline" style="font-size:12.5px;" onclick="clearWriterFilters()">Reset Filters</button>
                   ` : `
                     <button class="btn btn-gold" style="font-size:12.5px;" onclick="openCreateWriterModal()">+ Create First Writer</button>
@@ -6390,112 +6788,140 @@ function renderWritersListUI(canvas) {
                 </td>
               </tr>
             ` : filteredWriters.map(w => {
-              const isBlocked = w.status === 'blocked';
-              const createdDate = w.createdAt ? new Date(w.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '—';
-              const lastLogin = w.lastLogin ? new Date(w.lastLogin).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Never';
+              const isSelected = adminState.selectedWriterIds.has(w.id);
+              const isFull = w.accessType === 'full' || Boolean(w.fullAccess);
+              const isRevoked = w.permissionStatus === 'revoked';
+              const assigned = w.assignedContent || [];
 
               return `
-                <tr style="border-bottom:1px solid var(--color-border-light); transition:background 0.15s ease;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'">
-                  <!-- Writer Name & Avatar -->
+                <tr style="border-bottom:1px solid var(--color-border-light); background:${isSelected ? '#FAF7F2' : 'transparent'}; transition:background 0.15s ease;" onmouseover="if (!${isSelected}) this.style.background='#F8FAFC'" onmouseout="if (!${isSelected}) this.style.background='transparent'">
+                  <!-- Checkbox -->
+                  <td style="padding:14px 16px; text-align:center;">
+                    <input type="checkbox" class="writer-select-cb" value="${w.id}" ${isSelected ? 'checked' : ''} onchange="toggleSelectWriter(${w.id}, this.checked)" style="cursor:pointer; width:16px; height:16px; accent-color:#C89B3C;">
+                  </td>
+
+                  <!-- Writer Name -->
                   <td style="padding:14px 16px;">
                     <div style="display:flex; align-items:center; gap:12px;">
                       <div style="width:38px; height:38px; border-radius:50%; overflow:hidden; background:#E2E8F0; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid var(--color-border);">
                         ${w.avatar ? `
-                          <img src="${escapeHtml(w.avatar)}" alt="${escapeHtml(w.name)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:700; color:var(--color-navy-deep);\\'>${escapeHtml((w.name||'W')[0].toUpperCase())}</span>';">
+                          <img src="${escapeHtml(w.avatar)}" alt="${escapeHtml(w.displayName || w.username)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:700; color:var(--color-navy-deep);\\'>${escapeHtml(((w.displayName||w.username||'W')[0]).toUpperCase())}</span>';">
                         ` : `
-                          <span style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">${escapeHtml((w.name || w.username || 'W')[0].toUpperCase())}</span>
+                          <span style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">${escapeHtml(((w.displayName || w.username || 'W')[0]).toUpperCase())}</span>
                         `}
                       </div>
                       <div>
                         <div style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">
-                          ${escapeHtml(w.name || w.username)}
+                          ${escapeHtml(w.displayName || w.name || w.username)}
                         </div>
-                        <div style="font-size:12px; color:var(--color-text-muted);">
+                        <div style="font-size:11.5px; color:var(--color-text-muted);">
                           @${escapeHtml(w.username)}
                         </div>
                       </div>
                     </div>
                   </td>
 
-                  <!-- Email -->
+                  <!-- Email ID -->
                   <td style="padding:14px 16px; color:#475569;">
-                    <span style="font-family:monospace; font-size:13px;">${escapeHtml(w.email)}</span>
+                    <span style="font-family:monospace; font-size:12.5px;">${escapeHtml(w.email)}</span>
                   </td>
 
-                  <!-- Status -->
+                  <!-- Access Type -->
                   <td style="padding:14px 16px; text-align:center;">
-                    ${isBlocked ? `
-                      <span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
-                        <span style="width:6px; height:6px; border-radius:50%; background:#DC2626;"></span>
-                        Blocked
+                    ${isFull ? `
+                      <span class="badge" style="background:linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); color:#B45309; border:1px solid #FCD34D; font-weight:700; padding:4px 10px; border-radius:12px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" title="Unrestricted creation, scheduling and independent publishing across all content">
+                        <span>🌟</span> Full Access
                       </span>
                     ` : `
-                      <span class="badge" style="background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
-                        <span style="width:6px; height:6px; border-radius:50%; background:#16A34A;"></span>
+                      <span class="badge" style="background:#F1F5F9; color:#1E293B; border:1px solid #CBD5E1; font-weight:700; padding:4px 10px; border-radius:12px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" title="Scoped to specifically assigned categories or novel titles">
+                        <span>🎯</span> Particular Access
+                      </span>
+                    `}
+                  </td>
+
+                  <!-- Assigned Categories / Content -->
+                  <td style="padding:14px 16px;">
+                    ${isFull ? `
+                      <span style="color:#B45309; font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px;">
+                        <span>✓</span> Full Access (All Categories &amp; Novels)
+                      </span>
+                    ` : assigned.length > 0 ? `
+                      <div style="display:flex; flex-wrap:wrap; gap:4px; max-width:280px;">
+                        ${assigned.slice(0, 3).map(a => `
+                          <span class="badge" style="background:#FAF7F2; border:1px solid #EAD8B1; color:#1A0B2E; font-size:11px; padding:2px 7px; border-radius:6px; display:inline-flex; align-items:center; gap:3px;" title="${escapeHtml(a.title)} (${a.contentType.replace('_', ' ')})">
+                            <span>${a.contentType === 'main_category' ? '📁' : (a.contentType === 'novel' ? '📖' : (a.contentType === 'short_story' ? '📝' : '🎧'))}</span>
+                            <span>${escapeHtml(a.title || a.contentType)}</span>
+                          </span>
+                        `).join('')}
+                        ${assigned.length > 3 ? `
+                          <span class="badge" style="background:#E2E8F0; color:#475569; font-size:10.5px; padding:2px 6px; border-radius:6px;">+${assigned.length - 3} more</span>
+                        ` : ''}
+                      </div>
+                    ` : `
+                      <span style="color:#94A3B8; font-size:12px; font-style:italic;">— No content assigned —</span>
+                    `}
+                  </td>
+
+                  <!-- Permission Status -->
+                  <td style="padding:14px 16px; text-align:center;">
+                    ${isRevoked ? `
+                      <span class="badge" style="background:#FEE2E2; color:#B91C1C; border:1px solid #FCA5A5; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11.5px; display:inline-flex; align-items:center; gap:5px;">
+                        <span style="width:7px; height:7px; border-radius:50%; background:#DC2626;"></span>
+                        Revoked
+                      </span>
+                    ` : `
+                      <span class="badge" style="background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11.5px; display:inline-flex; align-items:center; gap:5px;">
+                        <span style="width:7px; height:7px; border-radius:50%; background:#16A34A;"></span>
                         Active
                       </span>
                     `}
                   </td>
 
-                  <!-- Created Novels Count -->
-                  <td style="padding:14px 16px; text-align:center;">
-                    <span style="font-weight:700; color:var(--color-navy-deep); background:#F1F5F9; padding:2px 8px; border-radius:6px;">
-                      ${w.novelsCount || 0}
-                    </span>
-                  </td>
-
-                  <!-- Published Episodes Count -->
-                  <td style="padding:14px 16px; text-align:center;">
-                    <span style="font-weight:600; color:#475569;">
-                      ${w.episodesCount || 0}
-                    </span>
-                  </td>
-
-                  <!-- Last Login -->
-                  <td style="padding:14px 16px; font-size:12.5px; color:#64748B;">
-                    ${lastLogin}
-                  </td>
-
-                  <!-- Created Date -->
-                  <td style="padding:14px 16px; font-size:12.5px; color:#64748B;">
-                    ${createdDate}
-                  </td>
-
                   <!-- Actions -->
                   <td style="padding:14px 16px; text-align:right;">
                     <div style="display:inline-flex; align-items:center; gap:6px;">
-                      <button type="button" class="btn btn-outline" 
-                              style="padding:5px 9px; font-size:12px; border-radius:6px;"
+                      <!-- Edit Access Primary -->
+                      <button type="button" class="btn btn-gold btn-sm" 
+                              style="padding:5px 10px; font-size:12px; font-weight:600; border-radius:6px; display:inline-flex; align-items:center; gap:4px;"
+                              title="Configure Full or Particular Access" 
+                              onclick="openWriterAccessModal(${w.id})">
+                        ⚙️ Edit Access
+                      </button>
+
+                      <!-- Revoke / Reactivate Access -->
+                      ${isRevoked ? `
+                        <button type="button" class="btn btn-outline btn-sm" 
+                                style="padding:5px 9px; font-size:12px; font-weight:600; color:#15803D; border-color:#86EFAC; border-radius:6px; display:inline-flex; align-items:center; gap:4px;"
+                                title="Reactivate Access" 
+                                onclick="toggleWriterPermissionStatus(${w.id}, 'active', '${escapeHtml(w.displayName || w.name || w.username)}')">
+                          ✓ Reactivate
+                        </button>
+                      ` : `
+                        <button type="button" class="btn btn-outline btn-sm" 
+                                style="padding:5px 9px; font-size:12px; font-weight:600; color:#DC2626; border-color:#FCA5A5; border-radius:6px; display:inline-flex; align-items:center; gap:4px;"
+                                title="Revoke Writer Access" 
+                                onclick="toggleWriterPermissionStatus(${w.id}, 'revoked', '${escapeHtml(w.displayName || w.name || w.username)}')">
+                          🚫 Revoke Access
+                        </button>
+                      `}
+
+                      <!-- More options -->
+                      <button type="button" class="btn btn-outline btn-sm" 
+                              style="padding:5px 8px; font-size:12px; border-radius:6px;"
                               title="Edit Writer Profile" 
                               onclick="openEditWriterModal(${w.id})">
                         ${ADMIN_ICONS.edit}
                       </button>
 
-                      ${isBlocked ? `
-                        <button type="button" class="btn btn-outline" 
-                                style="padding:5px 9px; font-size:12px; color:#16A34A; border-color:#86EFAC; border-radius:6px;"
-                                title="Reactivate Account" 
-                                onclick="toggleWriterStatus(${w.id}, 'active', '${escapeHtml(w.name || w.username)}')">
-                          ${ADMIN_ICONS.unlock}
-                        </button>
-                      ` : `
-                        <button type="button" class="btn btn-outline" 
-                                style="padding:5px 9px; font-size:12px; color:#DC2626; border-color:#FCA5A5; border-radius:6px;"
-                                title="Block Account" 
-                                onclick="toggleWriterStatus(${w.id}, 'blocked', '${escapeHtml(w.name || w.username)}')">
-                          ${ADMIN_ICONS.lock}
-                        </button>
-                      `}
-
-                      <button type="button" class="btn btn-outline" 
-                              style="padding:5px 9px; font-size:12px; border-radius:6px;"
+                      <button type="button" class="btn btn-outline btn-sm" 
+                              style="padding:5px 8px; font-size:12px; border-radius:6px;"
                               title="View Account Audit Trail" 
                               onclick="openWriterAuditLogsModal(${w.id})">
                         ${ADMIN_ICONS.history}
                       </button>
 
-                      <button type="button" class="btn btn-outline" 
-                              style="padding:5px 9px; font-size:12px; color:#EF4444; border-color:#FCA5A5; border-radius:6px;"
+                      <button type="button" class="btn btn-outline btn-sm" 
+                              style="padding:5px 8px; font-size:12px; color:#EF4444; border-color:#FCA5A5; border-radius:6px;"
                               title="Delete Account Safely" 
                               onclick="confirmDeleteWriterModal(${w.id})">
                         ${ADMIN_ICONS.trash}
@@ -6514,6 +6940,130 @@ function renderWritersListUI(canvas) {
     <div id="writer-modal-mount"></div>
   `;
 }
+
+// ============================================================================
+// WRITER ACCESS MANAGEMENT: SELECTION & PERMISSION CONTROLS
+// ============================================================================
+
+window.toggleSelectWriter = (writerId, isChecked) => {
+  adminState.selectedWriterIds = adminState.selectedWriterIds || new Set();
+  if (isChecked) {
+    adminState.selectedWriterIds.add(writerId);
+  } else {
+    adminState.selectedWriterIds.delete(writerId);
+  }
+  const canvas = document.getElementById('admin-main-canvas');
+  if (canvas) renderWritersListUI(canvas);
+};
+
+window.toggleSelectAllWriters = (isChecked) => {
+  adminState.selectedWriterIds = adminState.selectedWriterIds || new Set();
+  const filter = adminState.writersFilter || { search: '', status: 'all', accessType: 'all' };
+  const searchLower = (filter.search || '').toLowerCase().trim();
+
+  const filtered = (adminState.writers || []).filter(w => {
+    const writerName = (w.displayName || w.name || '').toLowerCase();
+    const writerEmail = (w.email || '').toLowerCase();
+    const writerUser = (w.username || '').toLowerCase();
+    const matchesSearch = !searchLower || writerName.includes(searchLower) || writerEmail.includes(searchLower) || writerUser.includes(searchLower);
+    const isRevoked = w.permissionStatus === 'revoked';
+    let matchesStatus = true;
+    if (filter.status === 'active') matchesStatus = w.status === 'active' && !isRevoked;
+    else if (filter.status === 'revoked') matchesStatus = isRevoked;
+    else if (filter.status === 'blocked') matchesStatus = w.status === 'blocked';
+    let matchesAccess = true;
+    if (filter.accessType && filter.accessType !== 'all') matchesAccess = (w.accessType || 'particular') === filter.accessType;
+    return matchesSearch && matchesStatus && matchesAccess;
+  });
+
+  if (isChecked) {
+    filtered.forEach(w => adminState.selectedWriterIds.add(w.id));
+  } else {
+    filtered.forEach(w => adminState.selectedWriterIds.delete(w.id));
+  }
+  const canvas = document.getElementById('admin-main-canvas');
+  if (canvas) renderWritersListUI(canvas);
+};
+
+window.clearWriterSelection = () => {
+  if (adminState.selectedWriterIds) adminState.selectedWriterIds.clear();
+  const canvas = document.getElementById('admin-main-canvas');
+  if (canvas) renderWritersListUI(canvas);
+};
+
+window.filterWritersByAccess = (accessType) => {
+  adminState.writersFilter = adminState.writersFilter || {};
+  adminState.writersFilter.accessType = accessType;
+  const canvas = document.getElementById('admin-main-canvas');
+  if (canvas) renderWritersListUI(canvas);
+};
+
+window.toggleWriterPermissionStatus = async (writerId, newStatus, writerName) => {
+  if (newStatus === 'revoked') {
+    if (!confirm(`Are you sure you want to revoke writing and publishing access for "${writerName}"? They will not be able to create, write, or publish content until reactivated.`)) {
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/admin/writers/${writerId}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Access revoked by administrator.' })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✓ Access revoked for "${writerName}".`);
+        await renderWritersTab(document.getElementById('admin-main-canvas'));
+      } else {
+        alert(data.error || 'Failed to revoke access.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error revoking access.');
+    }
+  } else {
+    try {
+      const res = await apiFetch(`/api/admin/writers/${writerId}/reactivate`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✓ Access reactivated for "${writerName}".`);
+        await renderWritersTab(document.getElementById('admin-main-canvas'));
+      } else {
+        alert(data.error || 'Failed to reactivate access.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error reactivating access.');
+    }
+  }
+};
+
+window.confirmBulkRevokeWriterAccess = async () => {
+  const ids = Array.from(adminState.selectedWriterIds || []);
+  if (ids.length === 0) return;
+  if (!confirm(`Are you sure you want to revoke access for all ${ids.length} selected writers?`)) return;
+
+  try {
+    for (const id of ids) {
+      await apiFetch(`/api/admin/writers/${id}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Bulk access revocation by administrator.' })
+      });
+    }
+    showToast(`✓ Access revoked for ${ids.length} writers.`);
+    adminState.selectedWriterIds.clear();
+    await renderWritersTab(document.getElementById('admin-main-canvas'));
+  } catch (err) {
+    alert(err.message || 'Error revoking access.');
+  }
+};
+
+window.openBulkWriterAccessModal = () => {
+  const ids = Array.from(adminState.selectedWriterIds || []);
+  if (ids.length === 0) {
+    alert('Please select at least one writer first.');
+    return;
+  }
+  window.openWriterAccessModal(ids);
+};
 
 // Global Writer Search & Filter Handlers
 window.handleWriterSearchInput = (val) => {
@@ -9562,6 +10112,9 @@ export async function renderForumManagementTab(canvas) {
         <a href="#forms" target="_blank" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
           ${ADMIN_ICONS.externalLink} View Live Forms
         </a>
+        <button type="button" class="btn btn-outline btn-sm" onclick="window.openReorderCategoriesModal()" style="display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+          ↕ Reorder Categories
+        </button>
         <button type="button" class="btn btn-gold btn-sm" onclick="window.openCreateMainModal()" style="display:inline-flex; align-items:center; gap:6px;">
           ${ADMIN_ICONS.plus} + Add Main Title
         </button>
@@ -9855,7 +10408,10 @@ window.renderFormsHierarchyTree = () => {
     return;
   }
 
-  container.innerHTML = filteredMains.map(mainCat => {
+  // Sort main categories by sort_order ascending
+  filteredMains.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
+
+  container.innerHTML = filteredMains.map((mainCat, idx) => {
     const isMainExpanded = window.formsAdminState.expandedMainIds.has(mainCat.id) || Boolean(q);
     const mainSubs = subs.filter(s => String(s.main_category_id) === String(mainCat.id));
     const mainArticles = allArticles.filter(a => String(a.main_category_id) === String(mainCat.id));
@@ -9866,6 +10422,19 @@ window.renderFormsHierarchyTree = () => {
         <!-- Main Title Header -->
         <div class="forms-tree-main-header" onclick="window.toggleFormsMainExpand('${escapeQuotes(mainCat.id)}')">
           <div class="forms-tree-main-left">
+            <!-- Order Controls (Up / Down & Badge) -->
+            <div class="forms-tree-order-control" onclick="event.stopPropagation()" title="Category display position on Forms page">
+              <span class="forms-order-badge">#${idx + 1}</span>
+              <div class="forms-order-arrows">
+                <button type="button" class="btn-order-arrow" 
+                        onclick="window.moveCategoryOrder('${escapeQuotes(mainCat.id)}', -1)" 
+                        title="Move Up in Display Order" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                <button type="button" class="btn-order-arrow" 
+                        onclick="window.moveCategoryOrder('${escapeQuotes(mainCat.id)}', 1)" 
+                        title="Move Down in Display Order" ${idx === filteredMains.length - 1 ? 'disabled' : ''}>▼</button>
+              </div>
+            </div>
+
             <span class="forms-tree-toggle-arrow ${!isMainExpanded ? 'is-collapsed' : ''}">▼</span>
             <span class="forms-tree-main-icon" style="background:${escapeHtml(mainCat.color || '#EDE9FE')}; color:#ffffff;">
               ${mainCat.icon || '💬'}
@@ -9874,6 +10443,9 @@ window.renderFormsHierarchyTree = () => {
               <h2 class="forms-tree-main-title">
                 ${escapeHtml(mainCat.title)}
                 <span class="forms-tree-pill" style="font-size:11px; font-weight:normal; font-family:monospace;">ID: ${escapeHtml(mainCat.id)}</span>
+                <span class="forms-tree-pill" style="font-size:11px; font-weight:700; background:#FEF3C7; color:#92400E;">
+                  Order: ${mainCat.sort_order ?? (idx + 1)}
+                </span>
               </h2>
               <div class="forms-tree-main-meta">
                 <span>${mainSubs.length} Sub-titles</span>
@@ -10039,7 +10611,13 @@ window.openCreateMainModal = (editId = null) => {
           <textarea id="main-form-desc" class="form-input" rows="2" placeholder="Brief subtitle for the forms directory..." style="width:100%; box-sizing:border-box;">${existing ? escapeQuotes(existing.description || '') : ''}</textarea>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:18px;">
+          <div>
+            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Display Order</label>
+            <input type="number" id="main-form-order" class="form-input" min="1" 
+                   value="${existing ? (existing.sort_order ?? 1) : ((window.formsAdminState.mainCategories?.length || 0) + 1)}" 
+                   placeholder="e.g. 1, 2, 3" style="width:100%; box-sizing:border-box;">
+          </div>
           <div>
             <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon Emoji</label>
             <input type="text" id="main-form-icon" class="form-input" value="${existing ? escapeQuotes(existing.icon || '💬') : '💬'}" style="width:100%; box-sizing:border-box;">
@@ -10067,6 +10645,8 @@ window.submitMainForm = async (editId = null) => {
   const description = document.getElementById('main-form-desc')?.value?.trim();
   const icon = document.getElementById('main-form-icon')?.value?.trim() || '💬';
   const color = document.getElementById('main-form-color')?.value || '#2E1065';
+  const orderVal = document.getElementById('main-form-order')?.value;
+  const sort_order = (orderVal !== '' && orderVal !== undefined && !isNaN(Number(orderVal))) ? parseInt(orderVal, 10) : undefined;
 
   if (!title) {
     showToast('Please enter a main title name.');
@@ -10083,7 +10663,7 @@ window.submitMainForm = async (editId = null) => {
     const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId || id, title, description, icon, color })
+      body: JSON.stringify({ id: editId || id, title, description, icon, color, sort_order, sortOrder: sort_order })
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -10096,6 +10676,141 @@ window.submitMainForm = async (editId = null) => {
   } catch (err) {
     showToast(err.message || 'Error saving category.');
   }
+};
+
+/**
+ * Move Category Display Order Up (-1) or Down (+1)
+ */
+window.moveCategoryOrder = async (catId, direction) => {
+  const mains = [...(window.formsAdminState.mainCategories || [])];
+  mains.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
+  const currentIdx = mains.findIndex(m => String(m.id) === String(catId));
+  if (currentIdx === -1) return;
+  const targetIdx = currentIdx + direction;
+  if (targetIdx < 0 || targetIdx >= mains.length) return;
+
+  const temp = mains[currentIdx];
+  mains[currentIdx] = mains[targetIdx];
+  mains[targetIdx] = temp;
+
+  const orderPayload = mains.map((m, i) => ({ id: m.id, sortOrder: i + 1 }));
+
+  try {
+    const res = await apiFetch('/api/admin/content/main-categories/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: orderPayload })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.formsAdminState.mainCategories = data.categories || mains;
+      window.renderFormsHierarchyTree();
+      showToast('Category display order updated!');
+    } else {
+      throw new Error(data.error || 'Failed to update order');
+    }
+  } catch (err) {
+    showToast('Could not reorder: ' + err.message);
+  }
+};
+
+/**
+ * Open Drag-and-Drop / Interactive Category Reorder Modal
+ */
+window.openReorderCategoriesModal = () => {
+  const container = document.getElementById('forms-admin-modal-container');
+  if (!container) return;
+
+  const categories = [...(window.formsAdminState.mainCategories || [])];
+  categories.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
+
+  window._reorderModalState = categories.map(c => ({ id: c.id, title: c.title, icon: c.icon, sort_order: c.sort_order }));
+
+  function renderList() {
+    const listEl = document.getElementById('reorder-cat-modal-list');
+    if (!listEl) return;
+    listEl.innerHTML = window._reorderModalState.map((cat, i) => `
+      <div class="reorder-cat-item" data-index="${i}" 
+           style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:8px; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:16px; color:#94A3B8;">☰</span>
+          <span class="forms-order-badge" style="background:#B88635; color:#fff; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:12px;">#${i + 1}</span>
+          <span style="font-size:18px;">${cat.icon || '💬'}</span>
+          <div>
+            <strong style="color:#0B1F33; font-size:14px;">${escapeHtml(cat.title)}</strong>
+            <span style="font-size:11px; color:#64748B; margin-left:6px;">(${escapeHtml(cat.id)})</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-outline btn-xs" onclick="window.shiftModalOrder(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Move Up" style="padding:4px 8px; font-weight:bold;">▲</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="window.shiftModalOrder(${i}, 1)" ${i === window._reorderModalState.length - 1 ? 'disabled' : ''} title="Move Down" style="padding:4px 8px; font-weight:bold;">▼</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.shiftModalOrder = (idx, direction) => {
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= window._reorderModalState.length) return;
+    const temp = window._reorderModalState[idx];
+    window._reorderModalState[idx] = window._reorderModalState[targetIdx];
+    window._reorderModalState[targetIdx] = temp;
+    renderList();
+  };
+
+  window.saveModalOrder = async () => {
+    const payload = window._reorderModalState.map((cat, i) => ({ id: cat.id, sortOrder: i + 1 }));
+    try {
+      const res = await apiFetch('/api/admin/content/main-categories/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: payload })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window.formsAdminState.mainCategories = data.categories || [];
+        window.closeFormsAdminModal();
+        window.renderFormsHierarchyTree();
+        showToast('Category display order updated successfully!');
+      } else {
+        throw new Error(data.error || 'Failed to reorder categories');
+      }
+    } catch (err) {
+      showToast('Could not save order: ' + err.message);
+    }
+  };
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:520px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <div>
+            <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0 0 4px;">
+              Reorder Main Categories
+            </h3>
+            <p style="color:#64748B; font-size:12.5px; margin:0;">
+              Arrange categories in any order. The arrangement will apply to all members on the Forms page.
+            </p>
+          </div>
+          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
+        </div>
+
+        <div id="reorder-cat-modal-list" style="max-height:360px; overflow-y:auto; margin:16px 0; padding-right:4px;"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid #E2E8F0; padding-top:16px;">
+          <small style="color:#64748B;">Use ▲ / ▼ buttons to set order.</small>
+          <div style="display:flex; gap:10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
+            <button type="button" class="btn btn-gold btn-sm" onclick="window.saveModalOrder()">
+              Save Arrangement
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  renderList();
 };
 
 /**
@@ -11466,352 +12181,474 @@ window.deleteShortStoryAction = async (storyId, title) => {
 /**
  * Open Permissions & Content Assignment Modal for a Writer
  */
-window.openWriterPermissionsModal = async (writerId) => {
-  const mount = document.getElementById('admin-modal-mount') || document.getElementById('short-story-modal-mount') || document.body;
+window.openWriterAccessModal = async (writerIdOrIds) => {
+  const isBulk = Array.isArray(writerIdOrIds);
+  const writerIds = isBulk ? writerIdOrIds : [writerIdOrIds];
+  const primaryId = writerIds[0];
+
+  const mount = document.getElementById('writer-modal-mount') || document.getElementById('admin-modal-mount') || document.body;
 
   mount.innerHTML = `
-    <div class="modal-overlay open" id="writer-perms-modal" onclick="if(event.target === this) closeWriterPermissionsModal();">
+    <div class="modal-overlay open" id="writer-access-modal" onclick="if(event.target === this) closeWriterAccessModal();">
       <div class="modal-card writer-perm-modal-card">
         <div style="text-align:center; padding:60px 20px; color:#64748B;">
           <div style="width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
-          <div>Loading Writer Permissions &amp; Assignments...</div>
+          <div>Loading Writer Access &amp; Content Assignments...</div>
         </div>
       </div>
     </div>
   `;
 
   try {
-    const [wRes, pRes, aRes, novRes, ssRes, audRes] = await Promise.all([
-      apiFetch(`/api/admin/writers/${writerId}`),
-      apiFetch(`/api/admin/writers/${writerId}/permissions`),
-      apiFetch(`/api/admin/writers/${writerId}/assignments`),
-      apiFetch('/api/novels'),
-      apiFetch('/api/admin/short-stories'),
-      apiFetch('/api/admin/audio-novels')
+    const [lookupRes, wRes, pRes, aRes] = await Promise.all([
+      apiFetch('/api/admin/writers/content-lookup'),
+      !isBulk ? apiFetch(`/api/admin/writers/${primaryId}`) : Promise.resolve({ json: () => ({}) }),
+      !isBulk ? apiFetch(`/api/admin/writers/${primaryId}/permissions`) : Promise.resolve({ json: () => ({}) }),
+      !isBulk ? apiFetch(`/api/admin/writers/${primaryId}/assignments`) : Promise.resolve({ json: () => ({ assignments: [] }) })
     ]);
 
+    const lookupData = await lookupRes.json();
     const wData = await wRes.json();
     const pData = await pRes.json();
     const aData = await aRes.json();
-    const novData = await novRes.json();
-    const ssData = await ssRes.json();
-    const audData = await audRes.json();
 
-    const writer = wData.writer || {};
+    const mainCats = lookupData.mainCategories || [];
+    const subCats = lookupData.subCategories || [];
+    const novelsList = lookupData.novels || [];
+    const storiesList = lookupData.shortStories || [];
+    const audioList = lookupData.audioNovels || [];
+
+    const writer = wData.writer || (adminState.writers || []).find(w => w.id === primaryId) || {};
     const perms = pData.permissions || {
+      accessType: 'particular',
+      permissionStatus: 'active',
+      fullAccess: 0,
+      canPublishIndependently: 0,
+      canSchedule: 0,
       canNovels: 1,
       canShortStories: 0,
       canAudioNovels: 0,
       canEpisodes: 1,
-      accessLevel: 'review_required',
-      fullAccess: 0
+      accessLevel: 'review_required'
     };
     const assignments = aData.assignments || [];
-    const novelsList = novData.novels || [];
-    const storiesList = ssData.stories || [];
-    const audioList = audData.audioNovels || [];
 
-    const modal = document.getElementById('writer-perms-modal');
+    const isFull = perms.accessType === 'full' || Boolean(perms.fullAccess);
+
+    window._writerAccessState = {
+      isBulk,
+      writerIds,
+      primaryId,
+      currentAccessType: isFull ? 'full' : 'particular',
+      assignments: assignments,
+      lookup: {
+        mainCategories: mainCats,
+        subCategories: subCats,
+        novels: novelsList,
+        shortStories: storiesList,
+        audioNovels: audioList
+      }
+    };
+
+    const modal = document.getElementById('writer-access-modal');
     if (!modal) return;
 
     modal.innerHTML = `
-      <div class="modal-card writer-perm-modal-card" style="max-width:820px; width:95%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
+      <div class="modal-card writer-perm-modal-card" style="max-width:860px; width:95%; max-height:92vh; display:flex; flex-direction:column; overflow:hidden;">
         <!-- Header -->
         <div class="modal-header" style="padding:16px 20px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; background:#FAF7F2;">
           <div style="display:flex; align-items:center; gap:12px;">
-            <img src="${writer.avatar || '/profile.png'}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png';" alt="">
+            <div style="width:42px; height:42px; border-radius:50%; overflow:hidden; background:#E2E8F0; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid var(--color-border);">
+              ${!isBulk && writer.avatar ? `
+                <img src="${escapeHtml(writer.avatar)}" alt="" style="width:100%; height:100%; object-fit:cover;">
+              ` : `
+                <span style="font-weight:700; color:#1A0B2E; font-size:16px;">${isBulk ? '👥' : '✍️'}</span>
+              `}
+            </div>
             <div>
               <h3 class="modal-title" style="margin:0; font-size:1.15rem; color:#1A0B2E;">
-                ⚙️ Permissions &amp; Assignments: ${escapeHtml(writer.displayName || writer.username)}
+                ${isBulk ? `⚙️ Bulk Access Management (${writerIds.length} Writers Selected)` : `⚙️ Access Management: ${escapeHtml(writer.displayName || writer.name || writer.username || 'Writer')}`}
               </h3>
-              <div style="font-size:12px; color:#64748B;">${escapeHtml(writer.email)} • Status: <strong>${writer.status || 'active'}</strong></div>
+              <div style="font-size:12px; color:#64748B;">
+                ${isBulk ? 'Configure permissions to be applied to all selected accounts.' : `${escapeHtml(writer.email || '')} • Status: <strong>${perms.permissionStatus || 'active'}</strong>`}
+              </div>
             </div>
           </div>
-          <button type="button" class="modal-close-btn" onclick="closeWriterPermissionsModal()">✕</button>
+          <button type="button" class="modal-close-btn" onclick="closeWriterAccessModal()">✕</button>
         </div>
 
         <!-- Body -->
         <div class="modal-body" style="padding:20px; overflow-y:auto; flex:1;">
-          <div id="writer-perms-alert" style="display:none; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px;"></div>
+          <div id="writer-access-alert" style="display:none; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px;"></div>
 
-          <!-- Section 1: Content Type Capabilities -->
-          <div class="perm-section-box">
-            <h4 class="perm-section-title">
-              <span>📚</span>
-              <span>Permitted Content Types</span>
-            </h4>
-            <p style="font-size:12.5px; color:#64748B; margin:0 0 12px 0;">Select which content categories this writer is authorized to access and write:</p>
-            <div class="perm-checkbox-grid">
-              <label class="perm-checkbox-card">
-                <input type="checkbox" id="perm-novels" ${perms.canNovels ? 'checked' : ''}>
-                <div>
-                  <strong style="font-size:13px; color:#1A0B2E; display:block;">Novels</strong>
-                  <span style="font-size:11px; color:#64748B;">Novel titles &amp; books</span>
-                </div>
-              </label>
+          <!-- SECTION 1: ACCESS TYPE SELECTOR -->
+          <div style="margin-bottom:20px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#1A0B2E; margin-bottom:8px;">
+              Select Writer Access Type:
+            </label>
 
-              <label class="perm-checkbox-card">
-                <input type="checkbox" id="perm-episodes" ${perms.canEpisodes ? 'checked' : ''}>
-                <div>
-                  <strong style="font-size:13px; color:#1A0B2E; display:block;">Episodes &amp; Sub-episodes</strong>
-                  <span style="font-size:11px; color:#64748B;">Chapters &amp; sub-episodes</span>
+            <!-- Option A: Full Access Card -->
+            <label id="card-access-full" class="workflow-radio-card ${isFull ? 'active' : ''}" style="margin-bottom:10px; border-width:2px; ${isFull ? 'border-color:#C89B3C; background:#FFFBEB;' : ''}">
+              <input type="radio" name="writer-access-mode" value="full" ${isFull ? 'checked' : ''} onchange="handleModalAccessTypeChange('full')" style="margin-top:3px; transform:scale(1.15); accent-color:#C89B3C;">
+              <div class="workflow-radio-content">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <strong style="color:#B45309; font-size:14px;">🌟 Option A — Full Access</strong>
+                  <span class="badge" style="background:#C89B3C; color:#FFF; font-size:10.5px; padding:2px 6px; border-radius:4px;">Unrestricted Publishing</span>
                 </div>
-              </label>
+                <p style="color:#475569; margin-top:3px;">
+                  Writer can create, write, edit, publish, and schedule novels, chapters, episodes, sub-episodes, short stories, audio novels, and permitted Forms content <strong>without requiring individual admin approval before publishing</strong>.
+                </p>
+              </div>
+            </label>
 
-              <label class="perm-checkbox-card">
-                <input type="checkbox" id="perm-stories" ${perms.canShortStories ? 'checked' : ''}>
-                <div>
-                  <strong style="font-size:13px; color:#1A0B2E; display:block;">Short Stories</strong>
-                  <span style="font-size:11px; color:#64748B;">Standalone short stories</span>
+            <!-- Option B: Particular Access Card -->
+            <label id="card-access-particular" class="workflow-radio-card ${!isFull ? 'active' : ''}" style="border-width:2px; ${!isFull ? 'border-color:#1E293B; background:#F8FAFC;' : ''}">
+              <input type="radio" name="writer-access-mode" value="particular" ${!isFull ? 'checked' : ''} onchange="handleModalAccessTypeChange('particular')" style="margin-top:3px; transform:scale(1.15); accent-color:#1E293B;">
+              <div class="workflow-radio-content">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <strong style="color:#1E293B; font-size:14px;">🎯 Option B — Particular Access</strong>
+                  <span class="badge" style="background:#1E293B; color:#FFF; font-size:10.5px; padding:2px 6px; border-radius:4px;">Scoped &amp; Controlled</span>
                 </div>
-              </label>
-
-              <label class="perm-checkbox-card">
-                <input type="checkbox" id="perm-audio" ${perms.canAudioNovels ? 'checked' : ''}>
-                <div>
-                  <strong style="font-size:13px; color:#1A0B2E; display:block;">Audio Novels</strong>
-                  <span style="font-size:11px; color:#64748B;">YouTube / direct audio</span>
-                </div>
-              </label>
-            </div>
+                <p style="color:#475569; margin-top:3px;">
+                  Restrict the writer to specific main categories, subcategories, or individual novel/story titles, with customized publishing and action controls.
+                </p>
+              </div>
+            </label>
           </div>
 
-          <!-- Section 2: Publishing & Review Workflow Mode -->
-          <div class="perm-section-box">
-            <h4 class="perm-section-title">
-              <span>⚖️</span>
-              <span>Publishing &amp; Review Workflow</span>
-            </h4>
-            <div class="workflow-radio-list">
-              <label class="workflow-radio-card ${perms.accessLevel === 'review_required' ? 'active' : ''}">
-                <input type="radio" name="perm-access-level" value="review_required" ${perms.accessLevel === 'review_required' ? 'checked' : ''}>
-                <div class="workflow-radio-content">
-                  <strong>Workflow A: Admin Review Required (Recommended)</strong>
-                  <p>Writer writes drafts and submits for review. Content remains pending until an administrator approves and publishes or requests changes.</p>
-                </div>
-              </label>
-
-              <label class="workflow-radio-card ${perms.accessLevel === 'independent_publish' ? 'active' : ''}">
-                <input type="radio" name="perm-access-level" value="independent_publish" ${perms.accessLevel === 'independent_publish' ? 'checked' : ''}>
-                <div class="workflow-radio-content">
-                  <strong>Workflow B: Independent Publishing (No Admin Review Required)</strong>
-                  <p>Writer can directly publish or schedule content independently without requiring admin approval for each publication.</p>
-                </div>
-              </label>
-
-              <label class="workflow-radio-card ${perms.accessLevel === 'draft_only' ? 'active' : ''}">
-                <input type="radio" name="perm-access-level" value="draft_only" ${perms.accessLevel === 'draft_only' ? 'checked' : ''}>
-                <div class="workflow-radio-content">
-                  <strong>Drafts Only</strong>
-                  <p>Writer can save drafts locally and on server, but cannot submit for review or publish directly.</p>
-                </div>
-              </label>
-
-              <label class="workflow-radio-card ${perms.accessLevel === 'view_only' ? 'active' : ''}">
-                <input type="radio" name="perm-access-level" value="view_only" ${perms.accessLevel === 'view_only' ? 'checked' : ''}>
-                <div class="workflow-radio-content">
-                  <strong>View Only</strong>
-                  <p>Read-only access to assigned content. Editing is completely blocked.</p>
-                </div>
-              </label>
+          <!-- FULL ACCESS BANNER (Shown when Full Access is active) -->
+          <div id="full-access-banner" style="display:${isFull ? 'block' : 'none'}; background:#FFFBEB; border:1px solid #FCD34D; border-radius:8px; padding:14px; margin-bottom:20px;">
+            <div style="font-weight:700; color:#B45309; font-size:13.5px; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span>✓</span> Full Access Policy Active
             </div>
+            <p style="margin:0; font-size:12.5px; color:#78350F; line-height:1.45;">
+              All creation, writing, scheduling, and direct publishing capabilities are enabled without admin bottlenecks. No specific item assignments are required.
+            </p>
           </div>
 
-          <!-- Section 3: Scope of Access -->
-          <div class="perm-section-box">
-            <h4 class="perm-section-title">
-              <span>🛡️</span>
-              <span>Scope &amp; Assignment Mode</span>
-            </h4>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer;">
-                <input type="radio" name="perm-full-access" value="0" ${!perms.fullAccess ? 'checked' : ''}>
-                <span><strong>Restricted Access:</strong> Writer can only access content explicitly assigned by the admin below.</span>
-              </label>
-              <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer;">
-                <input type="radio" name="perm-full-access" value="1" ${perms.fullAccess ? 'checked' : ''}>
-                <span><strong>Full Writing Access:</strong> Writer can create &amp; manage all permitted content of enabled types without individual assignments.</span>
-              </label>
-            </div>
-          </div>
+          <!-- PARTICULAR ACCESS CONFIGURATION (Shown when Particular Access is active) -->
+          <div id="particular-access-container" style="display:${!isFull ? 'block' : 'none'};">
+            <!-- Publishing & Workflow Controls -->
+            <div class="perm-section-box">
+              <h4 class="perm-section-title">
+                <span>⚖️</span>
+                <span>Publishing &amp; Workflow Permissions</span>
+              </h4>
+              <p style="font-size:12px; color:#64748B; margin:0 0 12px 0;">Configure publishing freedom for assigned content:</p>
 
-          <!-- Section 4: Specific Content Assignments -->
-          <div class="perm-section-box">
-            <h4 class="perm-section-title" style="justify-content:space-between;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span>🎯</span>
-                <span>Specific Content Assignments (${assignments.length})</span>
-              </div>
-            </h4>
+              <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; background:#FAF7F2; padding:10px 14px; border-radius:8px; border:1px solid #EAD8B1;">
+                  <input type="checkbox" id="particular-perm-independent" ${perms.canPublishIndependently || perms.accessLevel === 'independent_publish' ? 'checked' : ''} style="margin-top:3px; width:16px; height:16px; accent-color:#C89B3C;">
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Publish Independently (No Admin Approval Required)</strong>
+                    <span style="font-size:11.5px; color:#64748B;">When enabled, writer can directly publish assigned novels, episodes, and stories. When disabled, content must be submitted for admin review before publication.</span>
+                  </div>
+                </label>
 
-            <!-- Active Assignments Table -->
-            <div id="writer-assignments-list-container" style="margin-bottom:16px;">
-              ${renderAssignmentsTable(assignments, writerId)}
-            </div>
-
-            <!-- Add Assignment Form -->
-            <div style="background:#FAF7F2; border:1px dashed #C89B3C; border-radius:8px; padding:14px;">
-              <div style="font-weight:700; font-size:13px; color:#1A0B2E; margin-bottom:10px;">+ Assign Content Item to this Writer</div>
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:10px;">
-                <div>
-                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:3px;">Content Type</label>
-                  <select id="assign-content-type" class="form-input" style="font-size:12.5px; padding:6px 8px;" onchange="updateAssignContentOptions(this.value)">
-                    <option value="novel">Novel</option>
-                    <option value="short_story">Short Story</option>
-                    <option value="audio_novel">Audio Novel</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:3px;">Select Item</label>
-                  <select id="assign-content-id" class="form-input" style="font-size:12.5px; padding:6px 8px;">
-                    ${novelsList.map(n => `<option value="${n.id}">${escapeHtml(n.title)}</option>`).join('')}
-                  </select>
-                </div>
-
-                <div>
-                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:3px;">Deadline (Optional)</label>
-                  <input type="date" id="assign-deadline" class="form-input" style="font-size:12.5px; padding:6px 8px;">
-                </div>
+                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; background:#FAF7F2; padding:10px 14px; border-radius:8px; border:1px solid #EAD8B1;">
+                  <input type="checkbox" id="particular-perm-schedule" ${perms.canSchedule || perms.accessLevel === 'independent_publish' ? 'checked' : ''} style="margin-top:3px; width:16px; height:16px; accent-color:#C89B3C;">
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Schedule Content Releases</strong>
+                    <span style="font-size:11.5px; color:#64748B;">Allow writer to set scheduled publication dates and times for upcoming episodes and stories.</span>
+                  </div>
+                </label>
               </div>
 
-              <div style="margin-bottom:10px;">
-                <input type="text" id="assign-instructions" class="form-input" style="font-size:12.5px;" placeholder="Optional notes or instructions for the writer...">
-              </div>
+              <!-- Content Types Permitted -->
+              <div style="font-size:12.5px; font-weight:700; color:#1A0B2E; margin-bottom:8px;">Authorized Content Categories:</div>
+              <div class="perm-checkbox-grid">
+                <label class="perm-checkbox-card">
+                  <input type="checkbox" id="perm-novels" ${perms.canNovels ? 'checked' : ''}>
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Novels</strong>
+                    <span style="font-size:11px; color:#64748B;">Novel titles &amp; books</span>
+                  </div>
+                </label>
 
-              <button type="button" class="btn btn-gold btn-sm" onclick="submitWriterAssignmentAction(${writerId})">
-                <span>Assign to Writer</span>
-              </button>
+                <label class="perm-checkbox-card">
+                  <input type="checkbox" id="perm-episodes" ${perms.canEpisodes ? 'checked' : ''}>
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Episodes &amp; Chapters</strong>
+                    <span style="font-size:11px; color:#64748B;">Chapters &amp; sub-episodes</span>
+                  </div>
+                </label>
+
+                <label class="perm-checkbox-card">
+                  <input type="checkbox" id="perm-stories" ${perms.canShortStories ? 'checked' : ''}>
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Short Stories</strong>
+                    <span style="font-size:11px; color:#64748B;">Standalone stories</span>
+                  </div>
+                </label>
+
+                <label class="perm-checkbox-card">
+                  <input type="checkbox" id="perm-audio" ${perms.canAudioNovels ? 'checked' : ''}>
+                  <div>
+                    <strong style="font-size:13px; color:#1A0B2E; display:block;">Audio Novels</strong>
+                    <span style="font-size:11px; color:#64748B;">Voice episodes &amp; audio</span>
+                  </div>
+                </label>
+              </div>
             </div>
+
+            <!-- Content Assignments Section (Single Writer Mode) -->
+            ${!isBulk ? `
+              <div class="perm-section-box">
+                <h4 class="perm-section-title" style="justify-content:space-between;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span>🎯</span>
+                    <span>Assigned Categories &amp; Specific Titles (${assignments.length})</span>
+                  </div>
+                </h4>
+
+                <!-- Active Assignments Table -->
+                <div id="modal-assignments-table-container" style="margin-bottom:16px;">
+                  ${renderAssignmentsTableUI(assignments, primaryId)}
+                </div>
+
+                <!-- Add Assignment Form -->
+                <div style="background:#FAF7F2; border:1px dashed #C89B3C; border-radius:8px; padding:16px;">
+                  <div style="font-weight:700; font-size:13px; color:#1A0B2E; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                    <span>+</span> Assign Specific Category, Subcategory, or Title
+                  </div>
+
+                  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:12px;">
+                    <div>
+                      <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Assignment Scope</label>
+                      <select id="modal-assign-type" class="form-input" style="font-size:12.5px; padding:7px 9px;" onchange="handleAssignScopeChange(this.value)">
+                        <option value="main_category">Main Category (e.g. Ongoing Novels, Short Stories)</option>
+                        <option value="sub_category">Subcategory / Topic</option>
+                        <option value="novel" selected>Specific Novel Title</option>
+                        <option value="short_story">Specific Short Story Title</option>
+                        <option value="audio_novel">Specific Audio Novel Title</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Select Item / Title</label>
+                      <select id="modal-assign-id" class="form-input" style="font-size:12.5px; padding:7px 9px;">
+                        ${novelsList.map(n => `<option value="${n.id}">${escapeHtml(n.title)} (${n.category || 'Novel'})` + '</option>').join('')}
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Configurable Allowed Actions -->
+                  <div style="margin-bottom:12px;">
+                    <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:6px;">Allowed Actions for this Assignment:</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:12px; background:#FFFFFF; padding:10px 14px; border:1px solid #E2E8F0; border-radius:6px;">
+                      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="checkbox" id="act-create" checked style="accent-color:#C89B3C;">
+                        <span>Create</span>
+                      </label>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="checkbox" id="act-edit" checked style="accent-color:#C89B3C;">
+                        <span>Write / Edit</span>
+                      </label>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="checkbox" id="act-submit" checked style="accent-color:#C89B3C;">
+                        <span>Submit for Review</span>
+                      </label>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="checkbox" id="act-publish" ${perms.canPublishIndependently ? 'checked' : ''} style="accent-color:#C89B3C;">
+                        <span>Publish Independently</span>
+                      </label>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="checkbox" id="act-schedule" ${perms.canSchedule ? 'checked' : ''} style="accent-color:#C89B3C;">
+                        <span>Schedule</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style="margin-bottom:12px;">
+                    <input type="text" id="modal-assign-instructions" class="form-input" style="font-size:12.5px;" placeholder="Optional notes or instructions for the writer...">
+                  </div>
+
+                  <button type="button" class="btn btn-gold btn-sm" onclick="submitModalAssignmentAction(${primaryId})">
+                    <span>+ Add Assignment to Writer</span>
+                  </button>
+                </div>
+              </div>
+            ` : `
+              <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:14px; margin-bottom:14px; font-size:13px; color:#475569;">
+                ℹ️ Particular Access will be applied to all ${writerIds.length} selected writers. Individual title assignments can be customized on each writer's profile.
+              </div>
+            `}
           </div>
         </div>
 
         <!-- Footer -->
         <div class="modal-footer" style="padding:14px 20px; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; background:#F8FAFC;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="closeWriterPermissionsModal()">Close</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="saveWriterPermissionsAction(${writerId})">
-            Save Permissions Changes
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeWriterAccessModal()">Cancel</button>
+          <button type="button" class="btn btn-gold btn-sm" style="font-weight:700;" onclick="saveWriterAccessModalAction()">
+            Save Access Permissions
           </button>
         </div>
       </div>
     `;
-
-    // Cache items for dynamic dropdown
-    window._assignCache = {
-      novels: novelsList,
-      stories: storiesList,
-      audio: audioList
-    };
   } catch (err) {
-    console.error('Failed to load writer permissions modal:', err);
+    console.error('Failed to load writer access modal:', err);
+    alert('Error loading writer access details: ' + err.message);
   }
 };
 
-window.closeWriterPermissionsModal = () => {
-  const modal = document.getElementById('writer-perms-modal');
+window.openWriterPermissionsModal = window.openWriterAccessModal;
+
+window.closeWriterAccessModal = () => {
+  const modal = document.getElementById('writer-access-modal');
   if (modal) modal.remove();
 };
 
-window.updateAssignContentOptions = (type) => {
-  const select = document.getElementById('assign-content-id');
-  if (!select || !window._assignCache) return;
-  let items = [];
-  if (type === 'novel') {
-    items = window._assignCache.novels.map(n => ({ id: n.id, title: n.title }));
-  } else if (type === 'short_story') {
-    items = window._assignCache.stories.map(s => ({ id: s.id, title: s.title }));
-  } else if (type === 'audio_novel') {
-    items = window._assignCache.audio.map(a => ({ id: a.id, title: a.title }));
+window.handleModalAccessTypeChange = (type) => {
+  window._writerAccessState = window._writerAccessState || {};
+  window._writerAccessState.currentAccessType = type;
+
+  const cardFull = document.getElementById('card-access-full');
+  const cardPart = document.getElementById('card-access-particular');
+  const fullBanner = document.getElementById('full-access-banner');
+  const partContainer = document.getElementById('particular-access-container');
+
+  if (type === 'full') {
+    if (cardFull) {
+      cardFull.classList.add('active');
+      cardFull.style.borderColor = '#C89B3C';
+      cardFull.style.background = '#FFFBEB';
+    }
+    if (cardPart) {
+      cardPart.classList.remove('active');
+      cardPart.style.borderColor = '#E2E8F0';
+      cardPart.style.background = '#FAF7F2';
+    }
+    if (fullBanner) fullBanner.style.display = 'block';
+    if (partContainer) partContainer.style.display = 'none';
+  } else {
+    if (cardPart) {
+      cardPart.classList.add('active');
+      cardPart.style.borderColor = '#1E293B';
+      cardPart.style.background = '#F8FAFC';
+    }
+    if (cardFull) {
+      cardFull.classList.remove('active');
+      cardFull.style.borderColor = '#E2E8F0';
+      cardFull.style.background = '#FAF7F2';
+    }
+    if (fullBanner) fullBanner.style.display = 'none';
+    if (partContainer) partContainer.style.display = 'block';
   }
-  select.innerHTML = items.map(item => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join('') || '<option value="">No items available</option>';
 };
 
-function renderAssignmentsTable(assignments, writerId) {
-  if (!assignments || assignments.length === 0) {
-    return '<div style="font-size:12.5px; color:#64748B; font-style:italic; padding:8px 0;">No specific items assigned yet.</div>';
+window.handleAssignScopeChange = (scope) => {
+  const select = document.getElementById('modal-assign-id');
+  if (!select || !window._writerAccessState || !window._writerAccessState.lookup) return;
+
+  const lookup = window._writerAccessState.lookup;
+  let items = [];
+
+  if (scope === 'main_category') {
+    items = (lookup.mainCategories || []).map(c => ({ id: c.id, title: c.title || c.name || c.slug }));
+  } else if (scope === 'sub_category') {
+    items = (lookup.subCategories || []).map(s => ({ id: s.id, title: s.title }));
+  } else if (scope === 'novel') {
+    items = (lookup.novels || []).map(n => ({ id: n.id, title: n.title }));
+  } else if (scope === 'short_story') {
+    items = (lookup.shortStories || []).map(s => ({ id: s.id || s.slug, title: s.title }));
+  } else if (scope === 'audio_novel') {
+    items = (lookup.audioNovels || []).map(a => ({ id: a.id, title: a.title }));
   }
+
+  if (items.length === 0) {
+    select.innerHTML = '<option value="">No items available in this category</option>';
+  } else {
+    select.innerHTML = items.map(item => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join('');
+  }
+};
+
+function renderAssignmentsTableUI(assignments, writerId) {
+  if (!assignments || assignments.length === 0) {
+    return '<div style="font-size:12.5px; color:#64748B; font-style:italic; padding:10px 0;">No specific items assigned yet. Use the form below to assign categories or specific titles.</div>';
+  }
+
   return `
-    <table class="admin-table" style="font-size:12px;">
+    <table class="admin-table" style="font-size:12px; width:100%; border-collapse:collapse;">
       <thead>
-        <tr>
-          <th>Type</th>
-          <th>Assigned Title</th>
-          <th>Instructions</th>
-          <th>Deadline</th>
-          <th>Status</th>
-          <th style="text-align:right;">Action</th>
+        <tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1;">
+          <th style="padding:8px 10px;">Type</th>
+          <th style="padding:8px 10px;">Title</th>
+          <th style="padding:8px 10px;">Allowed Actions</th>
+          <th style="padding:8px 10px;">Status</th>
+          <th style="padding:8px 10px; text-align:right;">Action</th>
         </tr>
       </thead>
       <tbody>
-        ${assignments.map(a => `
-          <tr>
-            <td><span class="assignment-badge ${a.contentType}">${a.contentType.toUpperCase().replace('_', ' ')}</span></td>
-            <td><strong>${escapeHtml(a.title)}</strong></td>
-            <td style="color:#64748B;">${escapeHtml(a.instructions || '—')}</td>
-            <td style="color:#64748B;">${a.deadline ? new Date(a.deadline).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'None'}</td>
-            <td><span style="font-size:11px; font-weight:600; color:${a.status === 'active' ? '#166534' : '#64748B'};">${a.status.toUpperCase()}</span></td>
-            <td style="text-align:right;">
-              ${a.status === 'active' ? `
-                <button type="button" class="btn btn-outline btn-xs" style="color:#DC2626; border-color:#FECACA;" onclick="revokeAssignmentAction(${a.id}, ${writerId})" title="Revoke Assignment">
-                  Revoke
+        ${assignments.map(a => {
+          const acts = Array.isArray(a.actions) ? a.actions : (a.actions || 'create,edit,submit,publish,schedule').split(',').map(s=>s.trim()).filter(Boolean);
+          const typeLabel = a.contentType === 'main_category' ? 'Main Category' : (a.contentType === 'sub_category' ? 'Subcategory' : a.contentType.replace('_', ' ').toUpperCase());
+
+          return `
+            <tr style="border-bottom:1px solid #E2E8F0;">
+              <td style="padding:8px 10px;">
+                <span class="badge" style="background:#FAF7F2; border:1px solid #EAD8B1; color:#1A0B2E; font-size:10.5px; padding:2px 6px; border-radius:4px;">
+                  ${typeLabel}
+                </span>
+              </td>
+              <td style="padding:8px 10px; font-weight:700; color:#1A0B2E;">
+                ${escapeHtml(a.title)}
+              </td>
+              <td style="padding:8px 10px;">
+                <div style="display:flex; flex-wrap:wrap; gap:3px;">
+                  ${acts.map(act => `<span style="background:#F1F5F9; color:#475569; font-size:10px; padding:1px 5px; border-radius:4px;">${escapeHtml(act)}</span>`).join('')}
+                </div>
+              </td>
+              <td style="padding:8px 10px;">
+                <span style="font-size:11px; font-weight:700; color:${a.status === 'active' ? '#16A34A' : '#DC2626'};">
+                  ${(a.status || 'active').toUpperCase()}
+                </span>
+              </td>
+              <td style="padding:8px 10px; text-align:right;">
+                <button type="button" class="btn btn-outline btn-xs" style="color:#DC2626; border-color:#FECACA; font-size:11px; padding:2px 6px;" onclick="removeModalAssignmentAction(${a.id}, ${writerId})" title="Remove Assignment">
+                  ✕ Remove
                 </button>
-              ` : '<span style="color:#94A3B8;">Revoked</span>'}
-            </td>
-          </tr>
-        `).join('')}
+              </td>
+            </tr>
+          `;
+        }).join('')}
       </tbody>
     </table>
   `;
 }
 
-window.saveWriterPermissionsAction = async (writerId) => {
-  const canNovels = document.getElementById('perm-novels')?.checked;
-  const canEpisodes = document.getElementById('perm-episodes')?.checked;
-  const canShortStories = document.getElementById('perm-stories')?.checked;
-  const canAudioNovels = document.getElementById('perm-audio')?.checked;
-  const accessLevel = document.querySelector('input[name="perm-access-level"]:checked')?.value || 'review_required';
-  const fullAccess = document.querySelector('input[name="perm-full-access"]:checked')?.value === '1';
-
-  try {
-    const res = await apiFetch(`/api/admin/writers/${writerId}/permissions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ canNovels, canEpisodes, canShortStories, canAudioNovels, accessLevel, fullAccess })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast('✓ Writer permissions saved successfully!');
-      window.closeWriterPermissionsModal();
-    } else {
-      alert(data.error || 'Failed to update permissions.');
-    }
-  } catch (err) {
-    alert(err.message || 'Error saving permissions.');
-  }
-};
-
-window.submitWriterAssignmentAction = async (writerId) => {
-  const contentType = document.getElementById('assign-content-type')?.value;
-  const contentId = document.getElementById('assign-content-id')?.value;
-  const deadline = document.getElementById('assign-deadline')?.value || null;
-  const instructions = document.getElementById('assign-instructions')?.value?.trim() || null;
+window.submitModalAssignmentAction = async (writerId) => {
+  const contentType = document.getElementById('modal-assign-type')?.value;
+  const contentId = document.getElementById('modal-assign-id')?.value;
+  const instructions = document.getElementById('modal-assign-instructions')?.value?.trim() || null;
 
   if (!contentId) {
-    alert('Please select a content item to assign.');
+    alert('Please select an item to assign.');
     return;
   }
+
+  const actions = [];
+  if (document.getElementById('act-create')?.checked) actions.push('create');
+  if (document.getElementById('act-edit')?.checked) actions.push('edit');
+  if (document.getElementById('act-submit')?.checked) actions.push('submit');
+  if (document.getElementById('act-publish')?.checked) actions.push('publish');
+  if (document.getElementById('act-schedule')?.checked) actions.push('schedule');
 
   try {
     const res = await apiFetch(`/api/admin/writers/${writerId}/assignments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contentType, contentId, deadline, instructions })
+      body: JSON.stringify({
+        contentType,
+        contentId,
+        instructions,
+        actions: actions.join(',')
+      })
     });
     const data = await res.json();
     if (res.ok && data.success) {
       showToast('✓ Content item assigned to writer!');
       // Refresh modal
-      window.openWriterPermissionsModal(writerId);
+      window.openWriterAccessModal(writerId);
     } else {
       alert(data.error || 'Failed to assign content.');
     }
@@ -11820,25 +12657,83 @@ window.submitWriterAssignmentAction = async (writerId) => {
   }
 };
 
-window.revokeAssignmentAction = async (assignmentId, writerId) => {
-  if (!confirm('Are you sure you want to revoke this assignment? The writer will lose edit access to this item immediately.')) return;
-
+window.removeModalAssignmentAction = async (assignmentId, writerId) => {
+  if (!confirm('Are you sure you want to remove this assignment?')) return;
   try {
     const res = await apiFetch(`/api/admin/writers/assignments/${assignmentId}`, {
       method: 'DELETE'
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast('Assignment revoked.');
-      window.openWriterPermissionsModal(writerId);
+      showToast('Assignment removed.');
+      window.openWriterAccessModal(writerId);
     } else {
-      alert(data.error || 'Failed to revoke assignment.');
+      alert(data.error || 'Failed to remove assignment.');
     }
   } catch (err) {
-    alert(err.message || 'Error revoking assignment.');
+    alert(err.message || 'Error removing assignment.');
   }
 };
 
+window.saveWriterAccessModalAction = async () => {
+  const state = window._writerAccessState || {};
+  const isFull = state.currentAccessType === 'full';
+
+  const canPublishIndependently = isFull ? 1 : (document.getElementById('particular-perm-independent')?.checked ? 1 : 0);
+  const canSchedule = isFull ? 1 : (document.getElementById('particular-perm-schedule')?.checked ? 1 : 0);
+  const canNovels = isFull ? 1 : (document.getElementById('perm-novels')?.checked ? 1 : 0);
+  const canEpisodes = isFull ? 1 : (document.getElementById('perm-episodes')?.checked ? 1 : 0);
+  const canShortStories = isFull ? 1 : (document.getElementById('perm-stories')?.checked ? 1 : 0);
+  const canAudioNovels = isFull ? 1 : (document.getElementById('perm-audio')?.checked ? 1 : 0);
+
+  const payload = {
+    accessType: isFull ? 'full' : 'particular',
+    fullAccess: isFull ? 1 : 0,
+    canPublishIndependently,
+    canSchedule,
+    canNovels,
+    canEpisodes,
+    canShortStories,
+    canAudioNovels,
+    accessLevel: isFull ? 'independent_publish' : (canPublishIndependently ? 'independent_publish' : 'review_required'),
+    permissionStatus: 'active'
+  };
+
+  try {
+    if (state.isBulk) {
+      const res = await apiFetch('/api/admin/writers/bulk-permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writerIds: state.writerIds, permissions: payload })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✓ Access permissions updated for ${state.writerIds.length} writers!`);
+        window.closeWriterAccessModal();
+        if (adminState.selectedWriterIds) adminState.selectedWriterIds.clear();
+        await renderWritersTab(document.getElementById('admin-main-canvas'));
+      } else {
+        alert(data.error || 'Failed to update bulk permissions.');
+      }
+    } else {
+      const res = await apiFetch(`/api/admin/writers/${state.primaryId}/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(isFull ? '✓ Full Access granted successfully!' : '✓ Particular Access permissions saved successfully!');
+        window.closeWriterAccessModal();
+        await renderWritersTab(document.getElementById('admin-main-canvas'));
+      } else {
+        alert(data.error || 'Failed to update permissions.');
+      }
+    }
+  } catch (err) {
+    alert(err.message || 'Error saving access permissions.');
+  }
+};
 // ============================================================================
 // ADMIN WRITER SUBMISSIONS REVIEW QUEUE
 // ============================================================================

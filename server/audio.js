@@ -1,3 +1,4 @@
+import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 // Audio Novels & Hierarchical Episode Data Layer for Rudhra Prarthana Novels
 // Full support for Chapter-Wise & Episode-Wise Audio Novel Management
 // Supports Direct Audio Uploads (MP3/M4A/WAV) and YouTube Video Embeds
@@ -645,7 +646,15 @@ export async function createAudioEpisode(data) {
   let scheduledAt = data.scheduledAt || data.scheduled_at || null;
   let timezone = data.timezone || 'Asia/Kolkata';
   if (scheduledAt) {
+    scheduledAt = parseISTDateTime(scheduledAt);
+    if (!scheduledAt) {
+      return { success: false, error: 'Invalid scheduled date/time format.' };
+    }
+    if (isPastIST(scheduledAt, 5)) {
+      return { success: false, error: 'Scheduled publication time cannot be in the past.' };
+    }
     status = 'scheduled';
+    timezone = 'Asia/Kolkata';
   }
   const authorId = data.authorId ? Number(data.authorId) : null;
   const reviewStatus = data.reviewStatus || (status === 'published' ? 'published' : (status === 'scheduled' ? 'approved' : 'draft'));

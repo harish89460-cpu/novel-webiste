@@ -42,7 +42,13 @@ export function formatNovel(row, chapters = [], extra = {}) {
       ? Number(row.chapters_count) 
       : (chapters.filter(c => !c.parent_id && !c.parentId).length || chapters.length || undefined),
     views: row.views !== null && row.views !== undefined && String(row.views).trim() !== '' ? String(row.views) : undefined,
-    rating: row.rating !== null && row.rating !== undefined && String(row.rating).trim() !== '' ? String(row.rating) : undefined,
+    rating: extra.averageRating || (row.rating !== null && row.rating !== undefined && String(row.rating).trim() !== '' ? String(row.rating) : '5.0'),
+    averageRating: extra.averageRating || (row.rating !== null && row.rating !== undefined && String(row.rating).trim() !== '' ? String(row.rating) : '5.0'),
+    totalRatings: extra.totalRatings !== undefined ? extra.totalRatings : 0,
+    userRating: extra.userRating !== undefined ? extra.userRating : null,
+    isSaved: Boolean(extra.isSaved),
+    authorFollowersCount: extra.authorFollowersCount !== undefined ? extra.authorFollowersCount : 0,
+    isFollowingAuthor: Boolean(extra.isFollowingAuthor),
     updatedDate: row.updated_date || '',
     featured: Boolean(row.featured),
     continueReading: Boolean(row.continue_reading),
@@ -285,7 +291,45 @@ export async function getNovelById(id, { includeAll = false, currentUser = null 
   `, [actualNovelId]);
   const selectedWriterIds = writerRows.map(w => w.writer_id);
 
-  return formatNovel(row, chapters, { selectedMemberIds, selectedWriterIds });
+  // Rating stats from novel_ratings
+  const ratingRow = await queryOne('SELECT AVG(rating) AS avg_rating, COUNT(*) AS count FROM novel_ratings WHERE novel_id = ?;', [actualNovelId]);
+  const totalRatings = Number(ratingRow?.count || 0);
+  const averageRating = totalRatings > 0 ? Number(ratingRow.avg_rating).toFixed(1) : (row.rating || '5.0');
+
+  // User-specific states (rating, saved, author follow)
+  let userRating = null;
+  let isSaved = false;
+  let isFollowingAuthor = false;
+
+  if (currentUser) {
+    const [uRating, uSaved] = await Promise.all([
+      queryOne('SELECT rating FROM novel_ratings WHERE user_id = ? AND novel_id = ?;', [currentUser.id, actualNovelId]),
+      queryOne('SELECT id FROM saved_novels WHERE user_id = ? AND novel_id = ?;', [currentUser.id, actualNovelId])
+    ]);
+    if (uRating) userRating = Number(uRating.rating);
+    isSaved = Boolean(uSaved);
+  }
+
+  // Author details & follow stats
+  const authorUserId = row.author_id ? Number(row.author_id) : 2;
+  const authorFollowersRow = await queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [authorUserId]);
+  const authorFollowersCount = Number(authorFollowersRow?.count || 0);
+
+  if (currentUser && currentUser.id !== authorUserId) {
+    const fCheck = await queryOne('SELECT id FROM follows WHERE follower_id = ? AND following_id = ?;', [currentUser.id, authorUserId]);
+    isFollowingAuthor = Boolean(fCheck);
+  }
+
+  return formatNovel(row, chapters, {
+    selectedMemberIds,
+    selectedWriterIds,
+    averageRating,
+    totalRatings,
+    userRating,
+    isSaved,
+    authorFollowersCount,
+    isFollowingAuthor
+  });
 }
 
 /**
