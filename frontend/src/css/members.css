@@ -803,3 +803,16 @@ input:checked + .slider:before {
   font-weight: 600;
   color: var(--color-text-main, #1F2937);
 }
+
+
+/* Ultra-compact Mobile Members Grid */
+@media (max-width: 360px) {
+  .members-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  .member-card {
+    padding: 16px 14px;
+  }
+}

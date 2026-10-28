@@ -16,7 +16,7 @@ function compareHierarchicalRows(a, b) {
 /**
  * Format a database row into a clean frontend-ready novel object
  */
-export function formatNovel(row, chapters = []) {
+export function formatNovel(row, chapters = [], extra = {}) {
   if (!row) return null;
   return {
     id: row.id,
@@ -30,6 +30,14 @@ export function formatNovel(row, chapters = []) {
     badge: row.badge || row.status || 'Ongoing',
     cover: row.cover || '/default-cover.jpg',
     description: row.description || '',
+    contentType: row.content_type || (row.is_audio ? 'audio_novel' : (row.category === 'Short Stories' ? 'short_story' : 'written_novel')),
+    content_type: row.content_type || (row.is_audio ? 'audio_novel' : (row.category === 'Short Stories' ? 'short_story' : 'written_novel')),
+    accessPermission: row.access_permission || 'admin_only',
+    access_permission: row.access_permission || 'admin_only',
+    language: row.language || 'Tamil',
+    scheduledAt: row.scheduled_at || null,
+    selectedMemberIds: extra.selectedMemberIds || [],
+    selectedWriterIds: extra.selectedWriterIds || [],
     chaptersCount: row.chapters_count !== null && row.chapters_count !== undefined 
       ? Number(row.chapters_count) 
       : (chapters.filter(c => !c.parent_id && !c.parentId).length || chapters.length || undefined),
@@ -74,16 +82,105 @@ export function formatNovel(row, chapters = []) {
 }
 
 /**
- * Get all novels with optional filtering
+ * Check if a user can view a novel (enforces visibility on the backend)
  */
-export async function getAllNovels({ status, category, publishedOnly = false } = {}) {
+export async function checkNovelViewAccess(novelId, currentUser = null) {
+  if (!novelId) return { allowed: false, status: 400, error: 'Novel ID is required' };
+
+  let cleanId = String(novelId).trim();
+  try { cleanId = decodeURIComponent(cleanId); } catch {}
+  const genSlug = generateNovelSlug(cleanId);
+
+  const row = await queryOne(`
+    SELECT * FROM novels 
+    WHERE id = ? OR LOWER(id) = LOWER(?) OR title = ? OR (id = ? AND ? != '')
+    LIMIT 1;
+  `, [cleanId, cleanId, cleanId, genSlug, genSlug]);
+
+  if (!row) {
+    return { allowed: false, status: 404, error: 'Novel not found' };
+  }
+
+  const isAdmin = currentUser && (currentUser.isAdmin || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase()));
+  if (isAdmin) return { allowed: true, novel: row };
+
+  const authorId = row.author_id;
+  if (currentUser && Number(currentUser.id) === Number(authorId)) {
+    return { allowed: true, novel: row };
+  }
+
+  // Publication status / draft
+  const isDraft = !row.is_published || row.status === 'Draft' || row.visibility === 'draft';
+  if (isDraft) {
+    return { allowed: false, status: 403, error: 'This novel is currently in draft mode.' };
+  }
+
+  // Scheduled check
+  if (row.status === 'Scheduled' && row.scheduled_at) {
+    const pubDate = new Date(row.scheduled_at);
+    if (!isNaN(pubDate.getTime()) && pubDate > new Date()) {
+      return { allowed: false, status: 403, error: 'This content is scheduled for future release.' };
+    }
+  }
+
+  const vis = (row.visibility || 'public').toLowerCase();
+
+  // 1. Public
+  if (vis === 'public') {
+    return { allowed: true, novel: row };
+  }
+
+  // 2. Private / Admin Only
+  if (vis === 'private' || vis === 'admin_only') {
+    return { allowed: false, status: 403, error: 'This novel is private and restricted to authorized administrators.' };
+  }
+
+  // 3. All Members
+  if (vis === 'members' || vis === 'all_members') {
+    if (!currentUser || !currentUser.id) {
+      return { allowed: false, status: 401, error: 'Please log in as an authorized member to view this novel.' };
+    }
+    return { allowed: true, novel: row };
+  }
+
+  // 4. Selected Members
+  if (vis === 'selected_members') {
+    if (!currentUser || !currentUser.id) {
+      return { allowed: false, status: 401, error: 'Please log in to view this restricted novel.' };
+    }
+    const rule = await queryOne(`
+      SELECT id FROM content_access_rules 
+      WHERE target_type IN ('novel', 'audio_novel', 'short_story') 
+        AND target_id = ? 
+        AND user_id = ? 
+        AND rule_type = 'allow'
+        AND (expires_at IS NULL OR expires_at > NOW())
+      LIMIT 1;
+    `, [row.id, currentUser.id]);
+
+    if (!rule) {
+      return { allowed: false, status: 403, error: 'Access restricted: You have not been selected to view this content.' };
+    }
+    return { allowed: true, novel: row };
+  }
+
+  return { allowed: true, novel: row };
+}
+
+/**
+ * Get all novels with optional filtering and visibility checks
+ */
+export async function getAllNovels({ status, category, publishedOnly = false, currentUser = null } = {}) {
   await checkAndPublishDueEpisodes();
+
+  const isAdmin = currentUser && (currentUser.isAdmin || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase()));
+  const userId = currentUser ? currentUser.id : null;
 
   let sql = 'SELECT * FROM novels WHERE 1=1';
   const params = [];
 
-  if (publishedOnly) {
-    sql += " AND is_published = 1 AND visibility = 'public'";
+  if (publishedOnly && !isAdmin) {
+    sql += " AND is_published = 1 AND status != 'Draft'";
   }
   if (status) {
     sql += ' AND LOWER(status) = LOWER(?)';
@@ -97,13 +194,43 @@ export async function getAllNovels({ status, category, publishedOnly = false } =
   sql += ' ORDER BY sort_order ASC, created_at DESC';
 
   const rows = await query(sql, params);
-  return rows.map(r => formatNovel(r));
+
+  if (isAdmin || (!publishedOnly && !currentUser)) {
+    return rows.map(r => formatNovel(r));
+  }
+
+  // Filter for authenticated or public reader
+  let userAllowedIds = new Set();
+  if (userId) {
+    const rules = await query(`
+      SELECT target_id FROM content_access_rules 
+      WHERE target_type IN ('novel', 'audio_novel', 'short_story') 
+        AND user_id = ? AND rule_type = 'allow'
+        AND (expires_at IS NULL OR expires_at > NOW());
+    `, [userId]);
+    rules.forEach(r => userAllowedIds.add(String(r.target_id)));
+  }
+
+  const filtered = rows.filter(r => {
+    if (isAdmin) return true;
+    if (userId && Number(r.author_id) === Number(userId)) return true;
+    if (!r.is_published || r.status === 'Draft' || r.visibility === 'draft') return false;
+
+    const vis = (r.visibility || 'public').toLowerCase();
+    if (vis === 'public') return true;
+    if (vis === 'private' || vis === 'admin_only') return false;
+    if (vis === 'members' || vis === 'all_members') return Boolean(userId);
+    if (vis === 'selected_members') return userAllowedIds.has(String(r.id));
+    return true;
+  });
+
+  return filtered.map(r => formatNovel(r));
 }
 
 /**
  * Get single novel by ID including chapters from the SQL database
  */
-export async function getNovelById(id, { includeAll = false } = {}) {
+export async function getNovelById(id, { includeAll = false, currentUser = null } = {}) {
   await checkAndPublishDueEpisodes();
 
   if (!id) return null;
@@ -143,7 +270,22 @@ export async function getNovelById(id, { includeAll = false } = {}) {
 
   const chapters = await query(chapterSql, params);
   chapters.sort(compareHierarchicalRows);
-  return formatNovel(row, chapters);
+
+  const memberRows = await query(`
+    SELECT user_id FROM content_access_rules 
+    WHERE target_type IN ('novel', 'audio_novel', 'short_story') 
+      AND target_id = ? AND rule_type = 'allow';
+  `, [actualNovelId]);
+  const selectedMemberIds = memberRows.map(r => r.user_id);
+
+  const writerRows = await query(`
+    SELECT writer_id FROM writer_assignments 
+    WHERE content_type IN ('novel', 'audio_novel', 'short_story') 
+      AND content_id = ? AND status = 'active';
+  `, [actualNovelId]);
+  const selectedWriterIds = writerRows.map(w => w.writer_id);
+
+  return formatNovel(row, chapters, { selectedMemberIds, selectedWriterIds });
 }
 
 /**
@@ -242,10 +384,54 @@ export async function updateNovel(id, data) {
       };
     }
   }
+
   const author = data.author !== undefined ? String(data.author).trim() : (existing.author || 'Rudhra Prarthana');
-  const genre = data.genre !== undefined ? String(data.genre).trim() : existing.genre;
-  const category = data.category !== undefined ? String(data.category).trim() : existing.category;
+  let genre = data.genre !== undefined ? String(data.genre).trim() : existing.genre;
+  if (data.newGenre && String(data.newGenre).trim()) {
+    genre = String(data.newGenre).trim();
+  }
+  if (genre && genre !== 'Other') {
+    try {
+      const gSlug = genre.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      await query('INSERT IGNORE INTO novel_genres (name, slug) VALUES (?, ?);', [genre, gSlug]);
+    } catch {}
+  }
+
+  const contentType = data.contentType || data.content_type || existing.content_type || (existing.is_audio ? 'audio_novel' : 'written_novel');
+  const accessPermission = data.accessPermission || data.access_permission || existing.access_permission || 'admin_only';
+  const language = data.language !== undefined ? String(data.language).trim() : (existing.language || 'Tamil');
   const status = data.status !== undefined ? String(data.status).trim() : existing.status;
+
+  let scheduledAt = existing.scheduled_at;
+  if (data.scheduledAt !== undefined) {
+    scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null;
+    if (scheduledAt && isNaN(scheduledAt.getTime())) scheduledAt = null;
+  }
+
+  let category = data.category !== undefined ? String(data.category).trim() : existing.category;
+  let isAudio = existing.is_audio;
+  let audioAvailable = existing.audio_available;
+  let link = existing.link;
+  let audioVoice = data.audioVoice !== undefined ? data.audioVoice : existing.audio_voice;
+  let audioDuration = data.duration !== undefined ? data.duration : (data.audioDuration || existing.audio_duration);
+  let youtubeUrl = data.youtubeUrl !== undefined ? data.youtubeUrl : existing.youtube_url;
+
+  if (contentType === 'audio_novel') {
+    isAudio = 1;
+    audioAvailable = 1;
+    category = 'Audio Novels';
+    link = `#audio?novel=${encodeURIComponent(id)}`;
+    if (!audioVoice) audioVoice = author;
+  } else if (contentType === 'short_story') {
+    category = 'Short Stories';
+    link = `#story?id=${encodeURIComponent(id)}`;
+  } else if (contentType === 'written_novel') {
+    link = `#novel?id=${encodeURIComponent(id)}`;
+    if (!category || category === 'Other') {
+      category = (status === 'Completed') ? 'Completed Novels' : 'Ongoing Novels';
+    }
+  }
+
   let cover = existing.cover;
   if (data.cover !== undefined) {
     const rawCover = String(data.cover || '').trim();
@@ -253,17 +439,13 @@ export async function updateNovel(id, data) {
       ? saveBase64Image(rawCover, 'covers', `cover-${id}`)
       : rawCover;
   }
+
   const chaptersCount = data.chaptersCount !== undefined ? parseInt(data.chaptersCount, 10) : existing.chapters_count;
   const views = data.views !== undefined ? String(data.views).trim() : existing.views;
   const rating = data.rating !== undefined ? String(data.rating).trim() : existing.rating;
   const updatedDate = data.updatedDate !== undefined ? String(data.updatedDate).trim() : existing.updated_date;
-  const featured = data.featured !== undefined ? (data.featured ? 1 : 0) : existing.featured;
+  const featured = 0; // Homepage Placement removed
   const continueReading = data.continueReading !== undefined ? (data.continueReading ? 1 : 0) : existing.continue_reading;
-  const isAudio = data.isAudio !== undefined ? (data.isAudio ? 1 : 0) : existing.is_audio;
-  const audioAvailable = data.audioAvailable !== undefined ? (data.audioAvailable ? 1 : 0) : existing.audio_available;
-  const audioDuration = data.duration !== undefined ? data.duration : existing.audio_duration;
-  const audioVoice = data.audioVoice !== undefined ? data.audioVoice : existing.audio_voice;
-  const youtubeUrl = data.youtubeUrl !== undefined ? data.youtubeUrl : existing.youtube_url;
   const trendingRank = data.trendingRank !== undefined ? parseInt(data.trendingRank, 10) : existing.trending_rank;
   const sortOrder = data.sortOrder !== undefined ? parseInt(data.sortOrder, 10) : existing.sort_order;
   const isPublished = data.isPublished !== undefined ? (data.isPublished ? 1 : 0) : existing.is_published;
@@ -277,15 +459,59 @@ export async function updateNovel(id, data) {
       description = ?, chapters_count = ?, views = ?, rating = ?, updated_date = ?,
       featured = ?, continue_reading = ?, is_audio = ?, audio_available = ?,
       audio_duration = ?, audio_voice = ?, youtube_url = ?, trending_rank = ?,
-      sort_order = ?, is_published = ?, visibility = ?
+      sort_order = ?, is_published = ?, visibility = ?, link = ?,
+      content_type = ?, access_permission = ?, language = ?, scheduled_at = ?
     WHERE id = ?;
   `, [
     title, author, genre, category, status, badge, cover,
     description, chaptersCount, views, rating, updatedDate,
     featured, continueReading, isAudio, audioAvailable,
     audioDuration, audioVoice, youtubeUrl, trendingRank,
-    sortOrder, isPublished, visibility, id
+    sortOrder, isPublished, visibility, link,
+    contentType, accessPermission, language, scheduledAt,
+    id
   ]);
+
+  // Persist selected member IDs if visibility is selected_members
+  if (data.selectedMemberIds !== undefined) {
+    await query(`DELETE FROM content_access_rules WHERE target_type = 'novel' AND target_id = ? AND rule_type = 'allow';`, [id]);
+    if (visibility === 'selected_members' && Array.isArray(data.selectedMemberIds)) {
+      for (const memId of data.selectedMemberIds) {
+        const uId = parseInt(memId, 10);
+        if (uId) {
+          await query(`
+            INSERT INTO content_access_rules (target_type, target_id, user_id, rule_type, reason, created_by_admin_id)
+            VALUES ('novel', ?, ?, 'allow', 'Selected member view access', ?);
+          `, [id, uId, existing.author_id || 2]);
+        }
+      }
+    }
+  }
+
+  // Persist selected writers in writer_assignments if accessPermission is selected_writers / assigned_writers
+  if (data.selectedWriterIds !== undefined) {
+    if ((accessPermission === 'selected_writers' || accessPermission === 'assigned_writers') && Array.isArray(data.selectedWriterIds)) {
+      const allowedWriterIds = new Set(data.selectedWriterIds.map(w => parseInt(w, 10)).filter(Boolean));
+      // Mark revoked for unselected
+      const existingAssigns = await query(`SELECT id, writer_id FROM writer_assignments WHERE content_type = 'novel' AND content_id = ?;`, [id]);
+      for (const ea of existingAssigns) {
+        if (!allowedWriterIds.has(ea.writer_id)) {
+          await query(`UPDATE writer_assignments SET status = 'revoked' WHERE id = ?;`, [ea.id]);
+        }
+      }
+      for (const wId of allowedWriterIds) {
+        const ea = existingAssigns.find(a => a.writer_id === wId);
+        if (!ea) {
+          await query(`
+            INSERT INTO writer_assignments (writer_id, content_type, content_id, title, status, assigned_by)
+            VALUES (?, 'novel', ?, ?, 'active', ?);
+          `, [wId, id, title, existing.author_id || 2]);
+        } else {
+          await query(`UPDATE writer_assignments SET status = 'active' WHERE id = ?;`, [ea.id]);
+        }
+      }
+    }
+  }
 
   // If novel title changed, cascade update to chapters that used default generated title "${existing.title} (...)"
   if (title && existing.title && title !== existing.title) {
@@ -421,10 +647,74 @@ export async function createNovel(data) {
     cleanId = `${baseSlug}-${counter}`;
   }
 
-  const isPublished = data.isPublished !== undefined ? (data.isPublished ? 1 : 0) : 1;
+  const isPublished = data.isPublished !== undefined 
+    ? (data.isPublished ? 1 : 0) 
+    : (data.status === 'Draft' || data.visibility === 'draft' ? 0 : 1);
+  const status = data.status || (isPublished ? 'Ongoing' : 'Draft');
   const visibility = data.visibility || (isPublished ? 'public' : 'draft');
-  const status = data.status || 'Ongoing';
   const authorId = data.authorId || data.author_id || 2;
+  const author = (data.author || 'Rudhra Prarthana').trim();
+  const contentType = (data.contentType || data.content_type || 'written_novel').trim();
+  const accessPermission = (data.accessPermission || data.access_permission || 'admin_only').trim();
+  const language = (data.language || 'Tamil').trim();
+
+  let scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null;
+  if (scheduledAt && isNaN(scheduledAt.getTime())) scheduledAt = null;
+
+  // Process genre and save into novel_genres if new
+  let genre = (data.genre || 'Novel').trim();
+  if (data.newGenre && String(data.newGenre).trim()) {
+    genre = String(data.newGenre).trim();
+  }
+  if (genre && genre !== 'Other') {
+    try {
+      const gSlug = genre.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      await query('INSERT IGNORE INTO novel_genres (name, slug) VALUES (?, ?);', [genre, gSlug]);
+    } catch {}
+  }
+
+  // Content type specific field adjustments & routing
+  let category = data.category;
+  let isAudio = 0;
+  let audioAvailable = 0;
+  let badge = status;
+  let link = `#novel?id=${encodeURIComponent(cleanId)}`;
+  let audioVoice = data.audioVoice || null;
+  let audioDuration = data.duration || data.audioDuration || null;
+  let youtubeUrl = data.youtubeUrl || null;
+
+  if (contentType === 'audio_novel') {
+    isAudio = 1;
+    audioAvailable = 1;
+    category = 'Audio Novels';
+    badge = 'Audio';
+    link = `#audio?novel=${encodeURIComponent(cleanId)}`;
+    audioVoice = data.audioVoice || author;
+  } else if (contentType === 'short_story') {
+    category = 'Short Stories';
+    badge = 'Short Story';
+    link = `#story?id=${encodeURIComponent(cleanId)}`;
+  } else if (contentType === 'written_novel') {
+    if (!category || category === 'Other') {
+      category = (status === 'Completed') ? 'Completed Novels' : 'Ongoing Novels';
+    }
+  } else {
+    // Custom content category
+    const customCatName = (data.customCategoryName || data.category || contentType).trim();
+    category = customCatName;
+    badge = customCatName;
+    try {
+      const cSlug = customCatName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      await query(`
+        INSERT IGNORE INTO forum_categories (id, title, description, icon, sort_order, is_active, status, visibility, is_disabled)
+        VALUES (?, ?, ?, '📖', 99, 1, 'published', 'public', 0);
+      `, [cSlug, customCatName, `Collection of ${customCatName}`]);
+    } catch {}
+  }
+
+  let cover = data.cover && String(data.cover).trim().startsWith('data:image/')
+    ? saveBase64Image(String(data.cover).trim(), 'covers', `cover-${cleanId}`)
+    : (data.cover || '/default-cover.jpg');
 
   await query(`
     INSERT INTO novels (
@@ -432,44 +722,116 @@ export async function createNovel(data) {
       description, chapters_count, views, rating, updated_date,
       featured, continue_reading, is_audio, audio_available,
       audio_duration, audio_voice, youtube_url, trending_rank,
-      sort_order, is_published, visibility, link, author_id
+      sort_order, is_published, visibility, link, author_id,
+      content_type, access_permission, language, scheduled_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?,
-      ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?
     );
   `, [
     cleanId,
     cleanTitle,
-    data.author || 'Rudhra Prarthana',
-    data.genre || 'Novel',
-    data.category || `${status} Novels`,
+    author,
+    genre,
+    category,
     status,
-    data.badge || status,
-    data.cover && String(data.cover).trim().startsWith('data:image/')
-      ? saveBase64Image(String(data.cover).trim(), 'covers', `cover-${cleanId}`)
-      : (data.cover || '/default-cover.jpg'),
+    badge,
+    cover,
     data.description || '',
     data.chaptersCount ? parseInt(data.chaptersCount, 10) : 0,
     data.views || '0',
     data.rating || '5.0',
     data.updatedDate || 'Just added',
-    data.featured ? 1 : 0,
-    data.continueReading ? 1 : 0,
-    data.isAudio ? 1 : 0,
-    data.audioAvailable ? 1 : 0,
-    data.duration || null,
-    data.audioVoice || null,
-    data.youtubeUrl || null,
-    data.trendingRank ? parseInt(data.trendingRank, 10) : 0,
+    0, // Homepage placement removed
+    0,
+    isAudio,
+    audioAvailable,
+    audioDuration,
+    audioVoice,
+    youtubeUrl,
+    0,
     data.sortOrder ? parseInt(data.sortOrder, 10) : 0,
     isPublished,
     visibility,
-    data.link || `#novel?id=${encodeURIComponent(cleanId)}`,
-    authorId
+    link,
+    authorId,
+    contentType,
+    accessPermission,
+    language,
+    scheduledAt
   ]);
+
+  // If short story, also sync record into short_stories table for unified reader support
+  if (contentType === 'short_story') {
+    try {
+      const storyContent = data.storyContent || data.content || data.description || cleanTitle;
+      const plainText = storyContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const words = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
+      const readTime = `${Math.max(1, Math.ceil(words / 200))} mins`;
+      await query(`
+        INSERT INTO short_stories (
+          slug, title, title_ta, author, genre, description, cover_image, content,
+          word_count, read_time, status, is_disabled, visibility, scheduled_at, timezone,
+          views_count, comments_count, sort_order, published_at, created_at, updated_at, author_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'Asia/Kolkata', 0, 0, 1, NOW(), NOW(), NOW(), ?)
+        ON DUPLICATE KEY UPDATE title = VALUES(title), content = VALUES(content);
+      `, [
+        cleanId,
+        cleanTitle,
+        cleanTitle,
+        author,
+        genre,
+        data.description || '',
+        cover,
+        storyContent,
+        words,
+        readTime,
+        status === 'Draft' ? 'draft' : (status === 'Scheduled' ? 'scheduled' : 'published'),
+        visibility,
+        scheduledAt,
+        authorId
+      ]);
+    } catch (e) {
+      console.warn('Could not mirror short story record:', e.message);
+    }
+  }
+
+  // Persist selected member IDs in content_access_rules if visibility is selected_members
+  if (visibility === 'selected_members' && Array.isArray(data.selectedMemberIds)) {
+    await query(`DELETE FROM content_access_rules WHERE target_type = 'novel' AND target_id = ? AND rule_type = 'allow';`, [cleanId]);
+    for (const memId of data.selectedMemberIds) {
+      const uId = parseInt(memId, 10);
+      if (uId) {
+        await query(`
+          INSERT INTO content_access_rules (target_type, target_id, user_id, rule_type, reason, created_by_admin_id)
+          VALUES ('novel', ?, ?, 'allow', 'Selected member view access', ?);
+        `, [cleanId, uId, authorId || 2]);
+      }
+    }
+  }
+
+  // Persist selected writers in writer_assignments if access_permission is selected_writers or assigned_writers
+  if ((accessPermission === 'selected_writers' || accessPermission === 'assigned_writers') && Array.isArray(data.selectedWriterIds)) {
+    for (const wrId of data.selectedWriterIds) {
+      const wId = parseInt(wrId, 10);
+      if (wId) {
+        const existingAssign = await queryOne(`
+          SELECT id FROM writer_assignments 
+          WHERE writer_id = ? AND content_type = 'novel' AND content_id = ? AND status = 'active';
+        `, [wId, cleanId]);
+        if (!existingAssign) {
+          await query(`
+            INSERT INTO writer_assignments (writer_id, content_type, content_id, title, status, assigned_by)
+            VALUES (?, 'novel', ?, ?, 'active', ?);
+          `, [wId, cleanId, cleanTitle, authorId || 2]);
+        }
+      }
+    }
+  }
 
   return { success: true, novel: await getNovelById(cleanId, { includeAll: true }) };
 }
@@ -482,6 +844,12 @@ export async function deleteNovel(id) {
   if (!existing) {
     return { success: false, error: 'Novel not found' };
   }
+
+  // Clean up associated rules and assignments
+  try {
+    await query("DELETE FROM content_access_rules WHERE target_type = 'novel' AND target_id = ?;", [id]);
+    await query("DELETE FROM writer_assignments WHERE content_type = 'novel' AND content_id = ?;", [id]);
+  } catch {}
 
   await query('DELETE FROM novels WHERE id = ?;', [id]);
   return { success: true };

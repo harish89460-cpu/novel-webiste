@@ -165,97 +165,311 @@ export function verifyPassword(password, hash, salt) {
 /**
  * Fetch formatted Latest Posts & Trending Posts for the Community Sidebar
  */
-export async function getSidebarPostsFromDb() {
-  function formatRelativeTime(dateStr) {
-    if (!dateStr) return 'Recently';
+export async function getSidebarPostsFromDb(limit = 7) {
+  function formatRelativeTime(dateInput) {
+    if (!dateInput) return 'Recently';
     try {
-      const normalized = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
-      const date = new Date(normalized);
+      const date = (dateInput instanceof Date) ? dateInput : new Date(typeof dateInput === 'string' && !dateInput.includes('T') ? dateInput.replace(' ', 'T') + 'Z' : dateInput);
+      if (isNaN(date.getTime())) return 'Recently';
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
+      if (diffMs < 0) return 'Just now';
       const diffMins = Math.floor(diffMs / 60000);
       if (diffMins < 2) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffMins < 60) return `${diffMins} minutes ago`;
       const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffHours === 1) return '1 hour ago';
+      if (diffHours < 24) return `${diffHours} hours ago`;
       const diffDays = Math.floor(diffHours / 24);
-      if (diffDays < 7) return `${diffDays}d ago`;
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (diffDays === 1) return '1 day ago';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffWeeks === 1) return '1 week ago';
+      if (diffWeeks < 5) return `${diffWeeks} weeks ago`;
+      const diffMonths = Math.floor(diffDays / 30);
+      if (diffMonths === 1) return '1 month ago';
+      if (diffMonths < 12) return `${diffMonths} months ago`;
+      const diffYears = Math.floor(diffDays / 365);
+      if (diffYears === 1) return '1 year ago';
+      return `${diffYears} years ago`;
     } catch {
       return 'Recently';
     }
   }
 
-  function mapPostRow(r) {
-    const rawExcerpt = (r.excerpt || '').replace(/<[^>]+>/g, '').trim();
-    const cleanExcerpt = rawExcerpt.length > 75 ? rawExcerpt.substring(0, 75) + '...' : rawExcerpt;
-    const resolvedNovelId = r.novel_id || resolveNovelIdFromTitle(r.title);
-    const link = resolvedNovelId
-      ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${r.chapter_num ? '&ch=' + encodeURIComponent(r.chapter_num) : ''}#comments`
-      : `#topic?id=${encodeURIComponent(r.id)}`;
+  // 1. Forum Topics (Discussions & Forum Threads)
+  const topicRows = await query(`
+    SELECT 
+      t.id, 
+      t.title, 
+      'topic' AS item_type,
+      t.category_id, 
+      t.category_title, 
+      t.novel_id, 
+      t.chapter_num,
+      COALESCE(t.views_count, 0) AS views_count, 
+      GREATEST(COALESCE(t.replies_count, 0), (SELECT COUNT(*) FROM forum_posts WHERE topic_id = t.id)) AS replies_count,
+      t.created_at, 
+      t.updated_at,
+      t.last_reply_at,
+      (SELECT fp.created_at FROM forum_posts fp WHERE fp.topic_id = t.id ORDER BY fp.id DESC LIMIT 1) AS latest_reply_date,
+      COALESCE(
+        (SELECT fp.user_id FROM forum_posts fp WHERE fp.topic_id = t.id ORDER BY fp.id DESC LIMIT 1),
+        t.last_reply_author_id,
+        t.author_id
+      ) AS last_user_id,
+      t.author_id,
+      COALESCE(ap.display_name, au.username, 'Member') AS author_name,
+      COALESCE(ap.avatar, '/profile.png') AS author_avatar
+    FROM forum_topics t
+    LEFT JOIN users au ON t.author_id = au.id
+    LEFT JOIN profiles ap ON au.id = ap.user_id
+    WHERE t.is_published = 1 AND t.visibility = 'public';
+  `);
 
-    return {
-      id: r.id,
-      novelId: resolvedNovelId,
-      chapterNum: r.chapter_num || null,
-      title: r.title,
-      category: r.category_title,
-      categoryId: r.category_id,
-      author: r.author_name || 'Member',
-      lastAuthor: r.last_author_name || r.author_name || 'Member',
-      avatar: r.author_avatar || '/profile.png',
-      views: Number(r.views_count || 0),
-      replies: Number(r.replies_count || 0),
-      excerpt: cleanExcerpt,
-      updatedAt: r.last_reply_at || r.updated_at || r.created_at,
-      timeDisplay: formatRelativeTime(r.last_reply_at || r.updated_at || r.created_at),
-      link
-    };
+  // 2.5 Short Stories
+  let shortStoryRows = [];
+  try {
+    shortStoryRows = await query(`
+      SELECT 
+        s.id,
+        s.slug,
+        s.title,
+        s.author,
+        s.genre,
+        s.views_count,
+        s.comments_count,
+        s.published_at,
+        s.updated_at,
+        s.created_at,
+        (SELECT c.created_at FROM short_story_comments c WHERE c.story_id = s.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_date,
+        (SELECT c.user_id FROM short_story_comments c WHERE c.story_id = s.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_user_id
+      FROM short_stories s
+      WHERE s.status = 'published' AND s.is_disabled = 0;
+    `);
+  } catch (err) {}
+
+  // 2. Content Articles (General Notes, Announcements, Tea Time, Custom Articles)
+  const articleRows = await query(`
+    SELECT 
+      a.id,
+      a.unique_slug,
+      a.title,
+      'article' AS item_type,
+      a.main_category_id,
+      a.sub_category_id,
+      COALESCE(a.views_count, 0) AS views_count,
+      GREATEST(COALESCE(a.comments_count, 0), (SELECT COUNT(*) FROM content_comments WHERE content_id = a.id)) AS comments_count,
+      a.created_at,
+      a.updated_at,
+      a.published_at,
+      (SELECT cc.created_at FROM content_comments cc WHERE cc.content_id = a.id ORDER BY cc.id DESC LIMIT 1) AS latest_comment_date,
+      COALESCE(
+        (SELECT cc.user_id FROM content_comments cc WHERE cc.content_id = a.id ORDER BY cc.id DESC LIMIT 1),
+        a.author_id
+      ) AS last_user_id,
+      a.author_id,
+      COALESCE(a.author_name, ap.display_name, au.username, 'Rudhra Prarthana') AS author_name,
+      COALESCE(ap.avatar, '/profile.png') AS author_avatar
+    FROM content_articles a
+    LEFT JOIN users au ON a.author_id = au.id
+    LEFT JOIN profiles ap ON au.id = ap.user_id
+    WHERE a.is_published = 1 AND a.is_disabled = 0;
+  `);
+
+  // 3. Novels & Stories (Written Novels and Audio Novels)
+  const novelRows = await query(`
+    SELECT
+      n.id,
+      n.title,
+      'novel' AS item_type,
+      n.category,
+      n.author,
+      n.views,
+      n.is_audio,
+      n.cover,
+      (SELECT COUNT(*) FROM comments WHERE novel_id = n.id) AS comments_count,
+      (SELECT c.created_at FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_date,
+      (SELECT c.user_id FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_user_id,
+      (SELECT c.chapter_num FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_chapter,
+      (SELECT COALESCE(ch.published_at, ch.created_at) FROM chapters ch WHERE ch.novel_id = n.id AND ch.status = 'published' ORDER BY COALESCE(ch.published_at, ch.created_at) DESC LIMIT 1) AS latest_chapter_date,
+      (SELECT ch.chapter_num FROM chapters ch WHERE ch.novel_id = n.id AND ch.status = 'published' ORDER BY COALESCE(ch.published_at, ch.created_at) DESC LIMIT 1) AS latest_chapter_num,
+      n.created_at,
+      n.updated_at
+    FROM novels n
+    WHERE n.is_published = 1 AND n.visibility = 'public';
+  `);
+
+  // Gather user profiles for accurate "Last updated by"
+  const userIds = new Set();
+  (topicRows || []).forEach(r => { if (r.last_user_id) userIds.add(r.last_user_id); if (r.author_id) userIds.add(r.author_id); });
+  (articleRows || []).forEach(r => { if (r.last_user_id) userIds.add(r.last_user_id); if (r.author_id) userIds.add(r.author_id); });
+  (novelRows || []).forEach(r => { if (r.latest_comment_user_id) userIds.add(r.latest_comment_user_id); });
+
+  const userMap = new Map();
+  if (userIds.size > 0) {
+    const idList = Array.from(userIds).filter(Boolean);
+    if (idList.length > 0) {
+      const placeholders = idList.map(() => '?').join(',');
+      const users = await query(`
+        SELECT u.id, u.username, u.role, COALESCE(p.display_name, u.username) AS display_name, COALESCE(p.avatar, '/profile.png') AS avatar
+        FROM users u
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE u.id IN (${placeholders});
+      `, idList);
+      (users || []).forEach(u => userMap.set(u.id, u));
+    }
   }
 
-  // 1. Latest Posts: strictly sorted by latest update / reply timestamp
-  const latestRows = await query(`
-    SELECT 
-      t.id, t.title, t.category_id, t.category_title, t.novel_id, t.chapter_num,
-      t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
-      COALESCE(lp.display_name, lu.username, ap.display_name, au.username, 'Member') AS last_author_name,
-      COALESCE(lp.avatar, ap.avatar, '/profile.png') AS author_avatar,
-      COALESCE(ap.display_name, au.username, 'Member') AS author_name,
-      COALESCE((SELECT content FROM forum_posts WHERE topic_id = t.id ORDER BY id DESC LIMIT 1), '') AS excerpt
-    FROM forum_topics t
-    LEFT JOIN users au ON t.author_id = au.id
-    LEFT JOIN profiles ap ON au.id = ap.user_id
-    LEFT JOIN users lu ON t.last_reply_author_id = lu.id
-    LEFT JOIN profiles lp ON lu.id = lp.user_id
-    WHERE t.is_published = 1 AND t.visibility = 'public'
-    ORDER BY COALESCE(t.last_reply_at, t.updated_at, t.created_at) DESC
-    LIMIT 5;
-  `);
+  const items = [];
 
-  // 2. Trending Posts: engagement formula: (replies_count * 3) + views_count DESC
-  const trendingRows = await query(`
-    SELECT 
-      t.id, t.title, t.category_id, t.category_title, t.novel_id, t.chapter_num,
-      t.views_count, t.replies_count, t.created_at, t.updated_at, t.last_reply_at,
-      ((t.replies_count * 3) + t.views_count) AS engagement_score,
-      COALESCE(lp.display_name, lu.username, ap.display_name, au.username, 'Member') AS last_author_name,
-      COALESCE(lp.avatar, ap.avatar, '/profile.png') AS author_avatar,
-      COALESCE(ap.display_name, au.username, 'Member') AS author_name,
-      COALESCE((SELECT content FROM forum_posts WHERE topic_id = t.id ORDER BY id DESC LIMIT 1), '') AS excerpt
-    FROM forum_topics t
-    LEFT JOIN users au ON t.author_id = au.id
-    LEFT JOIN profiles ap ON au.id = ap.user_id
-    LEFT JOIN users lu ON t.last_reply_author_id = lu.id
-    LEFT JOIN profiles lp ON lu.id = lp.user_id
-    WHERE t.is_published = 1 AND t.visibility = 'public'
-    ORDER BY engagement_score DESC, COALESCE(t.last_reply_at, t.updated_at, t.created_at) DESC
-    LIMIT 5;
-  `);
+  // Map Topics
+  (topicRows || []).forEach(t => {
+    const lastUser = userMap.get(t.last_user_id);
+    const lastAuthorName = lastUser ? lastUser.display_name : t.author_name;
+    const lastAvatar = (lastUser && lastUser.avatar) || t.author_avatar || '/profile.png';
+    const lastActivity = t.latest_reply_date || t.last_reply_at || t.updated_at || t.created_at;
+    const views = Number(t.views_count || 0);
+    const replies = Number(t.replies_count || 0);
 
-  return {
-    latest: (latestRows || []).map(mapPostRow),
-    trending: (trendingRows || []).map(mapPostRow)
-  };
+    const resolvedNovelId = t.novel_id || resolveNovelIdFromTitle(t.title);
+    const link = resolvedNovelId 
+      ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${t.chapter_num ? '&ch=' + encodeURIComponent(t.chapter_num) : ''}#comments`
+      : `#topic?id=${encodeURIComponent(t.id)}`;
+
+    items.push({
+      id: `topic-${t.id}`,
+      rawId: t.id,
+      itemType: 'topic',
+      title: t.title,
+      author: t.author_name,
+      lastAuthor: lastAuthorName,
+      avatar: lastAvatar,
+      replies,
+      views,
+      updatedAt: lastActivity,
+      timeDisplay: formatRelativeTime(lastActivity),
+      link,
+      category: t.category_title || 'Discussion'
+    });
+  });
+
+  // Map Short Stories
+  (shortStoryRows || []).forEach(s => {
+    const commentUser = s.latest_comment_user_id ? userMap.get(s.latest_comment_user_id) : null;
+    const lastAuthorName = commentUser ? commentUser.display_name : s.author;
+    const lastAvatar = (commentUser && commentUser.avatar) || '/profile.png';
+    const lastActivity = s.latest_comment_date || s.published_at || s.updated_at || s.created_at;
+    const views = Number(s.views_count || 0);
+    const replies = Number(s.comments_count || 0);
+    const link = `#story?id=${encodeURIComponent(s.slug || s.id)}`;
+
+    items.push({
+      id: `story-${s.id}`,
+      rawId: s.id,
+      itemType: 'story',
+      title: s.title,
+      author: s.author,
+      lastAuthor: lastAuthorName,
+      avatar: lastAvatar,
+      replies,
+      views,
+      updatedAt: lastActivity,
+      timeDisplay: formatRelativeTime(lastActivity),
+      link,
+      category: s.genre || 'Short Story'
+    });
+  });
+
+  // Map Content Articles
+  (articleRows || []).forEach(a => {
+    const lastUser = userMap.get(a.last_user_id);
+    const lastAuthorName = lastUser ? lastUser.display_name : a.author_name;
+    const lastAvatar = (lastUser && lastUser.avatar) || a.author_avatar || '/profile.png';
+    const lastActivity = a.latest_comment_date || a.updated_at || a.published_at || a.created_at;
+    const views = Number(a.views_count || 0);
+    const replies = Number(a.comments_count || 0);
+
+    const link = `#content?id=${encodeURIComponent(a.unique_slug || a.id)}`;
+
+    items.push({
+      id: `article-${a.id}`,
+      rawId: a.id,
+      itemType: 'article',
+      title: a.title,
+      author: a.author_name,
+      lastAuthor: lastAuthorName,
+      avatar: lastAvatar,
+      replies,
+      views,
+      updatedAt: lastActivity,
+      timeDisplay: formatRelativeTime(lastActivity),
+      link,
+      category: a.sub_category_id ? a.sub_category_id.replace(/-/g, ' ') : 'General Notes'
+    });
+  });
+
+  // Map Novels (avoid duplicate if a topic already exists for this exact novel)
+  (novelRows || []).forEach(n => {
+    const hasTopic = (topicRows || []).some(t => (t.novel_id === n.id) || (resolveNovelIdFromTitle(t.title) === n.id));
+    const commentUser = n.latest_comment_user_id ? userMap.get(n.latest_comment_user_id) : null;
+    const lastAuthorName = commentUser ? commentUser.display_name : n.author;
+    const lastAvatar = (commentUser && commentUser.avatar) || '/profile.png';
+    const lastActivity = n.latest_comment_date || n.latest_chapter_date || n.updated_at || n.created_at;
+    const views = parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0;
+    const replies = Number(n.comments_count || 0);
+
+    const link = n.is_audio 
+      ? `#audio?novel=${encodeURIComponent(n.id)}`
+      : `#novel?id=${encodeURIComponent(n.id)}${n.latest_chapter_num ? '&chapter=' + encodeURIComponent(n.latest_chapter_num) : ''}`;
+
+    if (!hasTopic) {
+      items.push({
+        id: `novel-${n.id}`,
+        rawId: n.id,
+        itemType: 'novel',
+        title: n.title,
+        author: n.author,
+        lastAuthor: lastAuthorName,
+        avatar: lastAvatar,
+        replies,
+        views,
+        updatedAt: lastActivity,
+        timeDisplay: formatRelativeTime(lastActivity),
+        link,
+        category: n.category || 'Novel'
+      });
+    }
+  });
+
+  // 1. Latest Posts: strictly sorted by latest activity timestamp, newest first
+  const latest = [...items].sort((a, b) => {
+    const dateA = new Date(a.updatedAt || 0).getTime();
+    const dateB = new Date(b.updatedAt || 0).getTime();
+    return dateB - dateA;
+  }).slice(0, limit);
+
+  // 2. Trending Posts: popular content ranked by genuine engagement with recency weighting
+  // Score = ((replies * 15) + views) * recencyMultiplier
+  const now = Date.now();
+  const trending = [...items].map(item => {
+    const date = new Date(item.updatedAt || 0).getTime();
+    const ageDays = Math.max(0, (now - date) / (1000 * 3600 * 24));
+    let recencyMultiplier = 1.0;
+    if (ageDays <= 7) {
+      recencyMultiplier = 1.5;
+    } else if (ageDays <= 30) {
+      recencyMultiplier = 1.0;
+    } else if (ageDays <= 90) {
+      recencyMultiplier = 0.7;
+    } else {
+      recencyMultiplier = 0.4;
+    }
+    const engagementScore = ((item.replies * 15) + item.views) * recencyMultiplier;
+    return { ...item, engagementScore };
+  }).sort((a, b) => b.engagementScore - a.engagementScore).slice(0, limit);
+
+  return { latest, trending };
 }
 
 export function resolveNovelIdFromTitle(title) {
@@ -266,7 +480,7 @@ export function resolveNovelIdFromTitle(title) {
   if (s.includes('uyire')) return 'uyire-unakkaga';
   if (s.includes('maaya')) return 'maaya-nadhi-theeram';
   if (s.includes('rain') || s.includes('poongaatru')) return 'poongaatru-punnagaikka';
-  return 'nenjam-marappadhillai';
+  return null;
 }
 
 /**

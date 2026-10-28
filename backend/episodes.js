@@ -47,11 +47,12 @@ export async function checkAndPublishDueEpisodes() {
   try {
     // Find due scheduled episodes
     const dueRows = await query(`
-      SELECT c.id, c.novel_id, c.title, c.chapter_num, c.scheduled_at
+      SELECT c.id, c.novel_id, c.title, c.chapter_num, c.scheduled_at, c.review_status
       FROM chapters c
       WHERE c.status = 'scheduled'
         AND c.scheduled_at IS NOT NULL
-        AND c.scheduled_at <= NOW();
+        AND c.scheduled_at <= NOW()
+        AND (c.review_status IS NULL OR c.review_status = 'approved' OR c.review_status = 'published');
     `);
 
     if (!dueRows || dueRows.length === 0) {

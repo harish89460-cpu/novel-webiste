@@ -1,3 +1,4 @@
+function escapeHtml(str) { return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 // Consolidated REST API Middleware for Rudhra Prarthana Novels
 // Pure MySQL Database Integration with Role-Based Security
 
@@ -40,6 +41,7 @@ import {
   getAdminWriterChatHistory
 } from './chat.js';
 import { getChapterContent, getAudioAccess } from './content.js';
+import { handleProfileEndpoints } from './profile-routes.js';
 import {
   getComments,
   addComment,
@@ -57,7 +59,8 @@ import {
   getHomepageData,
   updateNovel,
   createNovel,
-  deleteNovel
+  deleteNovel,
+  checkNovelViewAccess
 } from './novels.js';
 import {
   getSidebarPostsFromDb,
@@ -113,11 +116,31 @@ import {
   updateSiteSettings
 } from './admin.js';
 import {
+  getPublicShortStories,
+  getShortStoryByIdOrSlug,
+  getStoryComments,
+  addStoryComment,
+  getAdminShortStories,
+  createShortStory,
+  updateShortStory,
+  toggleShortStoryDisabled,
+  deleteShortStory,
+  checkAndPublishDueShortStories
+} from './short-stories.js';
+import {
   getAllAudioNovels,
+  getAllAudioNovelsHierarchy,
   getAudioNovelByIdOrSlug,
+  getAudioNovelHierarchy,
   createAudioNovel,
   updateAudioNovel,
   deleteAudioNovel,
+  getAudioEpisodesTree,
+  createAudioEpisode,
+  updateAudioEpisode,
+  deleteAudioEpisode,
+  toggleAudioEpisodeStatus,
+  reorderAudioEpisodes,
   saveBase64Audio
 } from './audio.js';
 import {
@@ -134,6 +157,17 @@ import {
   deleteWriterAccount,
   getWriterAuditLogs,
   getWriterWorkspaceData
+,
+  getWriterPermissions,
+  updateWriterPermissions,
+  getWriterAssignments,
+  createWriterAssignment,
+  updateWriterAssignmentStatus,
+  canWriterAccessContent,
+  createOrUpdateSubmission,
+  getAllSubmissions,
+  reviewSubmission,
+  getEnhancedWriterWorkspaceData
 } from './writers.js';
 import {
   startReadingSession,
@@ -294,6 +328,82 @@ export async function apiMiddleware(req, res, next) {
   const method = req.method.toUpperCase();
   const token = extractToken(req);
   const currentUser = token ? await getUserByToken(token) : null;
+
+  
+  // Contact Us Form Submission API
+  if ((pathname === '/contact' || pathname === '/contact/' || pathname === '/api/contact') && method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim();
+      const subject = String(body.subject || '').trim();
+      const message = String(body.message || '').trim();
+
+      if (!name || !email || !subject || !message) {
+        return sendJson(res, { success: false, error: 'All fields (Your Name, Email Address, Subject, Message) are required.' }, 400);
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return sendJson(res, { success: false, error: 'Please enter a valid email address.' }, 400);
+      }
+
+      // Ensure contact_submissions table exists in database
+      await query(`
+        CREATE TABLE IF NOT EXISTS contact_submissions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          email VARCHAR(255) NOT NULL,
+          subject VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      const insertResult = await query(
+        'INSERT INTO contact_submissions (name, email, subject, message) VALUES (?, ?, ?, ?)',
+        [name, email, subject, message]
+      );
+
+      console.log(`[CONTACT FORM RECEIVED] ID: ${insertResult.insertId} | From: ${name} <${email}> | Subject: "${subject}"`);
+
+      // Attempt live email notification if SMTP is configured
+      try {
+        const { getTransporter } = await import('./email.js');
+        const { transporter, smtpUser, smtpPass } = getTransporter();
+        if (smtpPass) {
+          await transporter.sendMail({
+            from: `"${name} (RP Contact)" <${smtpUser || 'trendup089@gmail.com'}>`,
+            to: 'rudraprarthananovels@gmail.com',
+            replyTo: email,
+            subject: `[Contact Form] ${subject} - from ${name}`,
+            text: `Contact Form Submission\nName: ${name}\nEmail: ${email}\nSubject: ${subject}\n\nMessage:\n${message}`,
+            html: `<div style="font-family:sans-serif; padding:16px;">
+              <h2>New Contact Form Inquiry</h2>
+              <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+              <p><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>
+              <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+              <hr/>
+              <p><strong>Message:</strong></p>
+              <div style="background:#F8F9FA; padding:12px; border-radius:6px; white-space:pre-wrap;">${escapeHtml(message)}</div>
+            </div>`
+          });
+          console.log('[CONTACT FORM EMAIL] Forwarded notification to rudraprarthananovels@gmail.com');
+        }
+      } catch (mailErr) {
+        console.warn('[CONTACT FORM EMAIL NOTE] SMTP notification not sent (logged to DB):', mailErr.message);
+      }
+
+      return sendJson(res, {
+        success: true,
+        message: 'Thank you! Your message has been sent successfully. We will try our best to respond as soon as possible.',
+        submissionId: insertResult.insertId
+      }, 200);
+    } catch (err) {
+      console.error('[CONTACT FORM ERROR]:', err);
+      return sendJson(res, { success: false, error: 'An error occurred while submitting your message. Please try again.' }, 500);
+    }
+  }
 
   // 1. Health Check & Database Status
   if (pathname === '/health' || pathname === '/health/') {
@@ -544,6 +654,12 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, activity }, 200);
   }
 
+  // 9-Profile. Enhanced Profile Subsystem Endpoints (Follows, Saved Novels, Activity, Recent Topics)
+  const handledProfile = await handleProfileEndpoints(req, res, pathname, method, parsed, currentUser, sendJson, readJsonBody);
+  if (handledProfile !== false) {
+    return;
+  }
+
   // 9b. Member Detail with Reading Activity (Privacy Protected)
   if (pathname.startsWith('/members/') && method === 'GET' && !pathname.endsWith('/reading-activity')) {
     let memberIdOrUsername = pathname.replace('/members/', '').trim();
@@ -561,14 +677,38 @@ export async function apiMiddleware(req, res, next) {
         p.posts_count, p.topics_count, p.followers_count
       FROM users u
       LEFT JOIN profiles p ON u.id = p.user_id
-      WHERE u.id = ? OR LOWER(u.username) = LOWER(?);
-    `, [memberIdOrUsername, memberIdOrUsername]);
+      WHERE u.id = ? OR LOWER(u.username) = LOWER(?) OR (? = "rudhra" AND LOWER(u.username) = "rudhra_author");
+    `, [memberIdOrUsername, memberIdOrUsername, memberIdOrUsername]);
 
     if (!row) {
       return sendJson(res, { success: false, error: 'Member not found' }, 404);
     }
 
     const activity = await getMemberReadingActivity(row.id, viewerId);
+
+    // Calculate dynamic accurate followers, following, and total comments counts
+    const [followersRow, followingRow, commentsCountRow] = await Promise.all([
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [row.id]),
+      queryOne('SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?;', [row.id]),
+      queryOne(`
+        SELECT (
+          (SELECT COUNT(*) FROM comments WHERE user_id = ?) +
+          (SELECT COUNT(*) FROM content_comments WHERE user_id = ?) +
+          (SELECT COUNT(*) FROM short_story_comments WHERE user_id = ?) +
+          (SELECT COUNT(*) FROM forum_posts WHERE user_id = ?)
+        ) AS total_comments;
+      `, [row.id, row.id, row.id, row.id])
+    ]);
+
+    let isFollowing = false;
+    if (viewerId && viewerId !== row.id) {
+      const followCheck = await queryOne('SELECT id FROM follows WHERE follower_id = ? AND following_id = ?;', [viewerId, row.id]);
+      isFollowing = Boolean(followCheck);
+    }
+
+    const followersCount = Number(followersRow?.count || 0);
+    const followingCount = Number(followingRow?.count || 0);
+    const totalComments = Number(commentsCountRow?.total_comments || 0);
 
     return sendJson(res, {
       success: true,
@@ -583,7 +723,10 @@ export async function apiMiddleware(req, res, next) {
         bio: row.bio || '',
         posts: Number(row.posts_count || 0),
         topics: Number(row.topics_count || 0),
-        followers: Number(row.followers_count || 0),
+        followers: followersCount,
+        following: followingCount,
+        totalComments: totalComments,
+        isFollowing: isFollowing,
         activityStatusEnabled: activity?.activityStatusEnabled ?? true,
         statusHidden: activity?.statusHidden ?? false,
         isOnline: activity?.isOnline ?? null,
@@ -963,6 +1106,103 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, message: 'Forms is now the main landing page', sections: [], orderedSections: [] }, 200);
   }
 
+  // 21b. Genres API: Lookup and Dynamic Add
+  if (pathname === '/genres' && method === 'GET') {
+    const rows = await query('SELECT id, name, slug FROM novel_genres ORDER BY name ASC;');
+    return sendJson(res, { success: true, genres: rows }, 200);
+  }
+
+  if (pathname === '/genres' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const cleanName = (body.name || '').trim();
+    if (!cleanName) {
+      return sendJson(res, { success: false, error: 'Genre name cannot be empty.' }, 400);
+    }
+    const cleanSlug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `genre-${Date.now()}`;
+    const existing = await queryOne('SELECT * FROM novel_genres WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) OR slug = ? LIMIT 1;', [cleanName, cleanSlug]);
+    if (existing) {
+      return sendJson(res, { success: true, genre: existing, message: 'Genre already exists.' }, 200);
+    }
+    const ins = await query('INSERT INTO novel_genres (name, slug) VALUES (?, ?);', [cleanName, cleanSlug]);
+    const created = await queryOne('SELECT * FROM novel_genres WHERE id = ?;', [ins.insertId]);
+    return sendJson(res, { success: true, genre: created }, 201);
+  }
+
+  // 21c. Content Categories API: Lookup and Dynamic Add
+  if (pathname === '/content-categories' && method === 'GET') {
+    const rows = await query('SELECT id, title, description, icon, sort_order, is_active, status FROM forum_categories ORDER BY sort_order ASC, title ASC;');
+    return sendJson(res, { success: true, categories: rows }, 200);
+  }
+
+  if (pathname === '/content-categories' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const cleanTitle = (body.title || body.name || '').trim();
+    if (!cleanTitle) {
+      return sendJson(res, { success: false, error: 'Category title cannot be empty.' }, 400);
+    }
+    const slug = (body.id || body.slug || cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')) || `cat-${Date.now()}`;
+    const existing = await queryOne('SELECT * FROM forum_categories WHERE id = ? OR LOWER(TRIM(title)) = LOWER(TRIM(?)) LIMIT 1;', [slug, cleanTitle]);
+    if (existing) {
+      return sendJson(res, { success: true, category: existing, message: 'Category already exists.' }, 200);
+    }
+    const desc = (body.description || `Browse content in ${cleanTitle}`).trim();
+    const icon = body.icon || '📖';
+    await query(`
+      INSERT INTO forum_categories (id, title, description, icon, sort_order, is_active, status, visibility, is_disabled)
+      VALUES (?, ?, ?, ?, 99, 1, 'published', 'public', 0);
+    `, [slug, cleanTitle, desc, icon]);
+    const created = await queryOne('SELECT * FROM forum_categories WHERE id = ?;', [slug]);
+    return sendJson(res, { success: true, category: created }, 201);
+  }
+
+  // 21d. Members and Writers Lightweight Lookups for Form Checklists
+  if (pathname === '/admin/members/lookup' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const members = await query(`
+      SELECT u.id, u.username, u.email, u.role, u.status, p.display_name, p.avatar
+      FROM users u
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE u.status = 'active'
+      ORDER BY COALESCE(p.display_name, u.username) ASC;
+    `);
+    return sendJson(res, {
+      success: true,
+      members: members.map(m => ({
+        id: m.id,
+        username: m.username,
+        email: m.email,
+        name: m.display_name || m.username,
+        role: m.role,
+        avatar: m.avatar || null
+      }))
+    }, 200);
+  }
+
+  if (pathname === '/admin/writers/lookup' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writers = await query(`
+      SELECT u.id, u.username, u.email, u.role, u.status, p.display_name, p.avatar
+      FROM users u
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE LOWER(u.role) IN ('writer', 'author', 'admin', 'administrator', 'editor')
+        AND u.status = 'active'
+      ORDER BY (CASE WHEN LOWER(u.role) = 'admin' THEN 0 ELSE 1 END), COALESCE(p.display_name, u.username) ASC;
+    `);
+    return sendJson(res, {
+      success: true,
+      writers: writers.map(w => ({
+        id: w.id,
+        username: w.username,
+        email: w.email,
+        name: w.display_name || w.username,
+        role: w.role,
+        avatar: w.avatar || null
+      }))
+    }, 200);
+  }
+
   // 22. Novels: Get All Configured Novels
   if (pathname === '/novels' && method === 'GET') {
     const isAuthor = currentUser && currentUser.isAdmin === true && currentUser.isAuthorSession === true;
@@ -970,7 +1210,8 @@ export async function apiMiddleware(req, res, next) {
     const novels = await getAllNovels({
       status: parsed.query.status,
       category: parsed.query.category,
-      publishedOnly
+      publishedOnly,
+      currentUser
     });
     return sendJson(res, { success: true, novels }, 200);
   }
@@ -1001,11 +1242,35 @@ export async function apiMiddleware(req, res, next) {
 
     try {
       if (parts[1] === 'chapters' || parts[1] === 'episodes') {
+        const access = await checkNovelViewAccess(novelId, currentUser);
+        if (!access.allowed) {
+          return sendJson(res, { success: false, error: access.error }, access.status || 403);
+        }
+        if (parts[3] === 'comments' && parts[2]) {
+          let chNum = parts[2].trim();
+          try { chNum = decodeURIComponent(chNum); } catch {}
+          const page = parsed.query.page ? parseInt(parsed.query.page, 10) : 1;
+          const limit = parsed.query.limit ? parseInt(parsed.query.limit, 10) : 50;
+          const offset = parsed.query.offset !== undefined ? parseInt(parsed.query.offset, 10) : ((page - 1) * limit);
+          const userId = currentUser ? currentUser.id : null;
+          const comments = await getComments({ novelId, chapterNum: chNum, userId, limit, offset, page });
+          return sendJson(res, {
+            success: true,
+            comments,
+            pagination: comments.pagination || { page, limit, total: comments.length, totalPages: 1 },
+            total: comments.pagination ? comments.pagination.total : comments.length
+          }, 200);
+        }
         const chapters = await getChaptersByNovel(novelId, { includeAll: false });
         return sendJson(res, { success: true, novelId, chapters }, 200);
       }
 
-      const novel = await getNovelById(novelId, { includeAll: false });
+      const access = await checkNovelViewAccess(novelId, currentUser);
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.error }, access.status || 403);
+      }
+
+      const novel = await getNovelById(novelId, { includeAll: false, currentUser });
       if (!novel) {
         return sendJson(res, { success: false, error: 'Novel not found' }, 404);
       }
@@ -1246,11 +1511,9 @@ export async function apiMiddleware(req, res, next) {
   // A17. Admin Audio Novels: List All (including drafts)
   if (pathname === '/admin/audio-novels' && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const audioNovels = await getAllAudioNovels({
+    const audioNovels = await getAllAudioNovelsHierarchy({
       forAdmin: true,
       search: parsed.query.search,
-      language: parsed.query.language,
-      novelId: parsed.query.novelId || parsed.query.novel,
       sort: parsed.query.sort
     });
     return sendJson(res, { success: true, audioNovels }, 200);
@@ -1286,7 +1549,7 @@ export async function apiMiddleware(req, res, next) {
   if (pathname.startsWith('/admin/audio-novels/') && method === 'GET' && !pathname.includes('/upload')) {
     if (requireAdminOrEditor(currentUser, res)) return;
     const idOrSlug = pathname.replace('/admin/audio-novels/', '').trim();
-    const audioNovel = await getAudioNovelByIdOrSlug(idOrSlug, { forAdmin: true });
+    const audioNovel = await getAudioNovelHierarchy(idOrSlug, { forAdmin: true });
     if (!audioNovel) {
       return sendJson(res, { success: false, error: 'Audio novel not found' }, 404);
     }
@@ -1296,7 +1559,7 @@ export async function apiMiddleware(req, res, next) {
   // A21. Admin Audio Novels: Update Audio Novel
   if ((pathname.startsWith('/admin/audio-novels/') && method === 'PUT') || (pathname.startsWith('/admin/audio-novels/') && pathname.endsWith('/update') && method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const id = parseInt(pathname.replace('/admin/audio-novels/', '').replace('/update', ''), 10);
+    const id = pathname.replace('/admin/audio-novels/', '').replace('/update', '').trim();
     const body = await readJsonBody(req, 60 * 1024 * 1024);
     const result = await updateAudioNovel(id, body);
     if (!result.success) {
@@ -1308,8 +1571,76 @@ export async function apiMiddleware(req, res, next) {
   // A22. Admin Audio Novels: Delete Audio Novel
   if ((pathname.startsWith('/admin/audio-novels/') && method === 'DELETE') || (pathname.startsWith('/admin/audio-novels/') && pathname.endsWith('/delete') && method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const id = parseInt(pathname.replace('/admin/audio-novels/', '').replace('/delete', ''), 10);
+    const id = pathname.replace('/admin/audio-novels/', '').replace('/delete', '').trim();
     const result = await deleteAudioNovel(id);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // A23a. Admin Audio Episodes: List / Hierarchical Tree
+  if (pathname === '/admin/audio-episodes' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const novelId = parsed.query.novel || parsed.query.novelId;
+    if (!novelId) {
+      return sendJson(res, { success: false, error: 'Novel ID required.' }, 400);
+    }
+    const tree = await getAudioEpisodesTree(novelId, { forAdmin: true });
+    return sendJson(res, { success: true, episodes: tree }, 200);
+  }
+
+  // A23b. Admin Audio Episodes: Create Chapter / Episode / Sub-Episode
+  if (pathname === '/admin/audio-episodes' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req, 60 * 1024 * 1024);
+    const result = await createAudioEpisode(body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 201);
+  }
+
+  // A23c. Admin Audio Episodes: Update Chapter / Episode / Sub-Episode
+  if ((pathname.startsWith('/admin/audio-episodes/') && method === 'PUT') || (pathname.startsWith('/admin/audio-episodes/') && pathname.endsWith('/update') && method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/audio-episodes/', '').replace('/update', ''), 10);
+    const body = await readJsonBody(req, 60 * 1024 * 1024);
+    const result = await updateAudioEpisode(id, body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // A23d. Admin Audio Episodes: Delete Chapter / Episode / Sub-Episode
+  if ((pathname.startsWith('/admin/audio-episodes/') && method === 'DELETE') || (pathname.startsWith('/admin/audio-episodes/') && pathname.endsWith('/delete') && method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/audio-episodes/', '').replace('/delete', ''), 10);
+    const result = await deleteAudioEpisode(id);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // A23e. Admin Audio Episodes: Toggle Status (published / draft / disabled)
+  if (pathname.startsWith('/admin/audio-episodes/') && pathname.endsWith('/toggle-status') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = parseInt(pathname.replace('/admin/audio-episodes/', '').replace('/toggle-status', ''), 10);
+    const body = await readJsonBody(req).catch(() => ({}));
+    const result = await toggleAudioEpisodeStatus(id, body.status);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // A23f. Admin Audio Episodes: Reorder
+  if (pathname === '/admin/audio-episodes/reorder' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await reorderAudioEpisodes(body.novelId, body.orderedIds);
     if (!result.success) {
       return sendJson(res, result, 400);
     }
@@ -1349,14 +1680,17 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // Get single writer details
-  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && method === 'GET') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const writerId = parseInt(pathname.replace('/admin/writers/', ''), 10);
-    const writer = await getWriterDetails(writerId);
-    if (!writer) {
-      return sendJson(res, { success: false, error: 'Writer account not found' }, 404);
+  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && !pathname.includes('/permissions') && !pathname.includes('/assignments') && !pathname.includes('/submissions') && !pathname.includes('/audit-logs') && method === 'GET') {
+    const idStr = pathname.replace('/admin/writers/', '').trim();
+    if (/^\d+$/.test(idStr)) {
+      if (requireAdminOrEditor(currentUser, res)) return;
+      const writerId = parseInt(idStr, 10);
+      const writer = await getWriterDetails(writerId);
+      if (!writer) {
+        return sendJson(res, { success: false, error: 'Writer account not found' }, 404);
+      }
+      return sendJson(res, { success: true, writer }, 200);
     }
-    return sendJson(res, { success: true, writer }, 200);
   }
 
   // Block / Reactivate writer account
@@ -1395,17 +1729,20 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // Delete writer account safely
-  if (pathname.startsWith('/admin/writers/') && method === 'DELETE') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const writerId = parseInt(pathname.replace('/admin/writers/', ''), 10);
-    const result = await deleteWriterAccount({
-      writerId,
-      actorId: currentUser.id
-    });
-    if (!result.success) {
-      return sendJson(res, result, 400);
+  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/assignments') && method === 'DELETE') {
+    const idStr = pathname.replace('/admin/writers/', '').trim();
+    if (/^\d+$/.test(idStr)) {
+      if (requireAdminOrEditor(currentUser, res)) return;
+      const writerId = parseInt(idStr, 10);
+      const result = await deleteWriterAccount({
+        writerId,
+        actorId: currentUser.id
+      });
+      if (!result.success) {
+        return sendJson(res, result, 400);
+      }
+      return sendJson(res, result, 200);
     }
-    return sendJson(res, result, 200);
   }
 
   // ==========================================
@@ -1727,7 +2064,7 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, episodes }, 200);
   }
 
-  // Writer Create Episode (ownership of novel verified!)
+  // Writer Create Episode (ownership or active assignment verified!)
   if (pathname === '/writer/episodes' && method === 'POST') {
     if (requireWriterOrAdmin(currentUser, res)) return;
     const body = await readJsonBody(req);
@@ -1735,11 +2072,17 @@ export async function apiMiddleware(req, res, next) {
     if (!novel) {
       return sendJson(res, { success: false, error: 'Associated novel not found.' }, 404);
     }
-    if (!currentUser.isAdmin && novel.author_id !== currentUser.id) {
-      return sendJson(res, { success: false, error: 'Access denied: You can only create episodes for your own novels.' }, 403);
-    }
     if (!currentUser.isAdmin) {
-      body.status = 'draft';
+      const access = await canWriterAccessContent(currentUser.id, 'novel', body.novelId, 'write');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied: You do not have active write permissions for this novel.' }, 403);
+      }
+      if (body.status === 'published' || body.status === 'scheduled') {
+        if (access.accessLevel !== 'independent_publish') {
+          body.status = 'draft';
+        }
+      }
+      body.authorId = currentUser.id;
     }
     const result = await createEpisode(body);
     if (!result.success) {
@@ -1824,6 +2167,113 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
+  // ==========================================
+  // SHORT STORIES API (Public & Reader Views)
+  // ==========================================
+  // List Published Short Stories
+  if (pathname === '/short-stories' && method === 'GET') {
+    const stories = await getPublicShortStories(parsed.query);
+    return sendJson(res, { success: true, stories }, 200);
+  }
+
+  // Get Single Short Story By ID or Slug (for reading view)
+  if (pathname.startsWith('/short-stories/') && !pathname.endsWith('/comments') && method === 'GET') {
+    const idOrSlug = pathname.replace('/short-stories/', '').trim();
+    const result = await getShortStoryByIdOrSlug(idOrSlug, currentUser);
+    if (!result.success) {
+      return sendJson(res, result, result.code === 'NOT_FOUND' ? 404 : 403);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // Get Comments for Short Story
+  if (pathname.startsWith('/short-stories/') && pathname.endsWith('/comments') && method === 'GET') {
+    const storyId = pathname.replace('/short-stories/', '').replace('/comments', '').trim();
+    const comments = await getStoryComments(storyId);
+    return sendJson(res, { success: true, comments }, 200);
+  }
+
+  // Post Comment on Short Story (auth required)
+  if (pathname.startsWith('/short-stories/') && pathname.endsWith('/comments') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required to post comments.' }, 401);
+    }
+    const storyId = pathname.replace('/short-stories/', '').replace('/comments', '').trim();
+    const body = await readJsonBody(req);
+    const result = await addStoryComment(storyId, currentUser.id, body.content, body.parentId);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 201);
+  }
+
+  // ==========================================
+  // ADMIN SHORT STORIES MANAGEMENT
+  // ==========================================
+  // List all short stories for admin
+  if (pathname === '/admin/short-stories' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const stories = await getAdminShortStories(parsed.query);
+    return sendJson(res, { success: true, stories }, 200);
+  }
+
+  // Create new short story
+  if (pathname === '/admin/short-stories' && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createShortStory(body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 201);
+  }
+
+  // Get single short story for admin editor
+  if (pathname.startsWith('/admin/short-stories/') && !pathname.endsWith('/toggle-disabled') && !pathname.endsWith('/update') && !pathname.endsWith('/delete') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = pathname.replace('/admin/short-stories/', '').trim();
+    const result = await getShortStoryByIdOrSlug(id, currentUser, false);
+    if (!result.success) {
+      return sendJson(res, result, 404);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // Update short story
+  if ((pathname.startsWith('/admin/short-stories/') && method === 'PUT') || (pathname.startsWith('/admin/short-stories/') && pathname.endsWith('/update') && method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = pathname.replace('/admin/short-stories/', '').replace('/update', '').trim();
+    const body = await readJsonBody(req);
+    const result = await updateShortStory(id, body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // Toggle disabled status (Temporarily Disable / Restore)
+  if (pathname.startsWith('/admin/short-stories/') && pathname.endsWith('/toggle-disabled') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = pathname.replace('/admin/short-stories/', '').replace('/toggle-disabled', '').trim();
+    const body = await readJsonBody(req);
+    const result = await toggleShortStoryDisabled(id, body.isDisabled);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  // Delete short story
+  if ((pathname.startsWith('/admin/short-stories/') && method === 'DELETE') || (pathname.startsWith('/admin/short-stories/') && pathname.endsWith('/delete') && method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const id = pathname.replace('/admin/short-stories/', '').replace('/delete', '').trim();
+    const result = await deleteShortStory(id);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
   // Public Audio Novels: List Published Audio Novels
   if (pathname === '/audio-novels' && method === 'GET') {
     const audioNovels = await getAllAudioNovels({
@@ -1848,7 +2298,8 @@ export async function apiMiddleware(req, res, next) {
 
   // 28. Forum / Community: Get Sidebar Posts (Latest & Trending)
   if ((pathname === '/forum/posts' || pathname === '/api/forum/posts' || pathname === '/posts/sidebar' || pathname === '/posts') && method === 'GET') {
-    const data = await getSidebarPostsFromDb();
+    const limit = parsed.query && parsed.query.limit ? Math.min(25, Math.max(1, parseInt(parsed.query.limit, 10))) : 7;
+    const data = await getSidebarPostsFromDb(limit);
     return sendJson(res, { success: true, ...data }, 200);
   }
 
@@ -2023,35 +2474,65 @@ export async function apiMiddleware(req, res, next) {
   }
 
   if (pathname === '/admin/content/articles' && method === 'POST') {
-    if (requireAdminOrEditor(currentUser, res)) return;
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const isAdmin = currentUser.isAdmin === true;
+    const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
+    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
     const body = await readJsonBody(req);
+    if (!isAdmin && isWriter) {
+      const access = await canWriterAccessContent(currentUser.id, 'content', null, 'create');
+      if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
+      body.authorId = currentUser.id;
+      body.authorName = currentUser.displayName || currentUser.username;
+    }
     const result = await createContentArticle({ ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 201);
   }
 
   if (pathname.startsWith('/admin/content/articles/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/status', '').replace('/toggle', ''), 10);
+    const isAdmin = currentUser.isAdmin === true;
+    const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
+    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
     const body = await readJsonBody(req);
+    if (!isAdmin && isWriter) {
+      const access = await canWriterAccessContent(currentUser.id, 'content', id, 'write');
+      if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
+    }
     const result = await toggleContentArticleStatus({ id, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
   }
 
   if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
-    if (requireAdminOrEditor(currentUser, res)) return;
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     const id = parseInt(pathname.replace('/admin/content/articles/', ''), 10);
+    const isAdmin = currentUser.isAdmin === true;
+    const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
+    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
     const body = await readJsonBody(req);
+    if (!isAdmin && isWriter) {
+      const access = await canWriterAccessContent(currentUser.id, 'content', id, 'write');
+      if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
+    }
     const result = await updateContentArticle({ id, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
   }
 
   if (pathname.startsWith('/admin/content/articles/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
-    if (requireAdminOrEditor(currentUser, res)) return;
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/delete', ''), 10);
+    const isAdmin = currentUser.isAdmin === true;
+    const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
+    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
     const body = await readJsonBody(req);
+    if (!isAdmin && isWriter) {
+      const access = await canWriterAccessContent(currentUser.id, 'content', id, 'delete');
+      if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
+    }
     const result = await deleteContentArticle({ id, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
@@ -2340,12 +2821,15 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, logs });
   }
 
-  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && !pathname.includes('/audit-logs') && method === 'GET') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const writerId = parseInt(pathname.replace('/admin/writers/', ''), 10);
-    const writer = await getWriterDetails(writerId);
-    if (!writer) return sendJson(res, { success: false, error: 'Writer not found' }, 404);
-    return sendJson(res, { success: true, writer });
+  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && !pathname.includes('/audit-logs') && !pathname.includes('/permissions') && !pathname.includes('/assignments') && !pathname.includes('/submissions') && method === 'GET') {
+    const idStr = pathname.replace('/admin/writers/', '').trim();
+    if (/^\d+$/.test(idStr)) {
+      if (requireAdminOrEditor(currentUser, res)) return;
+      const writerId = parseInt(idStr, 10);
+      const writer = await getWriterDetails(writerId);
+      if (!writer) return sendJson(res, { success: false, error: 'Writer not found' }, 404);
+      return sendJson(res, { success: true, writer });
+    }
   }
 
   if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/status') && method === 'PUT') {
@@ -2366,12 +2850,15 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
-  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && !pathname.includes('/audit-logs') && method === 'DELETE') {
-    if (requireAdminOrEditor(currentUser, res)) return;
-    const writerId = parseInt(pathname.replace('/admin/writers/', ''), 10);
-    const result = await deleteWriterAccount(writerId, currentUser.id, 2);
-    if (!result.success) return sendJson(res, result, 400);
-    return sendJson(res, result, 200);
+  if (pathname.startsWith('/admin/writers/') && !pathname.includes('/status') && !pathname.includes('/profile') && !pathname.includes('/audit-logs') && !pathname.includes('/assignments') && method === 'DELETE') {
+    const idStr = pathname.replace('/admin/writers/', '').trim();
+    if (/^\d+$/.test(idStr)) {
+      if (requireAdminOrEditor(currentUser, res)) return;
+      const writerId = parseInt(idStr, 10);
+      const result = await deleteWriterAccount(writerId, currentUser.id, 2);
+      if (!result.success) return sendJson(res, result, 400);
+      return sendJson(res, result, 200);
+    }
   }
 
   // ==========================================
@@ -2594,6 +3081,348 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
+
+
+  
+  // ============================================================================
+  // WRITER PERMISSIONS, ASSIGNMENTS & REVIEW QUEUE (Admin & Writer APIs)
+  // ============================================================================
+
+  // Admin: Get Writer Permissions
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/permissions') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/permissions', ''), 10);
+    const perms = await getWriterPermissions(writerId);
+    return sendJson(res, { success: true, permissions: perms }, 200);
+  }
+
+  // Admin: Update Writer Permissions
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/permissions') && (method === 'PUT' || method === 'POST')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/permissions', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await updateWriterPermissions(writerId, {
+      ...body,
+      actorId: currentUser.id
+    });
+    return sendJson(res, result, 200);
+  }
+
+  // Admin: Get Writer Assignments
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/assignments') && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/assignments', ''), 10);
+    const assignments = await getWriterAssignments(writerId, parsed.query.status || 'all');
+    return sendJson(res, { success: true, assignments }, 200);
+  }
+
+  // Admin: Create Writer Assignment
+  if (pathname.startsWith('/admin/writers/') && pathname.endsWith('/assignments') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const writerId = parseInt(pathname.replace('/admin/writers/', '').replace('/assignments', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await createWriterAssignment({
+      writerId,
+      contentType: body.contentType,
+      contentId: body.contentId,
+      title: body.title,
+      instructions: body.instructions,
+      deadline: body.deadline,
+      assignedBy: currentUser.id
+    });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 201);
+  }
+
+  // Admin: Update Assignment Status (e.g. revoke or complete)
+  if (pathname.startsWith('/admin/writers/assignments/') && (method === 'PUT' || method === 'POST' || method === 'DELETE')) {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const parts = pathname.replace('/admin/writers/assignments/', '').split('/');
+    const assignmentId = parseInt(parts[0], 10);
+    let newStatus = 'revoked';
+    if (method !== 'DELETE') {
+      const body = await readJsonBody(req).catch(() => ({}));
+      newStatus = body.status || 'revoked';
+    }
+    const result = await updateWriterAssignmentStatus(assignmentId, newStatus, currentUser.id);
+    return sendJson(res, result, 200);
+  }
+
+  // Admin: Get All Writer Submissions (Review Queue)
+  if (pathname === '/admin/writers/submissions' && method === 'GET') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const statusFilter = parsed.query.status || 'all';
+    const contentTypeFilter = parsed.query.contentType || 'all';
+    const writerIdFilter = parsed.query.writerId ? parseInt(parsed.query.writerId, 10) : null;
+    const submissions = await getAllSubmissions({
+      status: statusFilter,
+      writerId: writerIdFilter,
+      contentType: contentTypeFilter
+    });
+    return sendJson(res, { success: true, submissions }, 200);
+  }
+
+  // Admin: Review a Submission (Approve & Publish, Approve & Schedule, Request Changes, Reject)
+  if (pathname.startsWith('/admin/writers/submissions/') && pathname.endsWith('/review') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const submissionId = parseInt(pathname.replace('/admin/writers/submissions/', '').replace('/review', ''), 10);
+    const body = await readJsonBody(req);
+    const result = await reviewSubmission({
+      submissionId,
+      action: body.action,
+      adminNotes: body.adminNotes || body.reason || '',
+      scheduledAt: body.scheduledAt || null,
+      actorId: currentUser.id
+    });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // Writer: Get Enhanced Workspace Data
+  if (pathname === '/writer/enhanced-workspace' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const data = await getEnhancedWriterWorkspaceData(currentUser.id);
+    if (!data) return sendJson(res, { success: false, error: 'Workspace not found' }, 404);
+    return sendJson(res, { success: true, ...data }, 200);
+  }
+
+  // Writer: Get My Active Assignments
+  if (pathname === '/writer/assignments' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const assignments = await getWriterAssignments(currentUser.id, parsed.query.status || 'active');
+    return sendJson(res, { success: true, assignments }, 200);
+  }
+
+  // Writer: Get My Submissions
+  if (pathname === '/writer/submissions' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const submissions = await getAllSubmissions({
+      writerId: currentUser.id,
+      status: parsed.query.status || 'all'
+    });
+    return sendJson(res, { success: true, submissions }, 200);
+  }
+
+  // Writer: Submit Content for Review (or publish if independent publishing permitted)
+  if (pathname === '/writer/submissions' && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const result = await createOrUpdateSubmission({
+      writerId: currentUser.id,
+      contentType: body.contentType,
+      contentId: body.contentId,
+      title: body.title,
+      parentId: body.parentId || null,
+      scheduledAt: body.scheduledAt || null
+    });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // Writer: Get Permitted Short Stories
+  if (pathname === '/writer/short-stories' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const perms = await getWriterPermissions(currentUser.id);
+    if (!perms.canShortStories) {
+      return sendJson(res, { success: false, error: 'Short stories access is not enabled for your account.' }, 403);
+    }
+    let sql = 'SELECT * FROM short_stories';
+    const params = [];
+    if (!perms.fullAccess) {
+      const assignments = await getWriterAssignments(currentUser.id, 'active');
+      const assignedIds = assignments.filter(a => a.contentType === 'short_story').map(a => a.contentId);
+      if (assignedIds.length > 0) {
+        sql += ' WHERE author_id = ? OR id IN (?) OR slug IN (?)';
+        params.push(currentUser.id, assignedIds, assignedIds);
+      } else {
+        sql += ' WHERE author_id = ?';
+        params.push(currentUser.id);
+      }
+    }
+    sql += ' ORDER BY updated_at DESC;';
+    const stories = await query(sql, params);
+    return sendJson(res, { success: true, stories }, 200);
+  }
+
+  // Writer: Create Short Story
+  if (pathname === '/writer/short-stories' && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const access = await canWriterAccessContent(currentUser.id, 'short_story', null, 'create');
+    if (!access.allowed) {
+      return sendJson(res, { success: false, error: access.reason }, 403);
+    }
+    const body = await readJsonBody(req);
+    const initialStatus = access.accessLevel === 'independent_publish' ? (body.status || 'published') : 'draft';
+    const result = await createShortStory({
+      ...body,
+      author: currentUser.displayName || currentUser.username,
+      authorId: currentUser.id,
+      status: initialStatus
+    });
+    if (!result.success) return sendJson(res, result, 400);
+
+    // If review required and requested to submit
+    if (body.submitForReview && access.accessLevel === 'review_required') {
+      await createOrUpdateSubmission({
+        writerId: currentUser.id,
+        contentType: 'short_story',
+        contentId: result.storyId,
+        title: body.title,
+        scheduledAt: body.scheduled_at || null
+      });
+    }
+
+    return sendJson(res, result, 201);
+  }
+
+  // Writer: Get Permitted Audio Novels
+  if (pathname === '/writer/audio-novels' && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const perms = await getWriterPermissions(currentUser.id);
+    if (!perms.canAudioNovels) {
+      return sendJson(res, { success: false, error: 'Audio novels access is not enabled for your account.' }, 403);
+    }
+
+    let sql = `
+      SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
+             (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes,
+             (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1 AND c.parent_id IS NULL) as chapters_count
+      FROM novels n
+      WHERE (n.is_audio = 1 OR n.category = 'Audio Novels')
+    `;
+    const params = [];
+    if (!perms.fullAccess) {
+      const assignments = await getWriterAssignments(currentUser.id, 'active');
+      const assignedIds = assignments.filter(a => a.contentType === 'audio_novel').map(a => a.contentId);
+      if (assignedIds.length > 0) {
+        sql += ' AND (n.author_id = ? OR n.id IN (?))';
+        params.push(currentUser.id, assignedIds);
+      } else {
+        sql += ' AND n.author_id = ?';
+        params.push(currentUser.id);
+      }
+    }
+    sql += ' ORDER BY n.updated_at DESC;';
+    const audioNovels = await query(sql, params);
+    return sendJson(res, { success: true, audioNovels }, 200);
+  }
+
+  // Writer: Create Audio Episode in Permitted Audio Novel
+  if (pathname === '/writer/audio-episodes' && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const body = await readJsonBody(req, 60 * 1024 * 1024);
+    const novelId = (body.novelId || body.novel || '').trim();
+    if (!novelId) {
+      return sendJson(res, { success: false, error: 'Audio novel ID is required.' }, 400);
+    }
+
+    const access = await canWriterAccessContent(currentUser.id, 'audio_novel', novelId, 'write');
+    if (!access.allowed && !currentUser.isAdmin) {
+      return sendJson(res, { success: false, error: access.reason || 'You do not have write access for this audio novel.' }, 403);
+    }
+
+    // Workflow enforcement
+    const isIndependent = access.accessLevel === 'independent_publish' || currentUser.isAdmin;
+    const requestedStatus = body.status || 'draft';
+    let finalStatus = 'draft';
+    let reviewStatus = 'draft';
+
+    if (requestedStatus === 'published') {
+      if (isIndependent) {
+        finalStatus = 'published';
+        reviewStatus = 'published';
+      } else {
+        finalStatus = 'draft';
+        reviewStatus = 'pending_review';
+      }
+    } else if (requestedStatus === 'scheduled') {
+      if (isIndependent) {
+        finalStatus = 'scheduled';
+        reviewStatus = 'approved';
+      } else {
+        finalStatus = 'draft';
+        reviewStatus = 'pending_review';
+      }
+    } else if (requestedStatus === 'submitted') {
+      finalStatus = 'draft';
+      reviewStatus = 'pending_review';
+    }
+
+    body.status = finalStatus;
+    body.reviewStatus = reviewStatus;
+    body.authorId = currentUser.id;
+
+    const result = await createAudioEpisode(body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+
+    // If review required and requested publication/submission, register in review queue
+    if (reviewStatus === 'pending_review') {
+      await createOrUpdateSubmission({
+        writerId: currentUser.id,
+        contentType: 'audio_episode',
+        contentId: result.episode.id,
+        title: `${body.title || 'Audio Episode'} (${result.episode.episode_number || result.episode.chapter_num})`,
+        parentId: result.episode.parent_id,
+        status: 'pending_review',
+        scheduledAt: body.scheduledAt || null
+      });
+    }
+
+    return sendJson(res, {
+      ...result,
+      reviewStatus,
+      message: reviewStatus === 'pending_review' 
+        ? 'Audio episode submitted for admin review.' 
+        : (finalStatus === 'published' ? 'Audio episode published live.' : 'Audio episode saved as draft.')
+    }, 201);
+  }
+
+  // Writer: Update Audio Episode
+  if (pathname.startsWith('/writer/audio-episodes/') && (method === 'PUT' || method === 'POST')) {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const epId = parseInt(pathname.replace('/writer/audio-episodes/', ''), 10);
+    const existing = await queryOne('SELECT * FROM chapters WHERE id = ? AND is_audio = 1;', [epId]);
+    if (!existing) {
+      return sendJson(res, { success: false, error: 'Audio episode not found.' }, 404);
+    }
+
+    const access = await canWriterAccessContent(currentUser.id, 'audio_novel', existing.novel_id, 'write');
+    if (!access.allowed && !currentUser.isAdmin) {
+      return sendJson(res, { success: false, error: access.reason || 'You do not have access to edit this audio episode.' }, 403);
+    }
+
+    const body = await readJsonBody(req, 60 * 1024 * 1024);
+    const isIndependent = access.accessLevel === 'independent_publish' || currentUser.isAdmin;
+
+    if (body.status === 'published' && !isIndependent) {
+      body.status = 'draft';
+      body.reviewStatus = 'pending_review';
+    } else if (body.status === 'scheduled' && !isIndependent) {
+      body.status = 'draft';
+      body.reviewStatus = 'pending_review';
+    }
+
+    const result = await updateAudioEpisode(epId, body);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+
+    if (body.reviewStatus === 'pending_review') {
+      await createOrUpdateSubmission({
+        writerId: currentUser.id,
+        contentType: 'audio_episode',
+        contentId: epId,
+        title: `${result.episode.title} (${result.episode.episode_number || result.episode.chapter_num})`,
+        parentId: result.episode.parent_id,
+        status: 'pending_review',
+        scheduledAt: body.scheduledAt || null
+      });
+    }
+
+    return sendJson(res, result, 200);
+  }
 
 
   // Fallthrough to next middleware if not an API route

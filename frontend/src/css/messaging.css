@@ -1079,3 +1079,62 @@
   color: #0B1F33;
 }
 
+
+
+/* Comprehensive Messaging Responsive Enhancements */
+@media (max-width: 480px) {
+  .messages-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+
+  .chat-composer-row {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .chat-icon-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .message-send-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .message-input {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .chat-emoji-picker {
+    left: 8px;
+    right: 8px;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
+}
+
+@media (max-width: 360px) {
+  .messages-header {
+    padding: 10px 12px;
+  }
+
+  .chat-composer-row {
+    padding: 4px 6px;
+    gap: 3px;
+  }
+
+  .chat-icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .message-send-btn {
+    width: 32px;
+    height: 32px;
+  }
+}

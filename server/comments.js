@@ -389,6 +389,26 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
             entityId: targetNovelId
           });
         }
+      } else if (String(targetNovelId).startsWith('content_')) {
+        const artId = parseInt(String(targetNovelId).replace('content_', ''), 10);
+        if (!isNaN(artId)) {
+          // Update comments_count in content_articles
+          await query(`UPDATE content_articles SET comments_count = (SELECT COUNT(*) FROM comments WHERE novel_id = ?) WHERE id = ?;`, [targetNovelId, artId]);
+
+          const artInfo = await queryOne('SELECT id, title, unique_slug, author_id FROM content_articles WHERE id = ?;', [artId]);
+          if (artInfo && artInfo.author_id && Number(artInfo.author_id) !== Number(userId)) {
+            await createNotification({
+              userId: artInfo.author_id,
+              actorId: userId,
+              type: 'comment',
+              title: `New Comment on ${artInfo.title}`,
+              message: `${user.display_name || user.username} commented on "${artInfo.title}": "${cleanSnippet}"`,
+              link: `#content?slug=${encodeURIComponent(artInfo.unique_slug)}`,
+              entityType: 'content_article',
+              entityId: artInfo.id
+            });
+          }
+        }
       }
     }
   } catch (err) {
@@ -481,6 +501,13 @@ export async function deleteComment({ commentId, userId }) {
   // Delete the comment itself
   await query('DELETE FROM comments WHERE id = ?;', [commentId]);
   await query('UPDATE profiles SET posts_count = GREATEST(0, posts_count - 1) WHERE user_id = ?;', [existing.user_id]);
+
+  if (String(existing.novel_id).startsWith('content_')) {
+    const artId = parseInt(String(existing.novel_id).replace('content_', ''), 10);
+    if (!isNaN(artId)) {
+      await query(`UPDATE content_articles SET comments_count = (SELECT COUNT(*) FROM comments WHERE novel_id = ?) WHERE id = ?;`, [existing.novel_id, artId]);
+    }
+  }
 
   return { success: true, commentId };
 }

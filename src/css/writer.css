@@ -691,8 +691,8 @@ body.author-page-view .site-header .header-inner {
   max-width: 1440px !important;
   height: 70px !important;
   margin-inline: auto !important;
-  padding-inline: clamp(16px, 2.5vw, 36px) !important;
-  gap: clamp(12px, 1.8vw, 24px) !important;
+  padding-inline: clamp(14px, 1.8vw, 32px) !important;
+  gap: clamp(8px, 1.2vw, 18px) !important;
   box-sizing: border-box !important;
 }
 
@@ -702,8 +702,10 @@ body.author-page-view .site-header .brand-link {
   align-items: center !important;
   gap: 10px !important;
   text-decoration: none !important;
+  flex: 0 0 auto !important;
   flex-shrink: 0 !important;
   min-width: 0 !important;
+  order: 1 !important;
 }
 
 body.author-page-view .site-header .brand-logo-wrap {
@@ -755,10 +757,12 @@ body.author-page-view .site-header .nav-desktop {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: clamp(8px, 1.4vw, 20px) !important;
-  margin: 0 auto !important;
-  flex: 1 !important;
+  flex-wrap: nowrap !important;
+  gap: clamp(4px, 0.8vw, 14px) !important;
+  margin-inline: auto !important;
+  flex: 0 1 auto !important;
   min-width: 0 !important;
+  order: 2 !important;
 }
 
 body.author-page-view .site-header .nav-link {
@@ -838,7 +842,10 @@ body.author-page-view .site-header .header-actions {
   align-items: center !important;
   justify-content: flex-end !important;
   gap: 8px !important;
+  flex: 0 0 auto !important;
   flex-shrink: 0 !important;
+  margin-left: auto !important;
+  order: 3 !important;
 }
 
 body.author-page-view .site-header .action-btn {
@@ -1032,11 +1039,19 @@ body.author-page-view .site-header .action-btn:hover {
 
   body.author-page-view .site-header .brand-link {
     order: 2 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  body.author-page-view .site-header .header-inner {
+    justify-content: flex-start !important;
+    gap: 8px !important;
   }
 
   body.author-page-view .site-header .header-actions {
     order: 3 !important;
-    margin-left: auto !important;
+    flex: 0 0 auto !important;
+    margin-left: 0 !important;
     display: flex !important;
     gap: 6px !important;
   }

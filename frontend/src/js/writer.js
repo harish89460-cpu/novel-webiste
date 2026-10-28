@@ -52,19 +52,19 @@ export async function renderWriterDashboard(container, requestedTab) {
   if (!token) {
     sessionStorage.setItem('rp_admin_redirect', '#writer');
     showToast('Please log in to access your Writer Workspace.');
-    window.location.hash = '#admin-login';
+    window.location.hash = '#writer-login';
     return;
   }
 
   let sessionUser = null;
   try {
-    const res = await apiFetch('/api/writer/workspace');
+    const res = await apiFetch('/api/writer/enhanced-workspace');
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         const data = await res.json().catch(() => ({}));
         showToast(data.error || 'Access denied: Active Writer session required.');
         sessionStorage.setItem('rp_admin_redirect', '#writer');
-        window.location.hash = '#admin-login';
+        window.location.hash = '#writer-login';
         return;
       }
       throw new Error('Failed to load writer workspace');
@@ -81,6 +81,14 @@ export async function renderWriterDashboard(container, requestedTab) {
       totalViews: 0
     };
     writerState.novels = data.novels || [];
+    writerState.permissions = data.permissions || { canNovels: 1, canShortStories: 0, canAudioNovels: 0, canEpisodes: 1, accessLevel: 'review_required', fullAccess: 0 };
+    writerState.assignments = data.assignments || [];
+    writerState.assignmentsCount = data.assignmentsCount || (data.assignments || []).length;
+    writerState.submissions = data.submissions || [];
+    writerState.pendingSubmissionsCount = data.pendingSubmissionsCount || 0;
+    writerState.changesRequestedCount = data.changesRequestedCount || 0;
+    writerState.shortStories = data.shortStories || [];
+    writerState.audioNovels = data.audioNovels || [];
     window.CURRENT_USER = data.writer;
     window.IS_LOGGED_IN = true;
     updateHeaderUserArea();
@@ -96,7 +104,7 @@ export async function renderWriterDashboard(container, requestedTab) {
           </p>
           <div style="display:flex; justify-content:center; gap:12px;">
             <a href="#forms" class="btn btn-outline">« Reader Home</a>
-            <a href="#admin-login" class="btn btn-gold">Author & Writer Login »</a>
+            <a href="#writer-login" class="btn btn-gold">Author & Writer Login »</a>
           </div>
         </div>
       </div>
@@ -170,7 +178,7 @@ export async function renderWriterDashboard(container, requestedTab) {
             </div>
           </div>
 
-          <!-- Strictly 8 Essential Navigation Items -->
+          <!-- Dynamic Permissions-Aware Navigation Items -->
           <nav class="writer-nav-list" aria-label="Writer Workspace Navigation">
             <!-- 1. Overview -->
             <button type="button" class="writer-nav-btn ${writerState.activeTab === 'overview' ? 'active' : ''}" 
@@ -181,45 +189,98 @@ export async function renderWriterDashboard(container, requestedTab) {
               </span>
             </button>
 
-            <!-- 2. My Novels -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'novels' ? 'active' : ''}" 
-                    onclick="switchWriterTab('novels')">
+            <!-- 2. My Assignments -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'assignments' ? 'active' : ''}" 
+                    onclick="switchWriterTab('assignments')">
               <span class="writer-nav-btn-content">
-                ${ADMIN_ICONS.book}
-                <span>My Novels</span>
+                ${ADMIN_ICONS.feather || ADMIN_ICONS.edit}
+                <span>My Assignments</span>
               </span>
-              <span class="writer-nav-pill" id="wnav-novels-count">${writerState.novels.length}</span>
+              <span class="writer-nav-pill" id="wnav-assignments-count" style="background:#EDE9FE; color:#5B21B6;">${writerState.assignmentsCount || 0}</span>
             </button>
 
-            <!-- 3. Write Novel -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'write' ? 'active' : ''}" 
-                    onclick="switchWriterTab('write')">
+            <!-- 3. My Novels (if permitted) -->
+            ${(!writerState.permissions || writerState.permissions.canNovels) ? `
+              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'novels' ? 'active' : ''}" 
+                      onclick="switchWriterTab('novels')">
+                <span class="writer-nav-btn-content">
+                  ${ADMIN_ICONS.book}
+                  <span>My Novels</span>
+                </span>
+                <span class="writer-nav-pill" id="wnav-novels-count">${writerState.novels.length}</span>
+              </button>
+            ` : ''}
+
+            <!-- 4. My Short Stories (if permitted) -->
+            ${(writerState.permissions && writerState.permissions.canShortStories) ? `
+              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'short-stories' ? 'active' : ''}" 
+                      onclick="switchWriterTab('short-stories')">
+                <span class="writer-nav-btn-content">
+                  ${ADMIN_ICONS.feather || ADMIN_ICONS.book}
+                  <span>My Short Stories</span>
+                </span>
+                <span class="writer-nav-pill" id="wnav-stories-count">${writerState.shortStories?.length || 0}</span>
+              </button>
+            ` : ''}
+
+            <!-- 5. My Audio Novels (if permitted) -->
+            ${(writerState.permissions && writerState.permissions.canAudioNovels) ? `
+              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'audio-novels' ? 'active' : ''}" 
+                      onclick="switchWriterTab('audio-novels')">
+                <span class="writer-nav-btn-content">
+                  ${ADMIN_ICONS.headphones || ADMIN_ICONS.book}
+                  <span>My Audio Novels</span>
+                </span>
+                <span class="writer-nav-pill" id="wnav-audio-count">${writerState.audioNovels?.length || 0}</span>
+              </button>
+            ` : ''}
+
+            <!-- 6. Manage Episodes (if permitted) -->
+            ${(!writerState.permissions || writerState.permissions.canEpisodes) ? `
+              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'episodes' ? 'active' : ''}" 
+                      onclick="switchWriterTab('episodes')">
+                <span class="writer-nav-btn-content">
+                  ${ADMIN_ICONS.episodes}
+                  <span>Manage Episodes</span>
+                </span>
+                <span class="writer-nav-pill" id="wnav-episodes-count">${writerState.stats?.episodesCount || 0}</span>
+              </button>
+            ` : ''}
+
+            <!-- 7. Publication Schedule -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'schedule' ? 'active' : ''}" 
+                    onclick="switchWriterTab('schedule')">
               <span class="writer-nav-btn-content">
-                ${ADMIN_ICONS.edit}
-                <span>Write Novel</span>
+                ${ADMIN_ICONS.clock}
+                <span>Publication Schedule</span>
               </span>
+              <span class="writer-nav-pill" id="wnav-sched-count">${writerState.stats?.scheduledCount || 0}</span>
             </button>
 
-            <!-- 4. Manage Episodes -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'episodes' ? 'active' : ''}" 
-                    onclick="switchWriterTab('episodes')">
-              <span class="writer-nav-btn-content">
-                ${ADMIN_ICONS.episodes}
-                <span>Manage Episodes</span>
-              </span>
-              <span class="writer-nav-pill" id="wnav-episodes-count">${writerState.stats?.episodesCount || 0}</span>
-            </button>
-
-            <!-- 5. Publishing Status -->
+            <!-- 8. Publishing Status & Reviews -->
             <button type="button" class="writer-nav-btn ${writerState.activeTab === 'status' ? 'active' : ''}" 
                     onclick="switchWriterTab('status')">
               <span class="writer-nav-btn-content">
                 ${ADMIN_ICONS.checkCircle}
-                <span>Publishing Status</span>
+                <span>Status &amp; Reviews</span>
+              </span>
+              ${writerState.changesRequestedCount > 0 ? `
+                <span class="writer-nav-pill" style="background:#FEE2E2; color:#991B1B;" title="Revisions Requested">${writerState.changesRequestedCount} ⚠️</span>
+              ` : (writerState.pendingSubmissionsCount > 0 ? `
+                <span class="writer-nav-pill" style="background:#FEF3C7; color:#92400E;">${writerState.pendingSubmissionsCount}</span>
+              ` : '')}
+            </button>
+
+            <!-- 9. Notifications -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'notifications' ? 'active' : ''}" 
+                    onclick="switchWriterTab('notifications')">
+              <span class="writer-nav-btn-content">
+                ${ADMIN_ICONS.bell || ADMIN_ICONS.episodes}
+                <span>Notifications</span>
               </span>
             </button>
 
-            <!-- 6. Profile & Password -->
+            <!-- 10. Profile & Password -->
             <button type="button" class="writer-nav-btn ${writerState.activeTab === 'profile' ? 'active' : ''}" 
                     onclick="switchWriterTab('profile')">
               <span class="writer-nav-btn-content">
@@ -291,6 +352,11 @@ export async function renderWriterDashboard(container, requestedTab) {
     const clickedBtn = document.querySelector(`#writer-sidebar-nav .writer-nav-btn[onclick*="'${tab}'"]`);
     if (clickedBtn) clickedBtn.classList.add('active');
 
+    // Sync active state in top header nav
+    if (typeof window.updateWriterHeaderActiveTab === 'function') {
+      window.updateWriterHeaderActiveTab(tab);
+    }
+
     const topBarTitle = document.getElementById('writer-top-bar-current-tab');
     if (topBarTitle) {
       topBarTitle.textContent = TAB_TITLES[tab] || 'Writer Dashboard';
@@ -312,7 +378,7 @@ export async function renderWriterDashboard(container, requestedTab) {
       window.CURRENT_USER = null;
       updateHeaderUserArea();
       showToast('Logged out of Writer Workspace successfully.');
-      window.location.hash = '#admin-login';
+      window.location.hash = '#writer-login';
       if (window.renderAppView) window.renderAppView();
     }
   };
@@ -423,11 +489,21 @@ async function renderWriterOverview(canvas) {
       </div>
     </div>
 
-    <!-- Essential Database-Backed Statistics Grid (Zero fake counts, NO undefined) -->
-    <div class="writer-metrics-grid">
-      <div class="writer-metric-card">
-        <span class="writer-metric-label">My Novels</span>
-        <span class="writer-metric-value">${novelsCount}</span>
+    ${writerState.changesRequestedCount > 0 ? `
+      <div class="feedback-callout" style="margin-bottom:18px;">
+        <h4 style="display:flex; align-items:center; gap:6px;">⚠️ Revisions Requested by Administrator (${writerState.changesRequestedCount})</h4>
+        <p>The editor has requested revisions on your submission. Click below to inspect editorial feedback and revise your draft.</p>
+        <button type="button" class="btn btn-outline btn-xs" style="margin-top:8px; border-color:#F59E0B; color:#92400E;" onclick="switchWriterTab('status')">
+          View Feedback &amp; Revise ➔
+        </button>
+      </div>
+    ` : ''}
+
+    <!-- 6 Essential Database-Backed Statistics Grid -->
+    <div class="writer-metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+      <div class="writer-metric-card" onclick="switchWriterTab('assignments')" style="cursor:pointer;" title="View My Assignments">
+        <span class="writer-metric-label">Assignments</span>
+        <span class="writer-metric-value" style="color:#6B21A8;">${writerState.assignmentsCount || 0}</span>
       </div>
 
       <div class="writer-metric-card">
@@ -435,14 +511,19 @@ async function renderWriterOverview(canvas) {
         <span class="writer-metric-value drafts">${draftsCount}</span>
       </div>
 
-      <div class="writer-metric-card">
-        <span class="writer-metric-label">Published Novels</span>
-        <span class="writer-metric-value published">${publishedNovelsCount}</span>
+      <div class="writer-metric-card" onclick="switchWriterTab('status')" style="cursor:pointer;" title="View Pending Reviews">
+        <span class="writer-metric-label">In Review</span>
+        <span class="writer-metric-value" style="color:#B45309;">${writerState.pendingSubmissionsCount || 0}</span>
+      </div>
+
+      <div class="writer-metric-card" onclick="switchWriterTab('schedule')" style="cursor:pointer;" title="View Scheduled Releases">
+        <span class="writer-metric-label">Scheduled</span>
+        <span class="writer-metric-value" style="color:#1D4ED8;">${stats.scheduledCount || 0}</span>
       </div>
 
       <div class="writer-metric-card">
-        <span class="writer-metric-label">Episodes</span>
-        <span class="writer-metric-value">${episodesCount}</span>
+        <span class="writer-metric-label">Published</span>
+        <span class="writer-metric-value published">${stats.publishedCount || publishedNovelsCount}</span>
       </div>
 
       <div class="writer-metric-card">
@@ -450,6 +531,31 @@ async function renderWriterOverview(canvas) {
         <span class="writer-metric-value" style="color:#0B1F33;">${totalViews.toLocaleString()}</span>
       </div>
     </div>
+
+    <!-- Active Assignments Callout Card -->
+    ${(writerState.assignments && writerState.assignments.length > 0) ? `
+      <div class="writer-card" style="margin-bottom:18px;">
+        <div class="writer-card-header">
+          <h2 class="writer-card-title">🎯 My Assigned Tasks (${writerState.assignments.length})</h2>
+          <button type="button" class="btn btn-outline" style="font-size:12px; padding:3px 8px;" onclick="switchWriterTab('assignments')">View All</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${writerState.assignments.slice(0, 3).map(a => `
+            <div style="background:#FAF7F2; border:1px solid #EAD8B1; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <span class="assignment-badge ${a.contentType}" style="font-size:10px; margin-right:6px;">${a.contentType.toUpperCase().replace('_', ' ')}</span>
+                <strong style="font-size:13.5px; color:#1A0B2E;">${escapeHtml(a.title)}</strong>
+                ${a.deadline ? `<span style="font-size:11.5px; color:#B45309; margin-left:8px;">📅 Due: ${new Date(a.deadline).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>` : ''}
+                ${a.instructions ? `<div style="font-size:12px; color:#64748B; margin-top:2px;">${escapeHtml(a.instructions)}</div>` : ''}
+              </div>
+              <button type="button" class="btn btn-gold btn-xs" onclick="switchWriterTab('editor', { episodeId: '${a.contentId}' })">
+                Write / Continue ➔
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
 
     <!-- Recent Novels Section (Compact, Clean, Distraction-free) -->
     <div class="writer-card">
@@ -1176,10 +1282,17 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
           Save Draft
         </button>
 
-        <button type="button" class="btn btn-gold" id="we-submit-review-btn" 
-                onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'submitted')">
-          Submit for Review
-        </button>
+        ${(writerState.permissions?.accessLevel === 'independent_publish') ? `
+          <button type="button" class="btn btn-gold" id="we-publish-btn" 
+                  onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'published')">
+            Publish Now
+          </button>
+        ` : `
+          <button type="button" class="btn btn-gold" id="we-submit-review-btn" 
+                  onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'submitted')">
+            Submit for Review
+          </button>
+        `}
       </div>
     </div>
 
@@ -1285,7 +1398,7 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
       <div id="we-canvas" class="writer-writing-area" contenteditable="true" 
            spellcheck="true"
            oninput="handleStoryInput()"
-           placeholder="Write your story here...">${ep?.content || '<p>Write your novel chapter here...</p>'}</div>
+           placeholder="">${ep?.content || ''}</div>
 
       <!-- Live Counters & Status Bar -->
       <div class="writer-editor-footer">
@@ -1461,7 +1574,23 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft') =>
     }
 
     if (targetStatus === 'submitted') {
+      try {
+        await apiFetch('/api/writer/submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contentType: 'episode',
+            contentId: data.episodeId || episodeId,
+            title,
+            parentId: novelId
+          })
+        });
+      } catch (subErr) {
+        console.warn('Error recording submission:', subErr);
+      }
       showToast('Episode submitted for Admin Review! 📩');
+    } else if (targetStatus === 'published') {
+      showToast('✓ Episode published successfully to website! 📖');
     } else {
       showToast('Episode draft saved successfully! 💾');
     }
@@ -1723,3 +1852,602 @@ window.submitWriterPasswordChange = async () => {
     }
   }
 };
+
+
+// ============================================================================
+// WRITER ASSIGNMENTS, STORIES, SCHEDULE & NOTIFICATIONS VIEWS
+// ============================================================================
+
+/**
+ * Render My Assignments Tab
+ */
+async function renderWriterAssignments(canvas) {
+  try {
+    const res = await apiFetch('/api/writer/assignments');
+    const data = await res.json();
+    const assignments = data.assignments || [];
+
+    canvas.innerHTML = `
+      <div class="writer-header-bar">
+        <div>
+          <h1 class="writer-header-title">My Content Assignments</h1>
+          <p class="writer-header-subtitle">Novels, short stories, and chapters assigned to you by the administrator.</p>
+        </div>
+      </div>
+
+      <div class="writer-card" style="padding:0; overflow:hidden;">
+        ${assignments.length > 0 ? `
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Content Type</th>
+                  <th>Assigned Item Title</th>
+                  <th>Instructions / Editorial Notes</th>
+                  <th>Deadline</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${assignments.map(a => `
+                  <tr>
+                    <td><span class="assignment-badge ${a.contentType}">${a.contentType.toUpperCase().replace('_', ' ')}</span></td>
+                    <td><strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(a.title)}</strong></td>
+                    <td style="color:#64748B; font-size:12.5px;">${escapeHtml(a.instructions || 'Follow editorial guidelines')}</td>
+                    <td style="font-size:12px; color:#64748B;">
+                      ${a.deadline ? `📅 ${new Date(a.deadline).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : '<span style="color:#94A3B8;">No deadline</span>'}
+                    </td>
+                    <td>
+                      <span style="font-size:11px; font-weight:700; color:${a.status === 'active' ? '#166534' : '#64748B'}; background:${a.status === 'active' ? '#DCFCE7' : '#F1F5F9'}; padding:2px 8px; border-radius:10px;">
+                        ${a.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style="text-align:right;">
+                      ${a.contentType === 'novel' ? `
+                        <button type="button" class="btn btn-gold btn-xs" onclick="switchWriterTab('episodes', { novelId: '${a.contentId}' })">
+                          Write Episodes ➔
+                        </button>
+                      ` : (a.contentType === 'short_story' ? `
+                        <button type="button" class="btn btn-gold btn-xs" onclick="switchWriterTab('short-stories')">
+                          Open Story ➔
+                        </button>
+                      ` : `
+                        <button type="button" class="btn btn-gold btn-xs" onclick="switchWriterTab('editor', { episodeId: '${a.contentId}' })">
+                          Write / Edit ➔
+                        </button>
+                      `)}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div style="text-align:center; padding:48px 20px; color:#64748B;">
+            <div style="font-size:36px; margin-bottom:8px;">🎯</div>
+            <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Assigned Tasks Currently</div>
+            <p style="font-size:13px; margin:0 0 16px;">The administrator has not assigned specific content to your queue at this moment.</p>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (err) {
+    canvas.innerHTML = '<div class="writer-card" style="color:#EF4444; padding:24px;">Failed to load assignments.</div>';
+  }
+}
+
+/**
+ * Render Writer Short Stories Tab
+ */
+async function renderWriterShortStories(canvas) {
+  try {
+    const res = await apiFetch('/api/writer/short-stories');
+    const data = await res.json();
+    const stories = data.stories || [];
+
+    canvas.innerHTML = `
+      <div class="writer-header-bar">
+        <div>
+          <h1 class="writer-header-title">My Short Stories</h1>
+          <p class="writer-header-subtitle">Create and manage your permitted short stories.</p>
+        </div>
+      </div>
+
+      <div class="writer-card" style="padding:0; overflow:hidden;">
+        ${stories.length > 0 ? `
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">Cover</th>
+                  <th>Story Title</th>
+                  <th>Genre</th>
+                  <th>Status / Review</th>
+                  <th>Reads</th>
+                  <th>Updated</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${stories.map(s => `
+                  <tr>
+                    <td>
+                      <img src="${s.cover_image || '/default-cover.jpg'}" alt="" style="width:36px; height:46px; object-fit:cover; border-radius:4px;" onerror="this.src='/default-cover.jpg';">
+                    </td>
+                    <td>
+                      <strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(s.title)}</strong>
+                      ${s.title_ta ? `<div style="font-size:11.5px; color:#B88635;">${escapeHtml(s.title_ta)}</div>` : ''}
+                    </td>
+                    <td style="font-size:12px; color:#64748B;">${escapeHtml(s.genre || 'Short Story')}</td>
+                    <td>
+                      <span class="sub-status-pill ${s.review_status === 'pending_review' ? 'sub-status-pending' : (s.review_status === 'changes_requested' ? 'sub-status-changes' : 'sub-status-published')}">
+                        ${s.review_status || s.status}
+                      </span>
+                    </td>
+                    <td style="font-size:12px;">👁️ ${Number(s.views_count || 0).toLocaleString()}</td>
+                    <td style="font-size:12px; color:#64748B;">${new Date(s.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td>
+                    <td style="text-align:right;">
+                      <a href="#story?id=${s.slug || s.id}" class="btn btn-outline btn-xs" target="_blank">View ➔</a>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div style="text-align:center; padding:48px 20px; color:#64748B;">
+            <div style="font-size:36px; margin-bottom:8px;">📖</div>
+            <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Short Stories Yet</div>
+            <p style="font-size:13px; margin:0;">You have not been assigned or authored any short stories yet.</p>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (err) {
+    canvas.innerHTML = '<div class="writer-card" style="color:#EF4444; padding:24px;">Failed to load short stories.</div>';
+  }
+}
+
+/**
+ * Render Writer Audio Novels Tab
+ */
+async function renderWriterAudioNovels(canvas) {
+  try {
+    const res = await apiFetch('/api/writer/audio-novels');
+    const data = await res.json();
+    const audioNovels = data.audioNovels || [];
+
+    if (writerState.selectedAudioNovelForEpisodes) {
+      return renderWriterAudioEpisodesTree(canvas, writerState.selectedAudioNovelForEpisodes);
+    }
+
+    canvas.innerHTML = `
+      <div class="writer-header-bar">
+        <div>
+          <h1 class="writer-header-title">My Audio Novels</h1>
+          <p class="writer-header-subtitle">Manage audio novel episodes, audio files, YouTube links, and submissions where authorized.</p>
+        </div>
+      </div>
+
+      <div class="writer-card" style="padding:0; overflow:hidden;">
+        ${audioNovels.length > 0 ? `
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">Cover</th>
+                  <th>Audio Novel Title</th>
+                  <th>Author / Voice</th>
+                  <th>Episodes</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${audioNovels.map(a => `
+                  <tr>
+                    <td>
+                      <img src="${a.cover || '/default-cover.jpg'}" alt="" style="width:36px; height:46px; object-fit:cover; border-radius:4px;" onerror="this.src='/default-cover.jpg';">
+                    </td>
+                    <td>
+                      <strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(a.title)}</strong>
+                      <div style="font-size:11.5px; color:#64748B;">ID: ${escapeHtml(a.id)}</div>
+                    </td>
+                    <td style="font-size:12px; color:#475569;">
+                      <div>✍️ ${escapeHtml(a.author || 'Rudhra Prarthana')}</div>
+                      <div style="color:#64748B;">🎙️ ${escapeHtml(a.audio_voice || a.author || 'Rudhra Prarthana')}</div>
+                    </td>
+                    <td style="font-size:12.5px; font-weight:600; color:#1A0B2E;">
+                      🎧 ${a.total_episodes || 0} episodes
+                    </td>
+                    <td>
+                      <span class="sub-status-pill ${a.is_published ? 'sub-status-published' : 'sub-status-pending'}">
+                        ${a.is_published ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
+                    <td style="text-align:right;">
+                      <div style="display:flex; gap:6px; justify-content:flex-end;">
+                        <button type="button" class="btn btn-gold btn-xs" onclick="openWriterAudioEpisodes('${a.id}')">
+                          📖 Episodes & Audio
+                        </button>
+                        <a href="#audio?novel=${encodeURIComponent(a.id)}" class="btn btn-outline btn-xs" target="_blank">
+                          ▶ Listen
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div style="text-align:center; padding:48px 20px; color:#64748B;">
+            <div style="font-size:36px; margin-bottom:8px;">🎧</div>
+            <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Audio Novels Assigned</div>
+            <p style="font-size:13px; margin:0;">Audio novel management will be available when an audio novel project is assigned to you by the admin.</p>
+          </div>
+        `}
+      </div>
+      <div id="writer-audio-modal-mount"></div>
+    `;
+
+    window.openWriterAudioEpisodes = (novelId) => {
+      writerState.selectedAudioNovelForEpisodes = novelId;
+      const c = document.getElementById('writer-main-canvas');
+      if (c) renderWriterAudioNovels(c);
+    };
+  } catch (err) {
+    canvas.innerHTML = '<div class="writer-card" style="color:#EF4444; padding:24px;">Failed to load audio novels: ' + err.message + '</div>';
+  }
+}
+
+async function renderWriterAudioEpisodesTree(canvas, novelId) {
+  try {
+    const res = await apiFetch(`/api/admin/audio-episodes?novel=${encodeURIComponent(novelId)}`);
+    const data = await res.json();
+    const chapters = data.episodes || [];
+
+    canvas.innerHTML = `
+      <div class="writer-header-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <button type="button" class="btn btn-outline btn-xs" onclick="writerState.selectedAudioNovelForEpisodes = null; switchWriterTab('audio-novels');" style="margin-bottom:6px;">
+            « Back to Audio Novels
+          </button>
+          <h1 class="writer-header-title">Manage Episodes: ${escapeHtml(novelId)}</h1>
+          <p class="writer-header-subtitle">Create chapters, upload audio files, and embed YouTube videos.</p>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-gold btn-sm" onclick="openWriterAudioEpisodeModal({ novelId: '${novelId}' })">
+            + Add Episode
+          </button>
+        </div>
+      </div>
+
+      <div class="writer-card" style="padding:16px;">
+        ${chapters.length === 0 ? `
+          <div style="text-align:center; padding:40px 20px; color:#64748B;">
+            <div style="font-size:32px; margin-bottom:8px;">📖</div>
+            <h4 style="color:#1A0B2E; margin-bottom:6px;">No Chapters or Episodes Added Yet</h4>
+            <p style="font-size:13px; margin-bottom:16px;">Click below to add your first episode to this audio novel.</p>
+            <button type="button" class="btn btn-gold btn-sm" onclick="openWriterAudioEpisodeModal({ novelId: '${novelId}' })">
+              + Add Episode
+            </button>
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            ${chapters.map(ch => renderWriterAudioChapterCard(ch, novelId)).join('')}
+          </div>
+        `}
+      </div>
+      <div id="writer-audio-modal-mount"></div>
+    `;
+  } catch (err) {
+    canvas.innerHTML = '<div class="writer-card" style="color:#EF4444; padding:24px;">Failed to load episodes: ' + err.message + '</div>';
+  }
+}
+
+function renderWriterAudioChapterCard(ch, novelId) {
+  const subs = ch.subEpisodes || [];
+  const hasAudio = Boolean(ch.audioFileUrl);
+  const hasYt = Boolean(ch.youtubeVideoId || ch.youtubeUrl);
+
+  return `
+    <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;">
+      <div style="background:#F8FAFC; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+          <span class="admin-audio-chapter-badge">Chapter ${escapeHtml(ch.chapterNum || ch.episodeNumber)}</span>
+          <strong style="margin-left:8px; color:#0B1F33; font-size:14px;">${escapeHtml(ch.title)}</strong>
+          ${ch.audioDuration ? `<span style="font-size:11px; color:#64748B; margin-left:8px;">⏱ ${escapeHtml(ch.audioDuration)}</span>` : ''}
+          <span class="sub-status-pill ${ch.status === 'published' ? 'sub-status-published' : 'sub-status-pending'}" style="margin-left:8px; font-size:9.5px;">${ch.status}</span>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-gold btn-xs" onclick="openWriterAudioEpisodeModal({ novelId: '${novelId}', parentId: ${ch.id} })">
+            ➕ Add Episode
+          </button>
+        </div>
+      </div>
+
+      ${subs.length > 0 ? `
+        <div style="padding:10px 16px; background:#FFF;">
+          ${subs.map(ep => `
+            <div style="padding:8px 10px; border-bottom:1px solid #F1F5F9; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="admin-audio-badge-sm">Episode ${escapeHtml(ep.episodeNumber)}</span>
+                <span style="font-size:13px; font-weight:600; color:#1A0B2E;">${escapeHtml(ep.title)}</span>
+                ${ep.hasAudio && ep.hasYouTube ? '<span style="font-size:10px; color:#701A75; font-weight:700;">🎧+🎥 Both</span>' : (ep.hasYouTube ? '<span style="font-size:10px; color:#DC2626;">🎥 Video</span>' : '<span style="font-size:10px; color:#D97706;">🎧 Audio</span>')}
+                <span class="sub-status-pill ${ep.status === 'published' ? 'sub-status-published' : 'sub-status-pending'}" style="font-size:9.5px;">${ep.status}</span>
+              </div>
+              <div style="display:flex; gap:4px;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="openWriterAudioEpisodeModal({ novelId: '${novelId}', episodeId: ${ep.id} })">✏️ Edit</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+window.openWriterAudioEpisodeModal = async ({ novelId, parentId = null, episodeId = null } = {}) => {
+  const mount = document.getElementById('writer-audio-modal-mount');
+  if (!mount) return;
+
+  const isEdit = Boolean(episodeId);
+  const isIndependent = writerState.permissions?.accessLevel === 'independent_publish';
+
+  mount.innerHTML = `
+    <div class="modal-overlay open" id="writer-aep-modal" onclick="if(event.target === this) closeWriterAudioModal();">
+      <div class="modal-card admin-modal-card" style="max-width:680px; max-height:92vh; overflow-y:auto;">
+        <div class="modal-header">
+          <h3 class="modal-title">${isEdit ? 'Edit Audio Episode' : '+ Add Audio Episode'}</h3>
+          <button class="modal-close-btn" onclick="closeWriterAudioModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;">
+          <form id="writer-aep-form" onsubmit="event.preventDefault(); submitWriterAudioEpisodeForm();">
+            <input type="hidden" id="waep-novel-id" value="${escapeHtml(novelId)}">
+            <input type="hidden" id="waep-episode-id" value="${episodeId || ''}">
+            <input type="hidden" id="waep-parent-id" value="${parentId || ''}">
+
+            <div id="waep-error" class="novel-form-banner-error" style="display:none; margin-bottom:14px;"></div>
+
+            <div class="form-group" style="margin-bottom:14px;">
+              <label class="form-label" style="font-weight:700;">Episode Title <span style="color:#EF4444;">*</span></label>
+              <input type="text" id="waep-title" class="form-input" placeholder="e.g. Episode 1.1 — Journey into the Mist" required>
+            </div>
+
+            <div class="form-group" style="margin-bottom:14px;">
+              <label class="form-label">Duration (Optional)</label>
+              <input type="text" id="waep-duration" class="form-input" placeholder="e.g. 18:30 (auto-detected on upload)">
+            </div>
+
+            <!-- Media Options -->
+            <div style="padding:14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:16px;">
+              <label class="form-label" style="font-weight:700; margin-bottom:8px; display:block;">Media Playback Choice</label>
+              <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+                <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:600; padding:6px 12px; background:#FFF; border:1px solid #CBD5E1; border-radius:6px;">
+                  <input type="radio" name="waep-source-type" value="both" checked onchange="toggleWaepMedia(this.value)">
+                  <span>🎧+🎥 Both Audio & YouTube</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:600; padding:6px 12px; background:#FFF; border:1px solid #CBD5E1; border-radius:6px;">
+                  <input type="radio" name="waep-source-type" value="audio_file" onchange="toggleWaepMedia(this.value)">
+                  <span>🎧 Audio Only</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:600; padding:6px 12px; background:#FFF; border:1px solid #CBD5E1; border-radius:6px;">
+                  <input type="radio" name="waep-source-type" value="youtube" onchange="toggleWaepMedia(this.value)">
+                  <span>🎥 YouTube Only</span>
+                </label>
+              </div>
+
+              <!-- Audio Section -->
+              <div id="waep-audio-wrap" style="padding:10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px; margin-bottom:10px;">
+                <label class="form-label" style="font-weight:600;">Upload Audio File (MP3, M4A, WAV up to 50MB)</label>
+                <input type="file" id="waep-audio-input" accept="audio/*" onchange="handleWaepAudioFile(this.files[0])" class="form-input">
+                <input type="hidden" id="waep-audio-base64" value="">
+                <div id="waep-audio-status" style="font-size:11.5px; color:#64748B; margin-top:4px;"></div>
+              </div>
+
+              <!-- YouTube Section -->
+              <div id="waep-yt-wrap" style="padding:10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">
+                <label class="form-label" style="font-weight:600;">YouTube Video Link</label>
+                <input type="url" id="waep-youtube-url" class="form-input" placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/...">
+              </div>
+            </div>
+
+            <!-- Status Actions -->
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+              <button type="button" class="btn btn-outline" onclick="closeWriterAudioModal()">Cancel</button>
+              <button type="button" class="btn btn-outline" onclick="submitWriterAudio('draft')">💾 Save Draft</button>
+              ${isIndependent ? `
+                <button type="button" class="btn btn-gold" onclick="submitWriterAudio('published')">🚀 Publish Now</button>
+              ` : `
+                <button type="button" class="btn btn-gold" onclick="submitWriterAudio('submitted')">📤 Submit for Review</button>
+              `}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+
+  window.toggleWaepMedia = (val) => {
+    const aWrap = document.getElementById('waep-audio-wrap');
+    const yWrap = document.getElementById('waep-yt-wrap');
+    if (aWrap) aWrap.style.display = val === 'youtube' ? 'none' : 'block';
+    if (yWrap) yWrap.style.display = val === 'audio_file' ? 'none' : 'block';
+  };
+
+  window.handleWaepAudioFile = (file) => {
+    if (!file) return;
+    const stat = document.getElementById('waep-audio-status');
+    const base64Input = document.getElementById('waep-audio-base64');
+    if (stat) stat.textContent = `Loading ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)...`;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (base64Input) base64Input.value = e.target.result;
+      if (stat) stat.textContent = `✓ Ready: ${file.name}`;
+    };
+    reader.readAsDataURL(file);
+  };
+};
+
+window.closeWriterAudioModal = () => {
+  document.getElementById('writer-aep-modal')?.remove();
+};
+
+window.submitWriterAudio = async (statusTarget) => {
+  const novelId = document.getElementById('waep-novel-id')?.value;
+  const episodeId = document.getElementById('waep-episode-id')?.value;
+  const parentId = document.getElementById('waep-parent-id')?.value || null;
+  const title = (document.getElementById('waep-title')?.value || '').trim();
+  const audioDuration = (document.getElementById('waep-duration')?.value || '').trim();
+  const sourceType = document.querySelector('input[name="waep-source-type"]:checked')?.value || 'both';
+  const youtubeUrl = (document.getElementById('waep-youtube-url')?.value || '').trim();
+  const audioData = document.getElementById('waep-audio-base64')?.value || '';
+
+  const errEl = document.getElementById('waep-error');
+  if (!title) {
+    if (errEl) { errEl.textContent = 'Episode title is required.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  const payload = {
+    novelId,
+    parentId: parentId ? Number(parentId) : null,
+    title,
+    audioDuration,
+    status: statusTarget,
+    sourceType,
+    youtubeUrl: (sourceType === 'youtube' || sourceType === 'both') ? youtubeUrl : null,
+    audioData: (sourceType === 'audio_file' || sourceType === 'both') ? audioData : null
+  };
+
+  try {
+    const isEdit = Boolean(episodeId);
+    const endpoint = isEdit ? `/api/writer/audio-episodes/${episodeId}` : '/api/writer/audio-episodes';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await apiFetch(endpoint, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      if (errEl) { errEl.textContent = data.error || 'Failed to save audio episode.'; errEl.style.display = 'block'; }
+      return;
+    }
+
+    showToast(data.message || 'Episode saved successfully!');
+    closeWriterAudioModal();
+    const c = document.getElementById('writer-main-canvas');
+    if (c) renderWriterAudioNovels(c);
+  } catch (err) {
+    if (errEl) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+  }
+};
+
+
+async function renderWriterSchedule(canvas) {
+  const episodes = (writerState.episodes || []).filter(e => e.status === 'scheduled');
+
+  canvas.innerHTML = `
+    <div class="writer-header-bar">
+      <div>
+        <h1 class="writer-header-title">Publication Schedule</h1>
+        <p class="writer-header-subtitle">Upcoming releases and automated publication timeline.</p>
+      </div>
+    </div>
+
+    <div class="writer-card" style="padding:0; overflow:hidden;">
+      ${episodes.length > 0 ? `
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Novel</th>
+                <th>Episode Title</th>
+                <th>Release Date &amp; Time (Asia/Kolkata)</th>
+                <th>Review Approval</th>
+                <th style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${episodes.map(e => `
+                <tr>
+                  <td><strong>${escapeHtml(e.novel_title || 'Novel')}</strong></td>
+                  <td>${escapeHtml(e.title || `Episode #${e.episode_number}`)}</td>
+                  <td style="color:#1A0B2E; font-weight:600;">
+                    🕒 ${e.scheduled_at ? new Date(e.scheduled_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                  </td>
+                  <td>
+                    <span class="sub-status-pill sub-status-approved">✓ Scheduled for Release</span>
+                  </td>
+                  <td style="text-align:right;">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="switchWriterTab('editor', { episodeId: '${e.id}', novelId: '${e.novel_id}' })">
+                      Edit Release
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `
+        <div style="text-align:center; padding:48px 20px; color:#64748B;">
+          <div style="font-size:36px; margin-bottom:8px;">🕒</div>
+          <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Releases Currently Scheduled</div>
+          <p style="font-size:13px; margin:0 0 16px;">Scheduled episodes and stories will appear here.</p>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+/**
+ * Render Notifications Tab for Writer
+ */
+async function renderWriterNotifications(canvas) {
+  try {
+    const res = await apiFetch('/api/notifications');
+    const data = await res.json();
+    const notifications = data.notifications || [];
+
+    canvas.innerHTML = `
+      <div class="writer-header-bar">
+        <div>
+          <h1 class="writer-header-title">Editorial Notifications</h1>
+          <p class="writer-header-subtitle">Assignment notices, review decisions, change requests, and alerts.</p>
+        </div>
+      </div>
+
+      <div class="writer-card" style="padding:0; overflow:hidden;">
+        ${notifications.length > 0 ? `
+          <div style="divide-y: 1px solid #F1ECE4;">
+            ${notifications.map(n => `
+              <div style="padding:16px 20px; border-bottom:1px solid #F1ECE4; display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                  <strong style="font-size:14px; color:#1A0B2E; display:block; margin-bottom:3px;">${escapeHtml(n.title)}</strong>
+                  <p style="margin:0 0 4px 0; font-size:13px; color:#475569; line-height:1.5;">${escapeHtml(n.message)}</p>
+                  <span style="font-size:11.5px; color:#94A3B8;">${new Date(n.created_at || n.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                ${n.link ? `
+                  <a href="${n.link}" class="btn btn-outline btn-xs" style="white-space:nowrap; margin-left:12px;">View ➔</a>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : `
+          <div style="text-align:center; padding:48px 20px; color:#64748B;">
+            <div style="font-size:36px; margin-bottom:8px;">🔔</div>
+            <div style="font-size:15px; font-weight:600; color:#1A0B2E; margin-bottom:4px;">No Notifications Yet</div>
+            <p style="font-size:13px; margin:0;">Editorial notices and approval alerts will appear here.</p>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (err) {
+    canvas.innerHTML = '<div class="writer-card" style="color:#EF4444; padding:24px;">Failed to load notifications.</div>';
+  }
+}

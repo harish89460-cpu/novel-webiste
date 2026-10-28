@@ -1,5 +1,4 @@
-// Email Service for Rudhra Prarthana Novels
-// SMTP Delivery using Gmail App Password & Nodemailer
+// Email Service for Ru
 
 import nodemailer from 'nodemailer';
 import fs from 'node:fs';

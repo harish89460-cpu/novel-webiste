@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { apiMiddleware } from './api.js';
 import { getDb, loadEnv, testDbConnection } from './db.js';
 import { checkAndPublishDueEpisodes } from './episodes.js';
+import { checkAndPublishDueShortStories } from './short-stories.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');

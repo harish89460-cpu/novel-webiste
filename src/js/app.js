@@ -69,6 +69,15 @@ export function initApp() {
 
   // Mobile Drawer Toggle
   window.toggleMobileDrawer = () => {
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#admin') && typeof window.toggleAdminMobileNav === 'function') {
+      window.toggleAdminMobileNav();
+      return;
+    }
+    if (hash.startsWith('#writer') && typeof window.toggleWriterMobileNav === 'function') {
+      window.toggleWriterMobileNav();
+      return;
+    }
     const drawer = document.getElementById('mobile-drawer');
     const btn = document.querySelector('.hamburger-btn');
     if (drawer && btn) {
@@ -79,6 +88,12 @@ export function initApp() {
   };
 
   window.closeMobileDrawer = () => {
+    if (typeof window.toggleAdminMobileNav === 'function') {
+      window.toggleAdminMobileNav(false);
+    }
+    if (typeof window.toggleWriterMobileNav === 'function') {
+      window.toggleWriterMobileNav(false);
+    }
     const drawer = document.getElementById('mobile-drawer');
     const btn = document.querySelector('.hamburger-btn');
     if (drawer && btn) {
@@ -131,6 +146,17 @@ export async function renderAppView() {
     }
   }
 
+  // Direct pathname normalization for writer routes (e.g. /writer, /writer/dashboard, /writer/editor)
+  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms') && window.location.pathname.startsWith('/writer')) {
+    const pathname = window.location.pathname.replace(/\/+$/, '');
+    if (pathname === '/writer' || pathname === '/writer/dashboard') {
+      hash = '#writer';
+    } else {
+      const sub = pathname.replace('/writer/', '').split('/')[0];
+      hash = `#writer?tab=${sub}`;
+    }
+  }
+
   if (!hash || hash === '#' || hash === '' || hash === '#home') {
     hash = '#forms';
     if (window.location.hash !== '#forms') {
@@ -146,16 +172,17 @@ export async function renderAppView() {
   document.body.classList.remove('mode-sepia', 'mode-dark', 'mode-light', 'admin-view');
   document.documentElement.classList.remove('mode-sepia', 'mode-dark', 'mode-light');
 
-  if (hash.startsWith('#admin') || hash.startsWith('#writer')) {
+  const isLoginPage = hash.startsWith('#admin-login') || hash.startsWith('#writer-login');
+  if (!isLoginPage && (hash.startsWith('#admin') || hash.startsWith('#writer'))) {
     document.body.classList.add('admin-view');
   }
 
-  // Scoped Author/Writer header activation
-  const isAuthorWriterDash = hash.startsWith('#writer') || (hash.startsWith('#admin') && !hash.startsWith('#admin-login'));
+  // Scoped Author/Writer header activation — strictly only for authenticated author/writer dashboard sessions
+  const isAuthorWriterDash = !isLoginPage && (hash.startsWith('#writer') || hash.startsWith('#admin')) && window.IS_LOGGED_IN && Boolean(window.CURRENT_USER);
   if (isAuthorWriterDash) {
-    updateAuthorWriterHeader(true);
+    updateAuthorWriterHeader(true, null, hash);
   } else if (!hash.startsWith('#member')) {
-    updateAuthorWriterHeader(false);
+    updateAuthorWriterHeader(false, null, hash);
   }
 
   // Scroll to top upon route transition
@@ -169,7 +196,7 @@ export async function renderAppView() {
   }
 
   try {
-    if (hash.startsWith('#admin-login')) {
+    if (hash.startsWith('#admin-login') || hash.startsWith('#writer-login')) {
       await renderAdminLoginView(main);
     } else if (hash.startsWith('#admin')) {
       const tabParam = hash.includes('tab=') ? new URLSearchParams(hash.split('?')[1]).get('tab') : 'overview';
@@ -204,6 +231,8 @@ export async function renderAppView() {
       await renderForumView(main, hash);
     } else if (hash.startsWith('#content?') || hash.startsWith('#content/')) {
       await renderContentReadingView(main, hash);
+    } else if (hash.startsWith('#story?') || hash.startsWith('#story/')) {
+      await renderStoryReadingView(main, hash);
     } else if (hash.startsWith('#topic?')) {
       await renderTopicView(main, hash);
     } else if (hash.startsWith('#members')) {
@@ -214,6 +243,14 @@ export async function renderAppView() {
       renderAboutView(main);
     } else if (hash.startsWith('#contact')) {
       renderContactView(main);
+    } else if (hash.startsWith('#privacy')) {
+      renderPrivacyView(main);
+    } else if (hash.startsWith('#disclaimer')) {
+      renderDisclaimerView(main);
+    } else if (hash.startsWith('#terms')) {
+      renderTermsView(main);
+    } else if (hash.startsWith('#copyright')) {
+      renderCopyrightView(main);
     } else if (hash === '#home' || hash.startsWith('#home')) {
       window.location.hash = '#forms';
       return;
@@ -991,7 +1028,7 @@ async function renderForumView(container, hash = '') {
                 <div class="forms-subpage-meta">
                   <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}</span>
                   <span>•</span>
-                  <span>${subArticles.length} Content Titles</span>
+                  <span>${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}</span>
                 </div>
               </div>
             </div>
@@ -1006,29 +1043,70 @@ async function renderForumView(container, hash = '') {
           <div class="forum-layout">
             <!-- Main Content Column -->
             <div class="forum-main-col">
-              <div class="forms-subpage-articles-card">
-                <div class="forms-subpage-card-header">
-                  <h2 class="forms-subpage-card-title">Content Titles</h2>
-                  <span class="forms-subpage-card-hint">Click any title to open the full reading page</span>
+              <!-- Compact Aligned Summary Header Row -->
+              <div class="forum-summary-bar">
+                <div class="forum-summary-stats">
+                  <span class="forum-summary-stat-item"><strong>${subArticles.length}</strong> Content ${subArticles.length === 1 ? 'Title' : 'Titles'}</span>
+                  <span>•</span>
+                  <span class="forum-summary-stat-item"><strong>${currentSub.stats?.totalComments ?? subArticles.reduce((s, a) => s + Number(a.commentsCount || 0), 0)}</strong> Comments</span>
+                  <span>•</span>
+                  <span class="forum-summary-stat-item"><strong>${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</strong> Views</span>
                 </div>
+                ${(currentSub.stats?.latestTitle || subArticles[0]?.title) ? `
+                  <div class="forum-summary-latest">
+                    <span>Latest:</span>
+                    <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
+                      ${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}
+                    </a>
+                    <span>(${formatLastSeen(currentSub.stats?.latestDate || subArticles[0]?.publishedAt)})</span>
+                  </div>
+                ` : ''}
+              </div>
 
-                <div class="forms-subpage-articles-list">
-                  ${subArticles.length > 0 ? subArticles.map(art => `
-                    <a href="${art.link}" class="forms-subpage-article-row">
-                      <div class="forms-subpage-row-main">
-                        <div class="forms-subpage-row-title">${escapeHtml(art.title)}</div>
-                        <div class="forms-subpage-row-meta">
-                          <span class="forms-article-tag">✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}</span>
-                          <span>📅 ${formatLastSeen(art.publishedAt)}</span>
-                          <span>💬 ${art.commentsCount || 0} comments</span>
+              <!-- Compact Forum-Style Content Articles Table -->
+              <div class="forum-table-card">
+                <div class="forum-table-header forum-table-header-articles">
+                  <div>Content Title</div>
+                  <div>Author</div>
+                  <div class="forum-table-col-center">Comments</div>
+                  <div class="forum-table-col-center">Views</div>
+                  <div class="forum-table-col-right">Published</div>
+                </div>
+                <div class="forum-table-body">
+                  ${subArticles.length > 0 ? (function renderRows(list, depth = 0) {
+                    return list.map(art => `
+                      <div class="forum-table-row forum-table-row-articles ${depth > 0 ? 'forum-table-row-nested' : ''}" style="${depth > 0 ? `padding-left:${depth * 22 + 16}px; background:#FDFBF7; border-left:3px solid #C89B3C;` : ''}">
+                        <div class="forum-table-cell-title">
+                          <span class="forum-table-icon">${depth > 0 ? '↳ 📄' : '📄'}</span>
+                          <div class="forum-table-title-meta">
+                            <a href="${art.link}" class="forum-table-title-link" title="${escapeHtml(art.title)}">${escapeHtml(art.title)}</a>
+                            ${art.children && art.children.length > 0 ? `<span class="forms-role-badge" style="margin-left:6px; background:#EDE9FE; color:#5B21B6;">${art.children.length} ${art.children.length === 1 ? 'part' : 'parts'}</span>` : ''}
+                          </div>
+                        </div>
+                        <div class="forum-table-cell-author">
+                          ✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}
+                        </div>
+                        <div class="forum-table-cell-stat">
+                          <span class="forum-stat-pill">💬 ${art.commentsCount || 0}</span>
+                        </div>
+                        <div class="forum-table-cell-stat">
+                          <span class="forum-stat-pill">👁 ${Number(art.viewsCount || 0).toLocaleString()}</span>
+                        </div>
+                        <div class="forum-table-cell-last">
+                          <div class="forum-table-meta-subrow">
+                            <span class="forum-table-last-date">🕒 ${formatLastSeen(art.publishedAt)}</span>
+                            <div class="forum-table-mobile-badges">
+                              <span class="forum-stat-pill">💬 ${art.commentsCount || 0}</span>
+                              <span class="forum-stat-pill">👁 ${Number(art.viewsCount || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <a href="${art.link}" class="forum-table-last-link" style="color:#B88635; font-size:11px;">Read ➔</a>
                         </div>
                       </div>
-                      <div class="forms-subpage-row-arrow">
-                        <span>Read</span> ➔
-                      </div>
-                    </a>
-                  `).join('') : `
-                    <div class="forms-subpage-empty">
+                      ${art.children && art.children.length > 0 ? renderRows(art.children, depth + 1) : ''}
+                    `).join('');
+                  })(subArticles) : `
+                    <div class="forms-subpage-empty" style="padding:48px 20px; text-align:center; color:#64748B;">
                       <div style="font-size:32px; margin-bottom:8px;">📝</div>
                       <div style="font-weight:600; color:#0B1F33; margin-bottom:4px;">No Content Titles Yet</div>
                       <p style="font-size:13px; color:#64748B; margin:0 0 14px;">
@@ -1045,44 +1123,8 @@ async function renderForumView(container, hash = '') {
               </div>
             </div>
 
-            <!-- Sidebar Panels -->
+            <!-- Sidebar Panels (Clean, without separate stats panel) -->
             <aside class="forum-sidebar">
-              <!-- Subtitle Statistics Panel (Real DB Counts) -->
-              <section class="forum-panel forms-stats-panel" aria-labelledby="sidebar-sub-stats-heading">
-                <div class="forum-panel-header">
-                  <h3 id="sidebar-sub-stats-heading" class="forum-panel-title">
-                    <span>📊</span>
-                    <span>Section Statistics</span>
-                  </h3>
-                  <span class="forum-panel-badge">STATS</span>
-                </div>
-                <div class="forms-stats-grid">
-                  <div class="forms-stat-card">
-                    <div class="forms-stat-num">${currentSub.stats?.totalItems ?? subArticles.length}</div>
-                    <div class="forms-stat-lbl">${(currentSub.stats?.totalItems ?? subArticles.length) === 1 ? 'Note' : 'Notes'}</div>
-                  </div>
-                  <div class="forms-stat-card">
-                    <div class="forms-stat-num">${currentSub.stats?.totalComments ?? subArticles.reduce((s, a) => s + Number(a.commentsCount || 0), 0)}</div>
-                    <div class="forms-stat-lbl">Comments</div>
-                  </div>
-                  <div class="forms-stat-card forms-stat-card-wide">
-                    <span class="forms-stat-lbl">Total Views</span>
-                    <span class="forms-stat-num">${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</span>
-                  </div>
-                </div>
-                ${(currentSub.stats?.latestTitle || subArticles[0]?.title) ? `
-                  <div class="forms-stats-latest">
-                    <div class="forms-stats-latest-lbl">Latest Publication</div>
-                    <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" class="forms-stats-latest-title" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
-                      ${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}
-                    </a>
-                    ${(currentSub.stats?.latestDate || subArticles[0]?.publishedAt) ? `
-                      <div class="forms-stats-latest-date">📅 ${formatLastSeen(currentSub.stats?.latestDate || subArticles[0]?.publishedAt)}</div>
-                    ` : ''}
-                  </div>
-                ` : ''}
-              </section>
-
               <!-- Latest Posts Panel -->
               <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
                 <div class="forum-panel-header">
@@ -1094,6 +1136,20 @@ async function renderForumView(container, hash = '') {
                 </div>
                 <div id="forum-latest-posts-list" class="forum-panel-list">
                   ${renderSidebarPostItems(sidebarData?.latest)}
+                </div>
+              </section>
+
+              <!-- Trending Posts Panel -->
+              <section class="forum-panel" aria-labelledby="sidebar-trending-posts-heading">
+                <div class="forum-panel-header">
+                  <h3 id="sidebar-trending-posts-heading" class="forum-panel-title">
+                    <span>🔥</span>
+                    <span>Trending Posts</span>
+                  </h3>
+                  <span class="forum-panel-badge" style="background:rgba(217, 119, 6, 0.15); color:#B45309;">POPULAR</span>
+                </div>
+                <div id="forum-trending-posts-list" class="forum-panel-list">
+                  ${renderSidebarPostItems(sidebarData?.trending, { isTrending: true })}
                 </div>
               </section>
 
@@ -1239,6 +1295,23 @@ async function renderForumView(container, hash = '') {
             ${(currentCategoryId ? hierarchy.filter(c => c.id === currentCategoryId) : hierarchy).map(cat => {
               const subs = cat.subcategories || [];
               const novels = cat.novels || [];
+              const isAudio = cat.id === 'audio-novels';
+
+              const totalCatComments = subs.length > 0
+                ? (cat.stats?.totalComments ?? subs.reduce((s, sub) => s + (sub.stats?.totalComments || 0), 0))
+                : (cat.stats?.totalComments ?? novels.reduce((s, n) => s + Number(n.commentsCount || 0), 0));
+
+              const totalCatViews = subs.length > 0
+                ? (cat.stats?.totalViews ?? subs.reduce((s, sub) => s + (sub.stats?.totalViews || 0), 0))
+                : (cat.stats?.totalViews ?? novels.reduce((s, n) => s + Number(n.viewsCount || 0), 0));
+
+              const totalCatItems = subs.length > 0
+                ? (cat.stats?.totalItems ?? subs.reduce((s, sub) => s + (sub.articles?.length || 0), 0))
+                : (cat.stats?.totalItems ?? novels.length);
+
+              const latestTitle = cat.stats?.latestTitle || (novels[0]?.title ? `${novels[0].title} — ${novels[0].latestEpisodeTitle || 'Latest Release'}` : (subs[0]?.stats?.latestTitle || null));
+              const latestLink = cat.stats?.latestLink || (novels[0]?.readLink || novels[0]?.link || (subs[0]?.stats?.latestLink || '#'));
+              const latestDate = cat.stats?.latestDate || (novels[0]?.updatedDate || (subs[0]?.stats?.latestDate || null));
 
               return `
                 <div class="forms-category-section" id="cat-sec-${escapeHtml(cat.id)}">
@@ -1247,7 +1320,9 @@ async function renderForumView(container, hash = '') {
                     <div class="forms-cat-title-group">
                       <div class="forms-cat-icon">${cat.icon || '💬'}</div>
                       <div>
-                        <a href="#forms?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}"><h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2></a>
+                        <a href="#forms?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}">
+                          <h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2>
+                        </a>
                         <div class="forms-cat-desc">${escapeHtml(cat.description || '')}</div>
                       </div>
                     </div>
@@ -1256,50 +1331,149 @@ async function renderForumView(container, hash = '') {
                     </div>
                   </div>
 
-                  <!-- 1. Clickable Subcategories (Main Title -> Clickable Sub Titles -> Dedicated Content Pages) -->
-                  ${subs.length > 0 ? `
-                    <div class="forms-subs-container">
-                      ${subs.map(sub => {
-                        const subLink = sub.novelId 
-                          ? `#novel?id=${encodeURIComponent(sub.novelId)}`
-                          : `#forms?sub=${encodeURIComponent(sub.id)}`;
-                        const noteCount = sub.articles?.length || 0;
+                  <!-- Aligned Summary Header Row Above Content List -->
+                  <div class="forum-summary-bar" style="margin:12px 16px 14px;">
+                    <div class="forum-summary-stats">
+                      <span class="forum-summary-stat-item">
+                        <strong>${subs.length > 0 ? subs.length : novels.length}</strong> ${subs.length > 0 ? (subs.length === 1 ? 'Subcategory' : 'Subcategories') : (novels.length === 1 ? 'Novel' : 'Novels')}
+                      </span>
+                      ${subs.length > 0 ? `
+                        <span>•</span>
+                        <span class="forum-summary-stat-item"><strong>${totalCatItems}</strong> Notes</span>
+                      ` : ''}
+                      <span>•</span>
+                      <span class="forum-summary-stat-item"><strong>${totalCatComments}</strong> Comments</span>
+                      <span>•</span>
+                      <span class="forum-summary-stat-item"><strong>${Number(totalCatViews).toLocaleString()}</strong> Views</span>
+                    </div>
+                    ${latestTitle ? `
+                      <div class="forum-summary-latest">
+                        <span>Latest:</span>
+                        <a href="${latestLink}">${escapeHtml(latestTitle)}</a>
+                        ${latestDate ? `<span>(${formatLastSeen(latestDate)})</span>` : ''}
+                      </div>
+                    ` : ''}
+                  </div>
 
-                        return `
-                          <div class="forms-sub-row-card">
-                            <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)} section">
-                              <div class="forms-sub-row-left">
-                                <span class="forms-sub-row-icon">${sub.icon || '📌'}</span>
-                                <h3 class="forms-sub-row-title">${escapeHtml(sub.title)}</h3>
+                  <!-- 1. General Subcategories Table Layout (Welcome Notes, Announcements, Tea Time) -->
+                  ${subs.length > 0 ? `
+                    <div class="forum-table-card" style="margin:0 16px 16px; width:calc(100% - 32px);">
+                      <div class="forum-table-header forum-table-header-articles">
+                        <div>Subcategory / Section</div>
+                        <div>Content Count</div>
+                        <div class="forum-table-col-center">Comments</div>
+                        <div class="forum-table-col-center">Views</div>
+                        <div class="forum-table-col-right">Latest Activity</div>
+                      </div>
+                      <div class="forum-table-body">
+                        ${subs.map(sub => {
+                          const subLink = sub.novelId ? `#novel?id=${encodeURIComponent(sub.novelId)}` : `#forms?sub=${encodeURIComponent(sub.id)}`;
+                          const noteCount = sub.articles?.length || 0;
+                          const subComments = sub.stats?.totalComments ?? (sub.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
+                          const subViews = sub.stats?.totalViews ?? (sub.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
+                          const latestArt = sub.stats?.latestTitle ? { title: sub.stats.latestTitle, link: sub.stats.latestLink || subLink, date: sub.stats.latestDate } : (sub.articles && sub.articles[0]);
+
+                          return `
+                            <div class="forum-table-row forum-table-row-articles">
+                              <div class="forum-table-cell-title">
+                                <span class="forum-table-icon">${sub.icon || '📌'}</span>
+                                <div class="forum-table-title-meta">
+                                  <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)}">${escapeHtml(sub.title)}</a>
+                                  <span class="forum-table-tagline">Click to view all ${noteCount} content titles</span>
+                                </div>
                               </div>
-                            </a>
-                            <div style="display:flex; align-items:center; gap:12px;">
-                              <span class="forms-sub-row-count">${noteCount} ${noteCount === 1 ? 'Note' : 'Notes'}</span>
-                              <a href="${subLink}" class="forms-sub-row-action">
-                                <span>View Content</span>
-                                <span>➔</span>
-                              </a>
+                              <div class="forum-table-cell-author">
+                                <span class="forum-stat-pill">📄 ${noteCount} ${noteCount === 1 ? 'Note' : 'Notes'}</span>
+                              </div>
+                              <div class="forum-table-cell-stat">
+                                <span class="forum-stat-pill">💬 ${subComments}</span>
+                              </div>
+                              <div class="forum-table-cell-stat">
+                                <span class="forum-stat-pill">👁 ${Number(subViews).toLocaleString()}</span>
+                              </div>
+                              <div class="forum-table-cell-last">
+                                ${latestArt ? `
+                                  <div class="forum-table-last-row">
+                                    <span class="forum-table-last-label">Latest:</span>
+                                    <a href="${latestArt.link || subLink}" class="forum-table-last-link" title="${escapeHtml(latestArt.title)}">${escapeHtml(latestArt.title)}</a>
+                                  </div>
+                                  <div class="forum-table-meta-subrow">
+                                    <span class="forum-table-last-date">🕒 ${formatLastSeen(latestArt.publishedAt || latestArt.date)}</span>
+                                    <div class="forum-table-mobile-badges">
+                                      <span class="forum-stat-pill">💬 ${subComments}</span>
+                                      <span class="forum-stat-pill">👁 ${Number(subViews).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                ` : `
+                                  <div class="forum-table-meta-subrow">
+                                    <span class="forum-table-last-date" style="color:#94A3B8;">No notes yet</span>
+                                    <div class="forum-table-mobile-badges">
+                                      <span class="forum-stat-pill">💬 ${subComments}</span>
+                                      <span class="forum-stat-pill">👁 ${Number(subViews).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                `}
+                              </div>
                             </div>
-                          </div>
-                        `;
-                      }).join('')}
+                          `;
+                        }).join('')}
+                      </div>
                     </div>
                   ` : ''}
 
-                  <!-- 2. Novels List (Ongoing Novels, Completed Novels, Short Stories, Audio Novels) -->
+                  <!-- 2. Compact Forum Table Layout for Novels & Stories -->
                   ${novels.length > 0 ? `
-                    <div class="forms-novel-grid">
-                      ${novels.map(n => `
-                        <a href="${n.link}" class="forms-novel-card">
-                          <img src="${n.cover || '/default-cover.jpg'}" class="forms-novel-thumb" alt="${escapeHtml(n.title)}" onerror="this.src='/default-cover.jpg'">
-                          <div class="forms-novel-info">
-                            <div class="forms-novel-title">${escapeHtml(n.title)}</div>
-                            <div class="forms-novel-episode">📖 ${escapeHtml(n.latestEpisodeTitle || 'Latest Release')}</div>
-                            <div class="forms-novel-date">📅 ${escapeHtml(n.updatedDate || 'Recent')} • ✍️ ${escapeHtml(n.author || 'Rudhra Prarthana')}</div>
-                          </div>
-                          <div style="color:#B88635; font-size:16px;">➔</div>
-                        </a>
-                      `).join('')}
+                    <div class="forum-table-card" style="margin:0 16px 16px; width:calc(100% - 32px);">
+                      <div class="forum-table-header forum-table-header-novels">
+                        <div>Novel / Story</div>
+                        <div>Latest Episode / Release</div>
+                        <div>Author</div>
+                        <div class="forum-table-col-center">Replies</div>
+                        <div class="forum-table-col-center">Views</div>
+                        <div class="forum-table-col-right">Last Updated</div>
+                      </div>
+                      <div class="forum-table-body">
+                        ${novels.map(n => {
+                          const novelLink = n.link || `#novel?id=${encodeURIComponent(n.id)}`;
+                          const episodeLink = isAudio ? '#audio' : (n.readLink || `#reader?novel=${encodeURIComponent(n.id)}&ch=${encodeURIComponent(n.latestEpisodeNum || '1')}`);
+
+                          return `
+                            <div class="forum-table-row forum-table-row-novels">
+                              <div class="forum-table-cell-title">
+                                <img src="${n.cover || '/default-cover.jpg'}" alt="${escapeHtml(n.title)}" class="forum-table-thumb" onerror="this.src='/default-cover.jpg';">
+                                <div class="forum-table-title-meta">
+                                  <a href="${novelLink}" class="forum-table-title-link" title="Open ${escapeHtml(n.title)}">${escapeHtml(n.title)}</a>
+                                  <span class="forum-table-tagline">${isAudio ? `🎙️ ${escapeHtml(n.voice || n.author || 'Rudhra Prarthana')}` : (n.category || 'Novel')}</span>
+                                </div>
+                              </div>
+                              <div style="font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                <a href="${episodeLink}" class="forum-table-last-link" title="Read ${escapeHtml(n.latestEpisodeTitle || 'Latest Release')}">
+                                  ${isAudio ? '▶ Full Audio Novel' : `📖 ${escapeHtml(n.latestEpisodeTitle || 'Latest Release')}`}
+                                </a>
+                              </div>
+                              <div class="forum-table-cell-author">
+                                ✍️ ${escapeHtml(n.author || 'Rudhra Prarthana')}
+                              </div>
+                              <div class="forum-table-cell-stat">
+                                <span class="forum-stat-pill">💬 ${n.commentsCount || 0}</span>
+                              </div>
+                              <div class="forum-table-cell-stat">
+                                <span class="forum-stat-pill">👁 ${Number(n.viewsCount || 0).toLocaleString()}</span>
+                              </div>
+                              <div class="forum-table-cell-last">
+                                <div class="forum-table-meta-subrow">
+                                  <span class="forum-table-last-date">🕒 ${escapeHtml(n.updatedDate || 'Recent')}</span>
+                                  <div class="forum-table-mobile-badges">
+                                    <span class="forum-stat-pill">💬 ${n.commentsCount || 0}</span>
+                                    <span class="forum-stat-pill">👁 ${Number(n.viewsCount || 0).toLocaleString()}</span>
+                                  </div>
+                                </div>
+                                <a href="${novelLink}" class="forum-table-last-link" style="color:#B88635; font-size:11px;">View Novel ➔</a>
+                              </div>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
                     </div>
                   ` : ''}
 
@@ -1314,46 +1488,8 @@ async function renderForumView(container, hash = '') {
           </div>
         </div>
 
-        <!-- Sidebar Panels -->
+        <!-- Sidebar Panels (Clean, without separate stats panel) -->
         <aside class="forum-sidebar">
-          ${currentCategory ? `
-            <!-- Category Statistics Panel (Real DB Counts) -->
-            <section class="forum-panel forms-stats-panel" aria-labelledby="sidebar-cat-stats-heading">
-              <div class="forum-panel-header">
-                <h3 id="sidebar-cat-stats-heading" class="forum-panel-title">
-                  <span>📊</span>
-                  <span>${escapeHtml(currentCategory.title)} Statistics</span>
-                </h3>
-                <span class="forum-panel-badge">STATS</span>
-              </div>
-              <div class="forms-stats-grid">
-                <div class="forms-stat-card">
-                  <div class="forms-stat-num">${currentCategory.stats?.totalItems ?? (currentCategory.novels?.length || currentCategory.subcategories?.length || 0)}</div>
-                  <div class="forms-stat-lbl">${currentCategory.novels?.length > 0 ? (currentCategory.novels.length === 1 ? 'Novel' : 'Novels') : 'Items'}</div>
-                </div>
-                <div class="forms-stat-card">
-                  <div class="forms-stat-num">${currentCategory.stats?.totalComments ?? (currentCategory.novels || []).reduce((s, n) => s + Number(n.commentsCount || 0), 0)}</div>
-                  <div class="forms-stat-lbl">Comments</div>
-                </div>
-                <div class="forms-stat-card forms-stat-card-wide">
-                  <span class="forms-stat-lbl">Total Views</span>
-                  <span class="forms-stat-num">${Number(currentCategory.stats?.totalViews ?? (currentCategory.novels || []).reduce((s, n) => s + Number(n.viewsCount || 0), 0)).toLocaleString()}</span>
-                </div>
-              </div>
-              ${(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title)) ? `
-                <div class="forms-stats-latest">
-                  <div class="forms-stats-latest-lbl">${currentCategory.novels?.length > 0 ? 'Latest Release' : 'Latest Note'}</div>
-                  <a href="${currentCategory.stats?.latestLink || (currentCategory.novels && (currentCategory.novels[0]?.readLink || currentCategory.novels[0]?.link)) || '#'}" class="forms-stats-latest-title" title="${escapeHtml(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title) || '')}">
-                    ${escapeHtml(currentCategory.stats?.latestTitle || (currentCategory.novels && currentCategory.novels[0]?.title) || '')}
-                  </a>
-                  ${(currentCategory.stats?.latestDate || (currentCategory.novels && (currentCategory.novels[0]?.latestPublishedAt || currentCategory.novels[0]?.updatedDate))) ? `
-                    <div class="forms-stats-latest-date">📅 ${formatLastSeen(currentCategory.stats?.latestDate || (currentCategory.novels && (currentCategory.novels[0]?.latestPublishedAt || currentCategory.novels[0]?.updatedDate)))}</div>
-                  ` : ''}
-                </div>
-              ` : ''}
-            </section>
-          ` : ''}
-
           <!-- Latest Posts Panel -->
           <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
             <div class="forum-panel-header">
@@ -1378,7 +1514,7 @@ async function renderForumView(container, hash = '') {
               <span class="forum-panel-badge" style="background:rgba(217, 119, 6, 0.15); color:#B45309;">POPULAR</span>
             </div>
             <div id="forum-trending-posts-list" class="forum-panel-list">
-              ${renderSidebarPostItems(sidebarData?.trending)}
+              ${renderSidebarPostItems(sidebarData?.trending, { isTrending: true })}
             </div>
           </section>
 
@@ -1483,45 +1619,44 @@ function getSidebarSkeletonHtml(count = 4) {
   `;
 }
 
-function renderSidebarPostItems(posts) {
+function renderSidebarPostItems(posts, { isTrending = false } = {}) {
   if (!Array.isArray(posts) || posts.length === 0) {
     return `
       <div class="sidebar-empty-state" style="text-align:center; padding:24px 16px;">
         <div style="font-size:24px; margin-bottom:6px;">📭</div>
         <div style="font-weight:600; font-size:13px; color:var(--color-navy-deep); margin-bottom:2px;">No posts yet</div>
-        <div style="font-size:12px; color:var(--color-text-muted);">Start a discussion to see it here.</div>
+        <div style="font-size:12px; color:var(--color-text-muted);">Activity will appear here as discussions and content are updated.</div>
       </div>
     `;
   }
 
-  return posts.map(post => {
+  return posts.map((post, index) => {
     const avatarUrl = getAvatarUrl(post.avatar);
-    const safeTitle = escapeHtml(post.title || 'Untitled Discussion');
-    const safeAuthor = escapeHtml(post.lastAuthor || post.author || 'Member');
-    const safeCategory = escapeHtml(post.category || 'General Discussions');
-    const safeExcerpt = escapeHtml(post.excerpt || '');
+    const safeTitle = escapeHtml(post.title || 'Untitled');
+    const safeLastAuthor = escapeHtml(post.lastAuthor || post.author || 'Member');
     const safeTime = escapeHtml(post.timeDisplay || 'Recently');
     const replies = Number(post.replies ?? 0);
     const views = Number(post.views ?? 0);
     const link = post.link || `#topic?id=${encodeURIComponent(post.id)}`;
+    const rankBadge = isTrending ? `<span class="trending-rank-pill ${index < 3 ? 'top-rank' : ''}">#${index + 1}</span>` : '';
 
     return `
-      <article class="sidebar-post-item" style="padding:10px 0; border-bottom:1px solid rgba(0,0,0,0.06); display:flex; gap:10px; align-items:flex-start;">
-        <div class="sidebar-post-avatar-wrap" style="flex-shrink:0;">
-          <img src="${avatarUrl}" alt="${safeAuthor}" class="sidebar-post-avatar" onerror="this.onerror=null;this.src='/profile.png';" loading="lazy">
+      <article class="sidebar-post-item ${isTrending ? 'trending-post-item' : ''}">
+        <div class="sidebar-post-avatar-wrap">
+          <img src="${avatarUrl}" alt="${safeLastAuthor}" class="sidebar-post-avatar" onerror="this.onerror=null;this.src='/profile.png';" loading="lazy">
+          ${rankBadge}
         </div>
-        <div class="sidebar-post-content" style="flex:1; min-width:0;">
-          <a href="${link}" class="sidebar-post-title" title="${safeTitle}" style="font-weight:600; font-size:13px; color:var(--color-navy-deep); text-decoration:none; display:block; margin-bottom:3px; word-break:break-word;">${safeTitle}</a>
-          ${safeExcerpt ? `<div style="font-size:11.5px; color:var(--color-text-muted); margin-bottom:5px; line-height:1.35; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${safeExcerpt}</div>` : ''}
-          <div class="sidebar-post-meta" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--color-text-muted);">
-            <span style="background:#FAF5EC; color:var(--color-gold-warm); padding:1px 5px; border-radius:4px; font-weight:600; border:1px solid #E8DCCB; font-size:10.5px;">${safeCategory}</span>
-            <span class="sidebar-post-author">${safeAuthor}</span>
-            <span>•</span>
-            <time class="sidebar-post-time">${safeTime}</time>
-            <span style="margin-left:auto; display:flex; gap:6px;">
-              <span title="${replies} Replies">💬 ${replies}</span>
-              <span title="${views} Views">👁 ${views}</span>
-            </span>
+        <div class="sidebar-post-content">
+          <a href="${link}" class="sidebar-post-title" title="${safeTitle}">${safeTitle}</a>
+          <div class="sidebar-post-updater">
+            Last updated by <strong class="sidebar-updater-name">${safeLastAuthor}</strong>
+          </div>
+          <div class="sidebar-post-meta-line">
+            <span class="meta-item">🕐 ${safeTime}</span>
+            <span class="meta-dot">·</span>
+            <span class="meta-item">💬 ${replies} ${replies === 1 ? 'reply' : 'replies'}</span>
+            <span class="meta-dot">·</span>
+            <span class="meta-item">👁️ ${views.toLocaleString()} ${views === 1 ? 'view' : 'views'}</span>
           </div>
         </div>
       </article>
@@ -1539,7 +1674,7 @@ async function loadForumSidebarPosts(forceRefresh = false) {
     if (!document.getElementById('forum-latest-posts-list')) return;
 
     latestContainer.innerHTML = renderSidebarPostItems(data?.latest);
-    trendingContainer.innerHTML = renderSidebarPostItems(data?.trending);
+    trendingContainer.innerHTML = renderSidebarPostItems(data?.trending, { isTrending: true });
   } catch (err) {
     console.error('[Forum Sidebar] Error loading posts:', err);
     const errorHtml = `
@@ -1693,13 +1828,21 @@ async function renderTopicView(container, hash) {
   }
 
   const topic = await getForumTopicById(topicId);
-  const novelId = topic?.novelId || 'nenjam-marappadhillai';
-  const chParam = topic?.chapterNum ? `&ch=${encodeURIComponent(topic.chapterNum)}` : '';
-  window.location.hash = `#novel?id=${encodeURIComponent(novelId)}${chParam}#comments`;
-  return;
+  if (!topic) {
+    renderNotFound(container);
+    return;
+  }
+
+  if (topic.novelId) {
+    const chParam = topic.chapterNum ? `&ch=${encodeURIComponent(topic.chapterNum)}` : '';
+    window.location.hash = `#novel?id=${encodeURIComponent(topic.novelId)}${chParam}#comments`;
+    return;
+  }
+
+  return renderDiscussionThread(container, topic);
 }
 
-async function _legacyRenderTopicView(container, hash) {
+async function renderDiscussionThread(container, topic) {
 
   const backLink = topic.categoryId ? `#forum?category=${encodeURIComponent(topic.categoryId)}` : '#forum';
 
@@ -2173,7 +2316,7 @@ async function renderMemberProfileView(container, hash) {
                 </button>
                 ${(window.CURRENT_USER?.isAdmin && window.CURRENT_USER?.isAuthorSession) ? `
                   <button class="btn btn-outline btn-sm" onclick="window.location.hash='#admin';" style="border-color:var(--color-gold); color:var(--color-gold-warm);">
-                    👑 Author Dashboard
+                    👑 AD
                   </button>
                 ` : ''}
                 <button class="btn btn-outline btn-sm" onclick="handleLogout()" style="color:#EF4444; border-color:#FCA5A5;" title="Logout and invalidate session">
@@ -2381,37 +2524,421 @@ function renderAboutView(container) {
   `;
 }
 
-// 10. CONTACT VIEW
+
+// ============================================================================
+// 10. CONTACT US VIEW & FORM HANDLER
+// ============================================================================
+window.handleContactSubmit = async (event) => {
+  event.preventDefault();
+  const statusBox = document.getElementById('contact-status-box');
+  const submitBtn = document.getElementById('contact-submit-btn');
+  const nameInput = document.getElementById('contact-name');
+  const emailInput = document.getElementById('contact-email');
+  const subjectInput = document.getElementById('contact-subject');
+  const messageInput = document.getElementById('contact-message');
+
+  const name = (nameInput?.value || '').trim();
+  const email = (emailInput?.value || '').trim();
+  const subject = (subjectInput?.value || '').trim();
+  const message = (messageInput?.value || '').trim();
+
+  if (statusBox) {
+    statusBox.style.display = 'none';
+    statusBox.innerHTML = '';
+  }
+
+  // Client Validation
+  if (!name || !email || !subject || !message) {
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.style.background = '#FEF2F2';
+      statusBox.style.border = '1px solid #FCA5A5';
+      statusBox.style.color = '#991B1B';
+      statusBox.innerHTML = '<strong>Validation Error:</strong> Please fill in all required fields (Name, Email, Subject, Message).';
+    }
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.style.background = '#FEF2F2';
+      statusBox.style.border = '1px solid #FCA5A5';
+      statusBox.style.color = '#991B1B';
+      statusBox.innerHTML = '<strong>Invalid Email:</strong> Please enter a valid email address.';
+    }
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending Message...';
+  }
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, subject, message })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.style.background = '#F0FDF4';
+        statusBox.style.border = '1px solid #86EFAC';
+        statusBox.style.color = '#166534';
+        statusBox.innerHTML = '<strong>✓ Message Sent!</strong> ' + escapeHtml(data.message || 'Thank you! Your message has been sent successfully. We will try our best to respond as soon as possible.');
+      }
+      if (nameInput) nameInput.value = '';
+      if (emailInput) emailInput.value = '';
+      if (subjectInput) subjectInput.value = '';
+      if (messageInput) messageInput.value = '';
+      if (typeof showToast === 'function') {
+        showToast('Message sent successfully!');
+      }
+    } else {
+      throw new Error(data.error || 'Failed to submit message.');
+    }
+  } catch (err) {
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.style.background = '#FEF2F2';
+      statusBox.style.border = '1px solid #FCA5A5';
+      statusBox.style.color = '#991B1B';
+      statusBox.innerHTML = '<strong>Submission Error:</strong> ' + escapeHtml(err.message || 'An error occurred while submitting your message. Please try again.');
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send Message';
+    }
+  }
+};
+
 function renderContactView(container) {
   container.innerHTML = `
-    <div class="container section" style="max-width:760px;">
-      <span class="section-subtitle">${t('nav_contact')}</span>
-      <h1 class="section-title" style="margin-bottom:var(--space-6);">${t('contact_title')}</h1>
+    <div class="container section" style="max-width:760px; padding-top:var(--space-6); padding-bottom:var(--space-12);">
+      <div style="text-align:center; margin-bottom:32px;">
+        <span class="section-subtitle" style="display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#B88635; margin-bottom:6px;">CONTACT</span>
+        <h1 class="section-title" style="font-family:var(--font-serif); font-size:clamp(2rem, 4vw, 2.7rem); color:#0B1F33; margin:0;">Contact Us</h1>
+      </div>
 
-      <div class="contact-form-card">
-        <form onsubmit="event.preventDefault(); showToast('${t('contact_success')}');">
-          <div class="form-group">
-            <label class="form-label">${t('contact_name')}</label>
-            <input type="text" class="form-input" required placeholder="${t('contact_name')}">
+      <!-- 1. Contact Form Card (Spacious, Responsive, Warm-Gold Accents) -->
+      <div class="contact-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(20px, 4vw, 36px); box-shadow:0 8px 30px rgba(11,31,51,0.06); box-sizing:border-box; margin-bottom:36px;">
+        <form onsubmit="window.handleContactSubmit(event)" novalidate>
+          <div class="form-group" style="margin-bottom:18px;">
+            <label for="contact-name" class="form-label" style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">Your Name *</label>
+            <input type="text" id="contact-name" class="form-input" required placeholder="Your Name" style="width:100%; box-sizing:border-box; border-radius:8px; border:1px solid #D5C9B8; padding:12px 14px; font-size:14.5px;">
           </div>
-          <div class="form-group">
-            <label class="form-label">${t('contact_email')}</label>
-            <input type="email" class="form-input" required placeholder="name@example.com">
+
+          <div class="form-group" style="margin-bottom:18px;">
+            <label for="contact-email" class="form-label" style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">Email Address *</label>
+            <input type="email" id="contact-email" class="form-input" required placeholder="name@example.com" style="width:100%; box-sizing:border-box; border-radius:8px; border:1px solid #D5C9B8; padding:12px 14px; font-size:14.5px;">
           </div>
-          <div class="form-group">
-            <label class="form-label">${t('contact_subject')}</label>
-            <input type="text" class="form-input" required placeholder="${t('contact_subject')}">
+
+          <div class="form-group" style="margin-bottom:18px;">
+            <label for="contact-subject" class="form-label" style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">Subject *</label>
+            <input type="text" id="contact-subject" class="form-input" required placeholder="Subject of your message" style="width:100%; box-sizing:border-box; border-radius:8px; border:1px solid #D5C9B8; padding:12px 14px; font-size:14.5px;">
           </div>
-          <div class="form-group">
-            <label class="form-label">${t('contact_message')}</label>
-            <textarea class="form-input contact-textarea" rows="5" required placeholder="${t('contact_message')}"></textarea>
+
+          <div class="form-group" style="margin-bottom:22px;">
+            <label for="contact-message" class="form-label" style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">Message *</label>
+            <textarea id="contact-message" class="form-input contact-textarea" rows="5" required placeholder="Write your message here..." style="width:100%; box-sizing:border-box; border-radius:8px; border:1px solid #D5C9B8; padding:12px 14px; font-size:14.5px; line-height:1.6; resize:vertical; min-height:120px;"></textarea>
           </div>
-          <button type="submit" class="btn btn-gold btn-contact-submit">${t('contact_send_btn')}</button>
+
+          <button type="submit" id="contact-submit-btn" class="btn btn-gold btn-contact-submit" style="width:100%; justify-content:center; padding:14px 20px; font-size:15px; font-weight:700; letter-spacing:0.5px; border-radius:8px; cursor:pointer;">
+            Send Message
+          </button>
+
+          <div id="contact-status-box" style="display:none; margin-top:18px; padding:14px 18px; border-radius:8px; font-size:14px; line-height:1.5;"></div>
         </form>
+      </div>
+
+      <!-- 2. Supplied Contact Content Below Form (Exact Supplied Text) -->
+      <div class="contact-info-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(24px, 4vw, 40px); box-shadow:0 6px 24px rgba(11,31,51,0.04); color:#1E293B; line-height:1.75; box-sizing:border-box;">
+        <h2 style="font-family:var(--font-serif); font-size:1.6rem; color:#0B1F33; margin-top:0; margin-bottom:12px;">Contact Us</h2>
+        <p style="font-size:15px; font-weight:600; color:#B88635; margin-bottom:12px;">We’d love to hear from you! ❤️</p>
+        <p style="font-size:14.5px; color:#475569; margin-bottom:24px;">
+          If you have any questions, suggestions, feedback, or enquiries regarding <strong>Rudhra Prarthana Novels</strong>, please feel free to contact us.
+        </p>
+
+        <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:#0B1F33; margin-bottom:10px;">Get in Touch</h3>
+        <p style="font-size:14px; color:#475569; margin-bottom:10px;">You can contact us regarding:</p>
+        <ul style="padding-left:22px; margin-bottom:24px; font-size:14px; color:#334155; display:flex; flex-direction:column; gap:6px;">
+          <li>Website-related questions</li>
+          <li>Forum and membership-related queries</li>
+          <li>Novel and audio novel-related enquiries</li>
+          <li>Suggestions and feedback</li>
+          <li>Copyright-related concerns</li>
+          <li>Technical issues</li>
+        </ul>
+
+        <div style="background:#FAF7F2; border:1px solid #E8DCCB; border-radius:10px; padding:14px 20px; display:inline-flex; align-items:center; gap:12px; margin-bottom:24px;">
+          <span style="font-size:20px;">✉️</span>
+          <a href="mailto:rudraprarthananovels@gmail.com" style="color:#0B1F33; font-weight:700; text-decoration:none; font-size:15px; font-family:monospace;" onmouseover="this.style.color='#C89B3C'" onmouseout="this.style.color='#0B1F33'">rudraprarthananovels@gmail.com</a>
+        </div>
+
+        <p style="font-size:13.5px; color:#64748B; margin-bottom:6px;">
+          Please provide sufficient details about your enquiry so that we can assist you appropriately.
+        </p>
+        <p style="font-size:13.5px; color:#64748B; margin-bottom:20px;">
+          We will try our best to respond as soon as possible.
+        </p>
+        
+        <div style="font-family:var(--font-serif); font-size:1.2rem; font-weight:700; color:#0B1F33; border-top:1px dashed #E8DCCB; padding-top:16px;">
+          Rudhra Prarthana Novels
+        </div>
       </div>
     </div>
   `;
 }
+
+// ============================================================================
+// 11. PRIVACY POLICY VIEW (EXACT SUPPLIED TEXT)
+// ============================================================================
+function renderPrivacyView(container) {
+  container.innerHTML = `
+    <div class="container section" style="max-width:840px; padding-top:var(--space-6); padding-bottom:var(--space-12);">
+      <div style="text-align:center; margin-bottom:28px;">
+        <span class="section-subtitle" style="display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#B88635; margin-bottom:6px;">LEGAL</span>
+        <h1 class="section-title" style="font-family:var(--font-serif); font-size:clamp(1.9rem, 4vw, 2.6rem); color:#0B1F33; margin:0 0 8px;">Privacy Policy</h1>
+        <div style="font-size:13px; color:#64748B; font-weight:500;">Last Updated: September 2026</div>
+      </div>
+
+      <div class="legal-content-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(24px, 4vw, 44px); box-shadow:0 6px 24px rgba(11,31,51,0.04); color:#1E293B; line-height:1.8; font-size:15px; box-sizing:border-box;">
+        <p style="font-size:16px; font-weight:600; color:#0B1F33; margin-top:0;">Welcome to Rudhra Prarthana Novels.</p>
+        <p>We respect your privacy and are committed to protecting the information you provide while using our website.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">1. Information We Collect</h2>
+        <p>When you register on our website, participate in our forums, or contact us, we may collect information such as:</p>
+        <ul style="padding-left:24px; display:flex; flex-direction:column; gap:6px;">
+          <li>Your name or username</li>
+          <li>Email address</li>
+          <li>Profile information you choose to provide</li>
+          <li>Comments, forum posts, and other content you submit</li>
+          <li>Technical information such as browser type, device information, IP address, and basic website usage information</li>
+        </ul>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">2. How We Use Your Information</h2>
+        <p>We may use the information collected to:</p>
+        <ul style="padding-left:24px; display:flex; flex-direction:column; gap:6px;">
+          <li>Create and manage your member account</li>
+          <li>Provide access to forum and community features</li>
+          <li>Respond to your questions and messages</li>
+          <li>Improve our website and user experience</li>
+          <li>Maintain website security and prevent misuse</li>
+          <li>Send important website-related notifications when necessary</li>
+          <li>Understand website traffic and usage</li>
+        </ul>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">3. Forum Content</h2>
+        <p>Content that you voluntarily post in public areas of the website, including forum posts, comments, usernames, and profile information, may be visible to other visitors or members.</p>
+        <p>Please avoid posting personal, private, or confidential information in public forum areas.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">4. Cookies</h2>
+        <p>Our website may use cookies and similar technologies to maintain login sessions, remember preferences, improve website functionality, and understand basic website usage.</p>
+        <p>You can control or disable cookies through your browser settings. Some website features may not function properly if cookies are disabled.</p>
+        
+        <h3 style="font-family:var(--font-serif); font-size:1.15rem; color:#0B1F33; margin-top:20px; margin-bottom:8px;">Google AdSense and Advertising Cookies</h3>
+        <p>If Google AdSense or other advertising services are used on this website, third-party vendors, including Google, may use cookies to serve advertisements based on users’ previous visits to this website or other websites.</p>
+        <p>Google may use advertising cookies to help serve relevant advertisements to visitors. Users may opt out of personalized advertising by visiting Google’s Ads Settings.</p>
+        <p>For more information about how Google uses cookies for advertising, please visit Google’s advertising and privacy information.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">5. Third-Party Services</h2>
+        <p>Our website may contain links to or use services provided by third parties, including YouTube, Pratilipi, analytics services, hosting services, Google AdSense, or other external websites and services.</p>
+        <p>These third-party websites and services have their own privacy policies, and we are not responsible for their privacy practices.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">6. Data Security</h2>
+        <p>We take reasonable measures to protect the information collected through our website. However, no method of transmission or storage over the Internet can be guaranteed to be completely secure.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">7. Children’s Privacy</h2>
+        <p>Our website is not intended to knowingly collect personal information from children without appropriate parental or guardian involvement.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">8. Your Rights</h2>
+        <p>You may contact us to request information about, correction of, or deletion of personal information associated with your account, subject to applicable laws and legitimate website requirements.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">9. Changes to This Privacy Policy</h2>
+        <p>We may update this Privacy Policy from time to time. Any changes will be posted on this page with an updated date.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">10. Contact Us</h2>
+        <p>If you have any questions about this Privacy Policy or how your information is handled, please contact us through the <a href="#contact" style="color:#B88635; font-weight:600;">Contact Us</a> page of this website.</p>
+
+        <div style="font-family:var(--font-serif); font-size:1.2rem; font-weight:700; color:#0B1F33; border-top:1px dashed #E8DCCB; padding-top:20px; margin-top:36px;">
+          Rudhra Prarthana Novels
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================================
+// 12. DISCLAIMER VIEW (EXACT SUPPLIED TEXT)
+// ============================================================================
+function renderDisclaimerView(container) {
+  container.innerHTML = `
+    <div class="container section" style="max-width:840px; padding-top:var(--space-6); padding-bottom:var(--space-12);">
+      <div style="text-align:center; margin-bottom:28px;">
+        <span class="section-subtitle" style="display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#B88635; margin-bottom:6px;">LEGAL</span>
+        <h1 class="section-title" style="font-family:var(--font-serif); font-size:clamp(1.9rem, 4vw, 2.6rem); color:#0B1F33; margin:0 0 8px;">Disclaimer</h1>
+        <div style="font-size:13px; color:#64748B; font-weight:500;">Last Updated: September 2026</div>
+      </div>
+
+      <div class="legal-content-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(24px, 4vw, 44px); box-shadow:0 6px 24px rgba(11,31,51,0.04); color:#1E293B; line-height:1.8; font-size:15px; box-sizing:border-box;">
+        <p style="font-size:16px; font-weight:600; color:#0B1F33; margin-top:0;">Welcome to Rudhra Prarthana Novels.</p>
+        <p>The information and content published on this website are provided for general informational and entertainment purposes.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">1. Fictional Content</h2>
+        <p>The novels, stories, characters, names, events, and situations published on Rudhra Prarthana Novels may be fictional or created for entertainment purposes.</p>
+        <p>Any resemblance to actual persons, living or deceased, or actual events is purely coincidental unless specifically stated otherwise.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">2. Copyright</h2>
+        <p>All original stories, written content, audio content, images, logos, and other creative materials published by Rudhra Prarthana Novels are protected by applicable copyright laws unless otherwise stated.</p>
+        <p>You may not reproduce, copy, distribute, modify, or republish our original content without prior written permission.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">3. External Links</h2>
+        <p>Our website may contain links to third-party websites and services, including YouTube, Prathilipi, and other external platforms.</p>
+        <p>We do not control or guarantee the accuracy, availability, security, or privacy practices of these external websites.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">4. Accuracy of Information</h2>
+        <p>We make reasonable efforts to provide accurate information on our website. However, we do not guarantee that all information will always be complete, accurate, or up to date.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">5. User-Generated Content</h2>
+        <p>Members may post comments, discussions, and other content through our forum.</p>
+        <p>Users are responsible for the content they submit. Rudhra Prarthana Novels does not necessarily endorse opinions expressed by individual users.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">6. Changes to the Website</h2>
+        <p>We reserve the right to modify, update, remove, or discontinue any part of the website or its content at any time without prior notice.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">7. Acceptance of This Disclaimer</h2>
+        <p>By using this website, you acknowledge that you have read and understood this Disclaimer and agree to its terms.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">8. Contact</h2>
+        <p>If you have any questions regarding this Disclaimer, please contact us through the <a href="#contact" style="color:#B88635; font-weight:600;">Contact Us</a> page.</p>
+
+        <div style="font-family:var(--font-serif); font-size:1.2rem; font-weight:700; color:#0B1F33; border-top:1px dashed #E8DCCB; padding-top:20px; margin-top:36px;">
+          Rudhra Prarthana Novels
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================================
+// 13. TERMS & CONDITIONS VIEW (EXACT SUPPLIED TEXT)
+// ============================================================================
+function renderTermsView(container) {
+  container.innerHTML = `
+    <div class="container section" style="max-width:840px; padding-top:var(--space-6); padding-bottom:var(--space-12);">
+      <div style="text-align:center; margin-bottom:28px;">
+        <span class="section-subtitle" style="display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#B88635; margin-bottom:6px;">LEGAL</span>
+        <h1 class="section-title" style="font-family:var(--font-serif); font-size:clamp(1.9rem, 4vw, 2.6rem); color:#0B1F33; margin:0 0 8px;">Terms &amp; Conditions</h1>
+        <div style="font-size:13px; color:#64748B; font-weight:500;">Last Updated: September 2026</div>
+      </div>
+
+      <div class="legal-content-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(24px, 4vw, 44px); box-shadow:0 6px 24px rgba(11,31,51,0.04); color:#1E293B; line-height:1.8; font-size:15px; box-sizing:border-box;">
+        <p style="font-size:16px; font-weight:600; color:#0B1F33; margin-top:0;">Welcome to Rudhra Prarthana Novels. By accessing or using this website, you agree to comply with the following Terms &amp; Conditions.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">1. Website Usage</h2>
+        <p>This website is intended for personal, non-commercial use unless otherwise permitted by us.</p>
+        <p>You agree not to use the website for any unlawful purpose or in any way that may harm, disrupt, or interfere with the website or other users.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">2. Account Registration</h2>
+        <p>Some features, including forum participation, may require registration.</p>
+        <p>You are responsible for keeping your account information secure and for all activity carried out through your account.</p>
+        <p>Please provide accurate information when creating an account.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">3. Forum Rules</h2>
+        <p>Users must use the forum respectfully and responsibly.</p>
+        <p>You must not post:</p>
+        <ul style="padding-left:24px; display:flex; flex-direction:column; gap:6px;">
+          <li>Abusive, threatening, or harassing content</li>
+          <li>Illegal or harmful content</li>
+          <li>Spam or misleading content</li>
+          <li>Content that infringes another person’s copyright or other rights</li>
+          <li>Personal or confidential information belonging to others</li>
+          <li>Unwanted advertisements or promotional material</li>
+        </ul>
+        <p>We reserve the right to remove content or restrict accounts that violate these rules.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">4. Intellectual Property</h2>
+        <p>All original novels, stories, audio novels, written content, logos, graphics, and other creative materials published by Rudhra Prarthana Novels are protected by applicable copyright laws.</p>
+        <p>You may not copy, reproduce, redistribute, sell, modify, or republish our original content without prior written permission.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">5. User-Submitted Content</h2>
+        <p>By submitting content to our forums or other public areas, you agree that you have the necessary rights to share that content.</p>
+        <p>You remain responsible for the content you submit and must not knowingly post material that violates the rights of others.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">6. Third-Party Links</h2>
+        <p>The website may contain links to third-party websites and services such as YouTube, Prathilipi, and other external platforms.</p>
+        <p>We are not responsible for the content, availability, security, or policies of third-party websites.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">7. Website Availability</h2>
+        <p>We make reasonable efforts to keep the website available and functioning properly. However, we do not guarantee uninterrupted or error-free access.</p>
+        <p>We may modify, suspend, or discontinue any part of the website when necessary.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">8. Account Suspension or Termination</h2>
+        <p>We reserve the right to suspend or terminate an account if a user violates these Terms &amp; Conditions, forum rules, or applicable laws.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">9. Changes to These Terms</h2>
+        <p>We may update these Terms &amp; Conditions from time to time. Changes will be posted on this page with an updated date.</p>
+
+        <h2 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin-top:32px; margin-bottom:12px; border-bottom:1px dashed rgba(200,155,60,0.3); padding-bottom:6px;">10. Contact</h2>
+        <p>If you have questions regarding these Terms &amp; Conditions, please contact us through the <a href="#contact" style="color:#B88635; font-weight:600;">Contact Us</a> page.</p>
+
+        <p style="font-weight:600; color:#0B1F33; margin-top:20px;">By using this website, you acknowledge that you have read and agreed to these Terms &amp; Conditions.</p>
+
+        <div style="font-family:var(--font-serif); font-size:1.2rem; font-weight:700; color:#0B1F33; border-top:1px dashed #E8DCCB; padding-top:20px; margin-top:36px;">
+          Rudhra Prarthana Novels
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================================
+// 14. COPYRIGHT VIEW (EXACT SUPPLIED TEXT)
+// ============================================================================
+function renderCopyrightView(container) {
+  container.innerHTML = `
+    <div class="container section" style="max-width:840px; padding-top:var(--space-6); padding-bottom:var(--space-12);">
+      <div style="text-align:center; margin-bottom:28px;">
+        <span class="section-subtitle" style="display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#B88635; margin-bottom:6px;">LEGAL</span>
+        <h1 class="section-title" style="font-family:var(--font-serif); font-size:clamp(1.9rem, 4vw, 2.6rem); color:#0B1F33; margin:0 0 8px;">Copyright</h1>
+        <div style="font-size:14px; color:#B88635; font-weight:600;">© 2026 Rudhra Prarthana Novels. All Rights Reserved.</div>
+      </div>
+
+      <div class="legal-content-card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:clamp(24px, 4vw, 44px); box-shadow:0 6px 24px rgba(11,31,51,0.04); color:#1E293B; line-height:1.8; font-size:15px; box-sizing:border-box;">
+        <p style="font-size:15.5px; margin-top:0;">
+          All content published on this website, including novels, stories, audio novels, written content, images, graphics, and other original materials, is protected by applicable copyright laws.
+        </p>
+
+        <p>
+          No part of the content may be copied, reproduced, republished, distributed, modified, or used for commercial purposes without prior written permission from the respective copyright owner.
+        </p>
+
+        <p>
+          If you believe that any content on this website infringes your copyright, please contact us with the relevant details so that we can review the matter.
+        </p>
+
+        <div style="margin-top:28px; background:#FAF7F2; border:1px solid #E8DCCB; border-radius:10px; padding:16px 20px; display:inline-flex; align-items:center; gap:12px;">
+          <span style="font-size:20px;">✉️</span>
+          <div>
+            <div style="font-size:12px; color:#64748B; font-weight:600; text-transform:uppercase;">Copyright Enquiries:</div>
+            <a href="mailto:rudraprarthananovels@gmail.com" style="color:#0B1F33; font-weight:700; text-decoration:none; font-size:15px; font-family:monospace;" onmouseover="this.style.color='#C89B3C'" onmouseout="this.style.color='#0B1F33'">rudraprarthananovels@gmail.com</a>
+          </div>
+        </div>
+
+        <div style="font-family:var(--font-serif); font-size:1.2rem; font-weight:700; color:#0B1F33; border-top:1px dashed #E8DCCB; padding-top:20px; margin-top:36px;">
+          Rudhra Prarthana Novels
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 
 // Helpers
 function renderNovelCard(n, mode = 'read') {
@@ -2542,10 +3069,14 @@ export async function renderAudioNovelsView(container, hash) {
   const sort = searchParams.get('sort') || 'newest';
 
   // Fetch real MySQL data from API
-  const [audioNovels, novels] = await Promise.all([
-    getAudioNovelsList({ search, novelId, sort }).catch(() => []),
-    getNovelsList({ all: true }).catch(() => [])
-  ]);
+  let audioNovels = [];
+  try {
+    const res = await apiFetch(`/api/audio-novels?search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`);
+    const data = await res.json();
+    audioNovels = data.audioNovels || [];
+  } catch (err) {
+    console.warn('Error fetching audio novels:', err);
+  }
 
   container.innerHTML = `
     <div class="audio-page-container">
@@ -2554,7 +3085,7 @@ export async function renderAudioNovelsView(container, hash) {
         <div class="container">
           <span class="audio-hero-subtitle">Listen & Enjoy</span>
           <h1 class="audio-hero-title">Audio Novels</h1>
-          <p class="audio-hero-desc">Discover your favourite stories in audio.</p>
+          <p class="audio-hero-desc">Experience Rudhra Prarthana's captivating romantic dramas and family stories in audio.</p>
         </div>
       </section>
 
@@ -2569,14 +3100,6 @@ export async function renderAudioNovelsView(container, hash) {
                    onkeydown="if(event.key === 'Enter') handleAudioFilterChange();">
           </div>
 
-          <!-- Linked Novel Filter -->
-          <select id="reader-audio-novel-filter" class="audio-filter-select" onchange="handleAudioFilterChange()">
-            <option value="all" ${novelId === 'all' ? 'selected' : ''}>All Novels</option>
-            ${novels.map(n => `
-              <option value="${n.id}" ${novelId === n.id ? 'selected' : ''}>${escapeHtml(n.title)}</option>
-            `).join('')}
-          </select>
-
           <!-- Sort Filter -->
           <select id="reader-audio-sort-filter" class="audio-filter-select" onchange="handleAudioFilterChange()">
             <option value="newest" ${sort === 'newest' ? 'selected' : ''}>Newest First</option>
@@ -2587,20 +3110,14 @@ export async function renderAudioNovelsView(container, hash) {
 
         <!-- Audio Novels Grid / Empty State -->
         ${audioNovels.length === 0 ? `
-          <div class="audio-empty-state">
-            <span class="audio-empty-icon">🎧</span>
-            <h3 class="audio-empty-title">No Audio Novels Found</h3>
-            <p class="audio-empty-text">
-              ${(search || novelId !== 'all') 
-                ? 'No published audio novels match your current search or filter criteria. Try resetting the filters.' 
-                : 'No audio novels have been published yet. Please check back soon!'}
+          <div class="audio-empty-state" style="text-align:center; padding:64px 20px; background:#FFFDF8; border:1px dashed #E2E8F0; border-radius:12px;">
+            <span class="audio-empty-icon" style="font-size:3rem; display:block; margin-bottom:12px;">🎧</span>
+            <h3 class="audio-empty-title" style="font-family:var(--font-serif); color:var(--color-navy-deep); margin:0 0 8px;">No Audio Novels Found</h3>
+            <p class="audio-empty-text" style="color:#64748B; font-size:14px; max-width:480px; margin:0 auto 16px;">
+              ${search ? 'No audio novels matched your search query. Try clearing the search box.' : 'No audio novels have been published yet. Please check back soon!'}
             </p>
-            ${(search || novelId !== 'all') ? `
-              <div style="margin-top:16px;">
-                <button type="button" class="btn btn-gold btn-sm" onclick="window.location.hash = '#audio';">
-                  Reset Filters
-                </button>
-              </div>
+            ${search ? `
+              <button type="button" class="btn btn-gold btn-sm" onclick="window.location.hash = '#audio';">Reset Search</button>
             ` : ''}
           </div>
         ` : `
@@ -2614,12 +3131,10 @@ export async function renderAudioNovelsView(container, hash) {
 
   window.handleAudioFilterChange = () => {
     const s = (document.getElementById('reader-audio-search')?.value || '').trim();
-    const n = document.getElementById('reader-audio-novel-filter')?.value || 'all';
     const st = document.getElementById('reader-audio-sort-filter')?.value || 'newest';
 
     const p = new URLSearchParams();
     if (s) p.set('search', s);
-    if (n !== 'all') p.set('novel', n);
     if (st !== 'newest') p.set('sort', st);
 
     const newHash = p.toString() ? `#audio?${p.toString()}` : '#audio';
@@ -2628,38 +3143,37 @@ export async function renderAudioNovelsView(container, hash) {
 }
 
 function renderAudioDirectoryCard(an) {
-  const isYouTube = an.sourceType === 'youtube';
-  const idOrSlug = an.slug || an.id;
+  const novelLink = `#audio?novel=${encodeURIComponent(an.id || an.slug)}`;
+  const chCount = an.chaptersCount || 0;
+  const epCount = an.episodesCount || 0;
 
   return `
     <article class="audio-novel-item-card">
       <div class="audio-card-media">
-        <a href="#audio?id=${encodeURIComponent(idOrSlug)}" style="display:block; width:100%; height:100%;">
+        <a href="${novelLink}" style="display:block; width:100%; height:100%;">
           <img src="${an.cover || '/default-cover.jpg'}" class="audio-card-img" alt="${escapeQuotes(an.title)}" loading="lazy" onerror="this.onerror=null;this.src='/default-cover.jpg';">
         </a>
         <div class="audio-badge-overlay">
-          <span class="audio-type-pill ${isYouTube ? 'youtube' : 'audio-file'}">
-            ${isYouTube ? '▶ YouTube' : '🎧 Audio Story'}
+          <span class="audio-type-pill audio-file">
+            🎙️ ${escapeHtml(an.voice || an.author || 'Rudhra Prarthana')}
           </span>
-          ${an.episodeNumber ? `
-            <span class="audio-type-pill" style="background:#0B1F33; color:#FFFFFF;">
-              ${escapeHtml(an.episodeNumber)}
-            </span>
-          ` : ''}
+          <span class="audio-type-pill" style="background:#0B1F33; color:#FFFFFF;">
+            ${chCount} ${chCount === 1 ? 'Chapter' : 'Chapters'}
+          </span>
         </div>
-        ${an.audioDuration ? `
-          <span class="audio-duration-pill">⏱ ${escapeHtml(an.audioDuration)}</span>
+        ${an.duration ? `
+          <span class="audio-duration-pill">⏱ ${escapeHtml(an.duration)}</span>
         ` : ''}
       </div>
 
       <div class="audio-card-body">
         <div class="audio-card-meta">
-          <span>🌐 ${escapeHtml(an.language || 'Tamil')}</span>
-          ${an.views ? `<span>• 👁 ${an.views} views</span>` : ''}
+          <span>🎙️ Voice: ${escapeHtml(an.voice || an.author || 'Rudhra Prarthana')}</span>
+          <span>• 👁 ${Number(an.views || 0).toLocaleString()} listens</span>
         </div>
 
         <h3 class="audio-card-title">
-          <a href="#audio?id=${encodeURIComponent(idOrSlug)}" style="color:inherit; text-decoration:none;">
+          <a href="${novelLink}" style="color:inherit; text-decoration:none;">
             ${escapeHtml(an.title)}
           </a>
         </h3>
@@ -2669,13 +3183,11 @@ function renderAudioDirectoryCard(an) {
         </p>
 
         <div class="audio-card-footer">
-          ${an.linkedNovelTitle ? `
-            <a href="#novel?id=${encodeURIComponent(an.novelId)}" class="audio-card-novel-link" title="${escapeQuotes(an.linkedNovelTitle)}">
-              📖 ${escapeHtml(an.linkedNovelTitle)}
-            </a>
-          ` : `<span></span>`}
+          <span style="font-size:12px; color:#64748B; font-weight:600;">
+            ${epCount > 0 ? `${epCount} ${epCount === 1 ? 'Episode' : 'Episodes'} Available` : 'Audio Chapters'}
+          </span>
 
-          <a href="#audio?id=${encodeURIComponent(idOrSlug)}" class="audio-play-btn-primary">
+          <a href="${novelLink}" class="audio-play-btn-primary">
             <span>▶ Listen Now</span>
           </a>
         </div>
@@ -2685,12 +3197,13 @@ function renderAudioDirectoryCard(an) {
 }
 
 /* ========================================================
-   3. DEDICATED AUDIO PLAYBACK VIEW (#audio?id=...)
+   3. DEDICATED CHAPTER-WISE & EPISODE-WISE AUDIO PLAYBACK VIEW (#audio?novel=...)
    ======================================================== */
 export async function renderAudioPlayerView(container, hash) {
   const queryStr = hash.includes('?') ? hash.split('?')[1] : '';
   const searchParams = new URLSearchParams(queryStr);
-  const idOrSlug = searchParams.get('id') || searchParams.get('slug') || '';
+  const idOrSlug = searchParams.get('novel') || searchParams.get('novelId') || searchParams.get('id') || searchParams.get('slug') || '';
+  const targetEpisodeId = searchParams.get('ep') || searchParams.get('episode') || null;
 
   if (!idOrSlug) {
     container.innerHTML = `
@@ -2703,8 +3216,17 @@ export async function renderAudioPlayerView(container, hash) {
     return;
   }
 
-  // Fetch single audio novel detail
-  const audioNovel = await getAudioNovelDetail(idOrSlug);
+  // Fetch full audio novel hierarchy
+  let audioNovel = null;
+  try {
+    const res = await apiFetch(`/api/audio-novels/${encodeURIComponent(idOrSlug)}`);
+    if (res.ok) {
+      const data = await res.json();
+      audioNovel = data.audioNovel;
+    }
+  } catch (err) {
+    console.warn('Error fetching audio novel:', err);
+  }
 
   if (!audioNovel) {
     container.innerHTML = `
@@ -2718,49 +3240,76 @@ export async function renderAudioPlayerView(container, hash) {
     return;
   }
 
-  const isYouTube = audioNovel.sourceType === 'youtube';
-  const parts = audioNovel.parts || [];
-  const hasMultipleParts = parts.length > 1;
+  const playlist = audioNovel.playlist || [];
+  let activeEpisode = null;
+  if (targetEpisodeId) {
+    activeEpisode = playlist.find(e => String(e.id) === String(targetEpisodeId)) || null;
+  }
+  if (!activeEpisode) {
+    activeEpisode = playlist[0] || (audioNovel.chapters[0] || null);
+  }
+
+  const hasAudio = Boolean(activeEpisode?.audioFileUrl);
+  const hasYouTube = Boolean(activeEpisode?.youtubeUrl || activeEpisode?.youtubeVideoId);
+  const isBoth = hasAudio && hasYouTube;
 
   container.innerHTML = `
     <div class="audio-player-page">
       <div class="container">
-        <!-- Back Navigation -->
-        <div class="audio-back-link-wrap">
+        <!-- Back Navigation & Breadcrumb -->
+        <div class="audio-back-link-wrap" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
           <a href="#audio" class="audio-back-link">
             « Back to Audio Novels
           </a>
+          <span style="font-size:12px; color:#64748B;">
+            Rudhra Prarthana Novels • ${escapeHtml(audioNovel.title)}
+          </span>
         </div>
 
         <div class="audio-player-layout">
           <!-- Main Player & Content Column -->
           <main class="audio-main-stage">
-            ${isYouTube ? `
-              <!-- Embedded Official YouTube Player -->
-              <div class="youtube-player-stage">
-                <iframe src="${audioNovel.embedUrl || `https://www.youtube-nocookie.com/embed/${audioNovel.youtubeVideoId}?rel=0`}" 
-                        class="youtube-player-iframe" 
-                        title="${escapeQuotes(audioNovel.title)}" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+            <!-- Sleek Integrated Player Card -->
+            <div class="direct-audio-player-card" id="rp-active-player-card">
+              <div class="audio-track-banner">
+                <img src="${activeEpisode?.thumbnail || audioNovel.cover || '/default-cover.jpg'}" class="audio-track-cover" id="rp-track-cover-img" alt="${escapeQuotes(audioNovel.title)}" onerror="this.src='/default-cover.jpg'">
+                <div class="audio-track-info">
+                  <span class="audio-track-badge" id="rp-track-badge">
+                    🎧 ${escapeHtml(activeEpisode?.episodeNumber ? `Episode ${activeEpisode.episodeNumber}` : 'Audio Episode')}
+                  </span>
+                  <h2 class="audio-track-title" id="rp-track-title">${escapeHtml(activeEpisode?.title || audioNovel.title)}</h2>
+                  <div class="audio-track-subtitle" id="rp-track-subtitle">
+                    Voice: ${escapeHtml(audioNovel.voice || audioNovel.author)} ${activeEpisode?.audioDuration ? `• Duration: ${escapeHtml(activeEpisode.audioDuration)}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Media Format Alert / Indicator -->
+              ${isBoth ? `
+                <div style="background:#FAF5FF; border:1px solid #E9D5FF; color:#6B21A8; font-size:12px; font-weight:600; padding:6px 12px; border-radius:6px; margin:10px 0 14px; display:flex; align-items:center; gap:6px;">
+                  <span>🎧+🎥</span>
+                  <span>Both High-Definition Audio Stream and Official YouTube Video are available for this episode.</span>
+                </div>
+              ` : ''}
+
+              <!-- YouTube Stage (When YouTube link exists) -->
+              <div class="youtube-player-stage" id="rp-yt-stage" style="margin-top:14px; display:${hasYouTube ? 'block' : 'none'}; font-family:sans-serif;">
+                <iframe id="rp-yt-iframe" src="${hasYouTube ? (activeEpisode?.embedUrl || `https://www.youtube-nocookie.com/embed/${activeEpisode?.youtubeVideoId}?rel=0`) : ''}"
+                        class="youtube-player-iframe"
+                        title="${escapeQuotes(activeEpisode?.title || audioNovel.title)}"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowfullscreen>
                 </iframe>
               </div>
-            ` : `
-              <!-- Sleek Direct HTML5 Audio Player Card -->
-              <div class="direct-audio-player-card">
-                <div class="audio-track-banner">
-                  <img src="${audioNovel.cover || '/default-cover.jpg'}" class="audio-track-cover" alt="${escapeQuotes(audioNovel.title)}" onerror="this.src='/default-cover.jpg'">
-                  <div class="audio-track-info">
-                    <span class="audio-track-badge">🎧 ${escapeHtml(audioNovel.episodeNumber || 'Audio Track')}</span>
-                    <h2 class="audio-track-title">${escapeHtml(audioNovel.title)}</h2>
-                    <div class="audio-track-subtitle">
-                      Language: ${escapeHtml(audioNovel.language || 'Tamil')} ${audioNovel.audioDuration ? `• Duration: ${escapeHtml(audioNovel.audioDuration)}` : ''}
-                    </div>
-                  </div>
-                </div>
 
-                <!-- Hidden Native Audio Element -->
-                <audio id="rp-active-audio-player" src="${audioNovel.audioFileUrl}" preload="metadata"></audio>
+              <!-- Direct HTML5 Audio Player Stage (When Audio File exists) -->
+              <div id="rp-direct-audio-stage" style="display:${hasAudio ? 'block' : 'none'}; margin-top:${isBoth ? '18px' : '0'}; font-family:sans-serif;">
+                ${isBoth ? `
+                  <div style="font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                    <span>🎧 Direct Audio Stream Controls</span>
+                  </div>
+                ` : ''}
+                <audio id="rp-active-audio-player" src="${activeEpisode?.audioFileUrl || ''}" preload="metadata"></audio>
 
                 <!-- Custom Native Controls -->
                 <div class="custom-audio-controls">
@@ -2769,7 +3318,7 @@ export async function renderAudioPlayerView(container, hash) {
                     <input type="range" id="rp-audio-seek-slider" min="0" max="100" value="0" class="audio-progress-slider" aria-label="Seek audio position">
                     <div class="audio-time-row">
                       <span id="rp-audio-current-time">00:00</span>
-                      <span id="rp-audio-duration-time">${escapeHtml(audioNovel.audioDuration || '00:00')}</span>
+                      <span id="rp-audio-duration-time">${escapeHtml(activeEpisode?.audioDuration || '00:00')}</span>
                     </div>
                   </div>
 
@@ -2810,97 +3359,308 @@ export async function renderAudioPlayerView(container, hash) {
                     </div>
                   </div>
 
-                  <!-- Error Notification Banner -->
                   <div id="rp-audio-error-box" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:12px; margin-top:10px;"></div>
                 </div>
               </div>
-            `}
+
+              ${!hasAudio && !hasYouTube ? `
+                <div style="padding:24px; text-align:center; color:#64748B; background:#F8FAFC; border-radius:8px; margin-top:14px;">
+                  ⚠️ Media stream is currently being prepared for this episode.
+                </div>
+              ` : ''}
+
+              <!-- Episode Playlist Navigation Buttons (Previous / Next) -->
+              <div class="audio-playlist-nav-row" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid #E2E8F0;">
+                <button type="button" class="btn btn-outline btn-sm" id="btn-audio-prev-ep" onclick="navigateAudioEpisode(-1)">
+                  « Previous Episode
+                </button>
+                <span id="audio-ep-counter-pill" style="font-size:12px; font-weight:600; color:#64748B;"></span>
+                <button type="button" class="btn btn-outline btn-sm" id="btn-audio-next-ep" onclick="navigateAudioEpisode(1)">
+                  Next Episode »
+                </button>
+              </div>
+            </div>
+
+            <!-- Chapter-Wise and Episode-Wise Hierarchy Explorer -->
+            <section class="audio-hierarchy-explorer">
+              <h3 class="audio-hierarchy-title">
+                <span>📖 Chapters & Episodes</span>
+                <span style="font-size:13px; font-weight:normal; color:#64748B;">
+                  (${audioNovel.chaptersCount || 0} ${audioNovel.chaptersCount === 1 ? 'Chapter' : 'Chapters'} • ${playlist.length} ${playlist.length === 1 ? 'Episode' : 'Episodes'})
+                </span>
+              </h3>
+
+              ${(audioNovel.chapters || []).length === 0 ? `
+                <div style="padding:24px; text-align:center; background:#FAF8F5; border-radius:8px; color:#64748B;">
+                  No published episodes available yet.
+                </div>
+              ` : `
+                <div class="audio-chapters-accordion-group">
+                  ${audioNovel.chapters.map(ch => `
+                    <div class="audio-chapter-accordion" id="acc-ch-${ch.id}">
+                      <div class="audio-chapter-acc-header" onclick="toggleAudioChapterAccordion('${ch.id}')">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                          <span class="admin-audio-chapter-badge">Chapter ${escapeHtml(ch.chapterNum || ch.episodeNumber)}</span>
+                          <span style="font-weight:700; color:#0B1F33; font-size:15px;">${escapeHtml(ch.title)}</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#64748B;">
+                          <span>${(ch.subEpisodes || []).length} ${(ch.subEpisodes || []).length === 1 ? 'Episode' : 'Episodes'}</span>
+                          <span id="acc-icon-${ch.id}">▼</span>
+                        </div>
+                      </div>
+
+                      <div class="audio-episodes-acc-body" id="acc-body-${ch.id}">
+                        ${(ch.subEpisodes || []).length === 0 ? `
+                          <div style="font-size:12px; color:#94A3B8; padding:8px 10px; font-style:italic;">
+                            No episodes released under this chapter yet.
+                          </div>
+                        ` : (ch.subEpisodes || []).map(ep => `
+                          <div class="audio-episode-acc-item ${activeEpisode?.id === ep.id ? 'now-playing' : ''}" id="acc-ep-${ep.id}" onclick="playSelectedAudioEpisode('${ep.id}')">
+                            <div style="display:flex; align-items:center; gap:10px; flex:1;">
+                              <span class="admin-audio-badge-sm">Episode ${escapeHtml(ep.episodeNumber)}</span>
+                              <div>
+                                <div style="font-size:14px; font-weight:600; color:#0B1F33;">${escapeHtml(ep.title)}</div>
+                                <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                                  ${ep.hasAudio && ep.hasYouTube ? '<span style="font-size:10px; color:#701A75; font-weight:700;">🎧+🎥 Both</span>' : (ep.hasYouTube ? '<span style="font-size:10px; color:#DC2626; font-weight:700;">🎥 Video</span>' : '<span style="font-size:10px; color:#D97706; font-weight:700;">🎧 Audio</span>')}
+                                  ${ep.audioDuration ? `<span class="audio-duration-pill" style="font-size:10.5px;">⏱ ${escapeHtml(ep.audioDuration)}</span>` : ''}
+                                </div>
+                              </div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                              ${activeEpisode?.id === ep.id ? `
+                                <span class="now-playing-pill">Playing ▶</span>
+                              ` : `
+                                <button type="button" class="btn btn-gold btn-sm" style="font-size:11.5px; padding:3px 10px;">▶ Play</button>
+                              `}
+                            </div>
+                          </div>
+
+                          <!-- Sub-episodes (Level 2) -->
+                          ${(ep.subEpisodes || []).map(sub => `
+                            <div class="audio-episode-acc-item audio-subepisode-acc-item ${activeEpisode?.id === sub.id ? 'now-playing' : ''}" id="acc-ep-${sub.id}" onclick="playSelectedAudioEpisode('${sub.id}')">
+                              <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                                <span class="admin-audio-badge-sm" style="background:#701A75;">Sub-Ep ${escapeHtml(sub.episodeNumber)}</span>
+                                <div>
+                                  <div style="font-size:13px; font-weight:600; color:#0B1F33;">${escapeHtml(sub.title)}</div>
+                                  <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                                    ${sub.hasAudio && sub.hasYouTube ? '<span style="font-size:9.5px; color:#701A75; font-weight:700;">🎧+🎥 Both</span>' : (sub.hasYouTube ? '<span style="font-size:9.5px; color:#DC2626; font-weight:700;">🎥 Video</span>' : '<span style="font-size:9.5px; color:#D97706; font-weight:700;">🎧 Audio</span>')}
+                                    ${sub.audioDuration ? `<span class="audio-duration-pill" style="font-size:10px;">⏱ ${escapeHtml(sub.audioDuration)}</span>` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                              <div style="display:flex; align-items:center; gap:8px;">
+                                ${activeEpisode?.id === sub.id ? `
+                                  <span class="now-playing-pill" style="font-size:9.5px;">Playing ▶</span>
+                                ` : `
+                                  <button type="button" class="btn btn-gold btn-sm" style="font-size:10.5px; padding:2px 8px;">▶ Play</button>
+                                `}
+                              </div>
+                            </div>
+                          `).join('')}
+                        `).join('')}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </section>
 
             <!-- Audio Description & Information Pane -->
-            <div class="audio-details-pane">
+            <div class="audio-details-pane" style="margin-top:24px;">
               <h1 class="audio-details-title">${escapeHtml(audioNovel.title)}</h1>
 
               <div class="audio-details-tags">
-                <span class="audio-tag gold">🎧 ${escapeHtml(audioNovel.episodeNumber || 'Full Audio')}</span>
-                <span class="audio-tag">🌐 ${escapeHtml(audioNovel.language || 'Tamil')}</span>
-                ${audioNovel.audioDuration ? `<span class="audio-tag">⏱ ${escapeHtml(audioNovel.audioDuration)}</span>` : ''}
-                <span class="audio-tag">👁 ${audioNovel.views || 0} listens</span>
+                <span class="audio-tag gold">🎙️ Voice: ${escapeHtml(audioNovel.voice || audioNovel.author)}</span>
+                <span class="audio-tag">📖 ${audioNovel.chaptersCount || 0} Chapters</span>
+                <span class="audio-tag">🎧 ${playlist.length} Episodes</span>
+                <span class="audio-tag">👁 ${Number(audioNovel.views || 0).toLocaleString()} listens</span>
               </div>
 
               ${audioNovel.description ? `
                 <div class="audio-details-text">
                   ${escapeHtml(audioNovel.description).replace(/\n/g, '<br>')}
                 </div>
-              ` : `
-                <div class="audio-details-text" style="color:#64748B; font-style:italic;">
-                  Enjoy listening to this audio release from author Rudhra Prarthana.
-                </div>
-              `}
-
-              ${isYouTube ? `
-                <div class="audio-disclaimer-notice">
-                  <strong>ℹ Official YouTube Player:</strong> Playback is powered by the official embedded YouTube player and depends on video availability and embedding permissions.
-                </div>
               ` : ''}
             </div>
-          </main>
 
-          <!-- Sidebar: Multi-part Episodes & Linked Novel Promotion -->
-          <aside class="audio-parts-sidebar">
-            ${hasMultipleParts ? `
-              <!-- Multi-part Series List -->
-              <div class="audio-parts-card">
-                <h3 class="audio-parts-header">
-                  <span>Available Parts</span>
-                  <span style="font-size:12px; font-family:sans-serif; color:var(--color-gold-warm); font-weight:600;">
-                    ${parts.length} Episodes
-                  </span>
-                </h3>
-                <div class="audio-parts-list">
-                  ${parts.map((p, idx) => `
-                    <a href="#audio?id=${encodeURIComponent(p.slug || p.id)}" 
-                       class="audio-part-item ${p.isActive ? 'active' : ''}" 
-                       title="${escapeQuotes(p.title)}">
-                      <div class="audio-part-num">${idx + 1}</div>
-                      <div class="audio-part-details">
-                        <div class="audio-part-title">${escapeHtml(p.title)}</div>
-                        <div class="audio-part-duration">
-                          ${escapeHtml(p.episodeNumber || `Part ${p.partNumber}`)} ${p.audioDuration ? `• ${escapeHtml(p.audioDuration)}` : ''}
-                        </div>
-                      </div>
-                      ${p.isActive ? `<span style="font-size:12px; color:var(--color-gold-warm); font-weight:700;">Playing ▶</span>` : ''}
-                    </a>
-                  `).join('')}
+            <!-- Novel Comment Box (Exact Reuse of Existing Rich-Text Comment Engine) -->
+            <section class="content-reading-comments-card" id="audio-comments-container" style="margin-top:28px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:var(--color-navy-deep); margin:0;">
+                    💬 Comments & Discussion
+                  </h3>
+                  <div style="font-size:12.5px; color:#64748B; margin-top:2px;">
+                    Discussion for <strong id="audio-comments-context-label">${activeEpisode ? `Episode ${activeEpisode.episodeNumber || activeEpisode.chapterNum}` : 'Whole Novel'}</strong>
+                  </div>
+                </div>
+
+                <div class="audio-comment-scope-buttons" style="display:flex; gap:6px;">
+                  <button type="button" class="btn btn-xs btn-gold" id="btn-audio-comm-ep" onclick="switchAudioCommentsScope('episode')">
+                    Episode Comments
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-audio-comm-novel" onclick="switchAudioCommentsScope('novel')">
+                    Whole Novel Discussion
+                  </button>
                 </div>
               </div>
-            ` : ''}
 
-            ${audioNovel.novelId ? `
-              <!-- Linked Novel Read-Now Card -->
-              <div class="audio-linked-novel-card">
-                <img src="${audioNovel.linkedNovelCover || audioNovel.cover || '/default-cover.jpg'}" class="audio-linked-novel-cover" alt="" onerror="this.src='/default-cover.jpg'">
-                <div class="audio-linked-novel-title">${escapeHtml(audioNovel.linkedNovelTitle || 'Read the Written Novel')}</div>
-                <p class="audio-linked-novel-desc">
-                  Enjoyed the audio version? Read all written chapters and updates in the reader library.
-                </p>
-                <a href="#novel?id=${encodeURIComponent(audioNovel.novelId)}" class="btn btn-gold btn-sm" style="display:inline-block; width:100%;">
-                  📖 Read Full Novel »
-                </a>
-              </div>
-            ` : ''}
+              <!-- Mount novel comment widget -->
+              <div id="audio-comments-widget"></div>
+            </section>
+          </main>
+
+          <!-- Sidebar: Linked Written Novel -->
+          <aside class="audio-parts-sidebar">
+            <div class="audio-linked-novel-card">
+              <img src="${audioNovel.cover || '/default-cover.jpg'}" class="audio-linked-novel-cover" alt="" onerror="this.src='/default-cover.jpg'">
+              <div class="audio-linked-novel-title">${escapeHtml(audioNovel.title)}</div>
+              <p class="audio-linked-novel-desc">
+                Author: ${escapeHtml(audioNovel.author)}<br>
+                Voice Artist: ${escapeHtml(audioNovel.voice || audioNovel.author)}
+              </p>
+              <a href="#novel?id=${encodeURIComponent(audioNovel.id)}" class="btn btn-gold btn-sm" style="display:inline-block; width:100%;">
+                📖 Read Written Novel »
+              </a>
+            </div>
           </aside>
         </div>
       </div>
     </div>
   `;
 
-  // Initialize Custom HTML5 Audio Player Controls if direct audio
-  if (!isYouTube) {
-    const audioEl = document.getElementById('rp-active-audio-player');
-    if (audioEl) {
-      setupHtml5AudioPlayer(audioEl);
+  // Helper to update previous / next buttons
+  function updatePlaylistNavButtons() {
+    const curIdx = playlist.findIndex(e => String(e.id) === String(activeEpisode?.id));
+    const prevBtn = document.getElementById('btn-audio-prev-ep');
+    const nextBtn = document.getElementById('btn-audio-next-ep');
+    const pill = document.getElementById('audio-ep-counter-pill');
+
+    if (curIdx !== -1) {
+      if (pill) pill.textContent = `${curIdx + 1} of ${playlist.length}`;
+      if (prevBtn) prevBtn.disabled = curIdx <= 0;
+      if (nextBtn) nextBtn.disabled = curIdx >= playlist.length - 1;
+    } else {
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
     }
   }
+
+  window.navigateAudioEpisode = (delta) => {
+    const curIdx = playlist.findIndex(e => String(e.id) === String(activeEpisode?.id));
+    if (curIdx === -1) return;
+    const targetIdx = curIdx + delta;
+    if (targetIdx >= 0 && targetIdx < playlist.length) {
+      window.playSelectedAudioEpisode(playlist[targetIdx].id);
+    }
+  };
+
+  // Comments scope management
+  let audioCommentScope = 'episode';
+  function mountCurrentComments() {
+    const contextLabel = document.getElementById('audio-comments-context-label');
+    const btnEp = document.getElementById('btn-audio-comm-ep');
+    const btnNovel = document.getElementById('btn-audio-comm-novel');
+
+    if (audioCommentScope === 'episode' && activeEpisode) {
+      const epNum = activeEpisode.episodeNumber || activeEpisode.chapterNum || '1';
+      if (contextLabel) contextLabel.textContent = `Episode ${epNum}`;
+      if (btnEp) { btnEp.className = 'btn btn-xs btn-gold'; }
+      if (btnNovel) { btnNovel.className = 'btn btn-xs btn-outline'; }
+      renderCommentsWidget('audio-comments-widget', audioNovel.id, epNum);
+    } else {
+      if (contextLabel) contextLabel.textContent = 'Whole Novel Discussion';
+      if (btnEp) { btnEp.className = 'btn btn-xs btn-outline'; }
+      if (btnNovel) { btnNovel.className = 'btn btn-xs btn-gold'; }
+      renderCommentsWidget('audio-comments-widget', audioNovel.id, 0);
+    }
+  }
+
+  window.switchAudioCommentsScope = (scope) => {
+    audioCommentScope = scope;
+    mountCurrentComments();
+  };
+
+  // Accordion toggle
+  window.toggleAudioChapterAccordion = (chId) => {
+    const body = document.getElementById(`acc-body-${chId}`);
+    const icon = document.getElementById(`acc-icon-${chId}`);
+    if (body) {
+      if (body.style.display === 'none') {
+        body.style.display = 'flex';
+        if (icon) icon.textContent = '▼';
+      } else {
+        body.style.display = 'none';
+        if (icon) icon.textContent = '▶';
+      }
+    }
+  };
+
+  // Play selected episode dynamically without reloading whole page
+  window.playSelectedAudioEpisode = (epId) => {
+    const ep = playlist.find(e => String(e.id) === String(epId));
+    if (!ep) return;
+    activeEpisode = ep;
+
+    // Update active highlight in UI
+    document.querySelectorAll('.audio-episode-acc-item').forEach(el => el.classList.remove('now-playing'));
+    const targetItem = document.getElementById(`acc-ep-${ep.id}`);
+    if (targetItem) targetItem.classList.add('now-playing');
+
+    // Update header info
+    const trackBadge = document.getElementById('rp-track-badge');
+    const trackTitle = document.getElementById('rp-track-title');
+    const trackSubtitle = document.getElementById('rp-track-subtitle');
+    const trackCover = document.getElementById('rp-track-cover-img');
+
+    if (trackBadge) trackBadge.textContent = `🎧 Episode ${ep.episodeNumber}`;
+    if (trackTitle) trackTitle.textContent = ep.title;
+    if (trackSubtitle) trackSubtitle.textContent = `Voice: ${audioNovel.voice || audioNovel.author} ${ep.audioDuration ? `• Duration: ${ep.audioDuration}` : ''}`;
+    if (trackCover && ep.thumbnail) trackCover.src = ep.thumbnail;
+
+    const hasEpAudio = Boolean(ep.audioFileUrl);
+    const hasEpYt = Boolean(ep.youtubeUrl || ep.youtubeVideoId);
+
+    const ytStage = document.getElementById('rp-yt-stage');
+    const directStage = document.getElementById('rp-direct-audio-stage');
+    const iframe = document.getElementById('rp-yt-iframe');
+    const audioEl = document.getElementById('rp-active-audio-player');
+
+    // Handle YouTube
+    if (hasEpYt) {
+      if (ytStage) ytStage.style.display = 'block';
+      if (iframe) iframe.src = ep.embedUrl || `https://www.youtube-nocookie.com/embed/${ep.youtubeVideoId}?rel=0&autoplay=1`;
+    } else {
+      if (ytStage) ytStage.style.display = 'none';
+      if (iframe) iframe.src = '';
+    }
+
+    // Handle Direct Audio
+    if (hasEpAudio) {
+      if (directStage) directStage.style.display = 'block';
+      if (audioEl && ep.audioFileUrl) {
+        audioEl.src = ep.audioFileUrl;
+        audioEl.play().catch(e => console.warn('Autoplay prevented:', e.message));
+        const playBtn = document.getElementById('rp-audio-play-pause-btn');
+        if (playBtn) playBtn.textContent = '⏸';
+      }
+    } else {
+      if (directStage) directStage.style.display = 'none';
+      if (audioEl) audioEl.pause();
+    }
+
+    updatePlaylistNavButtons();
+    mountCurrentComments();
+  };
+
+  // Initialize Custom HTML5 Audio Player Controls
+  const audioEl = document.getElementById('rp-active-audio-player');
+  if (audioEl) {
+    setupHtml5AudioPlayer(audioEl);
+  }
+
+  updatePlaylistNavButtons();
+  mountCurrentComments();
 
   window.skipAudio = (seconds) => {
     const audioEl = document.getElementById('rp-active-audio-player');
@@ -3123,11 +3883,17 @@ async function renderContentReadingView(container, hash) {
           <a href="#forms">${escapeHtml(art.mainCategoryTitle)}</a>
           <span class="crumb-separator">›</span>
           <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
+          ${art.parent ? `
+            <span class="crumb-separator">›</span>
+            <a href="${art.parent.link}">${escapeHtml(art.parent.title)}</a>
+          ` : ''}
+          <span class="crumb-separator">›</span>
+          <span class="crumb-current">${escapeHtml(art.title)}</span>
         </nav>
 
         <div class="content-reading-back-bar">
-          <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}" class="content-back-btn">
-            <span>«</span> Back to ${escapeHtml(art.subCategoryTitle)}
+          <a href="${art.parent ? art.parent.link : `#forms?sub=${encodeURIComponent(art.subCategoryId || '')}`}" class="content-back-btn">
+            <span>«</span> Back to ${escapeHtml(art.parent ? art.parent.title : art.subCategoryTitle)}
           </a>
           <div style="font-size:12px; color:#64748B;">
             Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
@@ -3138,7 +3904,7 @@ async function renderContentReadingView(container, hash) {
         <article class="content-reading-card">
           <div class="content-reading-badge">
             <span>🌸</span>
-            <span>${escapeHtml(art.mainCategoryTitle)} › ${escapeHtml(art.subCategoryTitle)}</span>
+            <span>${escapeHtml(art.mainCategoryTitle)} › ${escapeHtml(art.subCategoryTitle)}${art.parent ? ` › ${escapeHtml(art.parent.title)}` : ''}</span>
           </div>
 
           <h1 class="content-reading-headline">${escapeHtml(art.title)}</h1>
@@ -3166,50 +3932,58 @@ async function renderContentReadingView(container, hash) {
 
           <!-- Formatted Reading Content -->
           <div class="content-reading-body">
-            ${art.content}
+            ${art.content || '<p style="color:#64748B; font-style:italic;">No direct body text for this section header. Select a sub-section below to begin reading.</p>'}
           </div>
+
+          ${art.children && art.children.length > 0 ? `
+            <div style="margin-top:28px; padding-top:20px; border-top:1px dashed #E2E8F0;">
+              <h3 style="font-family:var(--font-serif); font-size:1.15rem; color:#1A0B2E; margin:0 0 12px; display:flex; align-items:center; gap:8px;">
+                <span>📚</span>
+                <span>Sub-sections &amp; Parts (${art.children.length})</span>
+              </h3>
+              <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">
+                ${art.children.map((c, idx) => `
+                  <a href="${c.link}" style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; text-decoration:none; color:#1A0B2E; transition:all 0.15s ease;" onmouseover="this.style.borderColor='#C89B3C'; this.style.background='#FDFBF7'" onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#F8FAFC'">
+                    <div style="min-width:0;">
+                      <div style="font-size:11px; color:#B88635; font-weight:700;">PART ${idx + 1}</div>
+                      <div style="font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.title)}</div>
+                    </div>
+                    <span style="color:#B88635; font-size:14px; font-weight:bold;">➔</span>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          ${art.siblings && art.siblings.length > 1 ? `
+            <div style="margin-top:24px; padding-top:16px; border-top:1px solid #F1ECE4; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div style="font-size:12.5px; color:#64748B;">
+                Series Navigation: <strong>${art.siblings.findIndex(s => s.id === art.id) + 1} of ${art.siblings.length} parts</strong>
+              </div>
+              <div style="display:flex; gap:8px;">
+                ${(() => {
+                  const curIdx = art.siblings.findIndex(s => s.id === art.id);
+                  const prev = curIdx > 0 ? art.siblings[curIdx - 1] : null;
+                  const next = curIdx < art.siblings.length - 1 ? art.siblings[curIdx + 1] : null;
+                  return `
+                    ${prev ? `<a href="${prev.link}" class="btn btn-outline btn-xs">« Previous Part</a>` : ''}
+                    ${next ? `<a href="${next.link}" class="btn btn-gold btn-xs">Next Part »</a>` : ''}
+                  `;
+                })()}
+              </div>
+            </div>
+          ` : ''}
         </article>
 
-        <!-- Dedicated Comments Card -->
-        <section class="content-reading-comments-card" id="article-comments-section">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #F1ECE4; padding-bottom:12px;">
-            <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:#1A0B2E; margin:0;">
-              💬 Reader Thoughts &amp; Discussion (<span id="article-comments-counter">${commentsCount}</span>)
-            </h3>
-          </div>
-
-          <!-- Comment Input Form -->
-          <div style="margin-bottom:28px;">
-            ${window.IS_LOGGED_IN ? `
-              <form id="article-comment-form" onsubmit="window.submitArticleComment(event, ${art.id})">
-                <textarea id="article-comment-input" rows="3" class="form-input" 
-                          style="width:100%; border-radius:10px; border:1px solid #E2E8F0; padding:12px; font-family:inherit; resize:vertical; margin-bottom:10px;"
-                          placeholder="Share your thoughts on this note with author Rudhra Prarthana and fellow members..."></textarea>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <span style="font-size:12px; color:#64748B;">Polite and warm reader camaraderie is welcomed.</span>
-                  <button type="submit" id="article-comment-submit-btn" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-                    <span>Post Comment</span>
-                  </button>
-                </div>
-              </form>
-            ` : `
-              <div style="background:#FAF7F2; border:1px dashed #C89B3C; border-radius:10px; padding:18px; text-align:center;">
-                <p style="margin:0 0 10px 0; font-size:13.5px; color:#1A0B2E;">Log in to participate in the conversation and share your feedback.</p>
-                <button type="button" class="btn btn-gold btn-sm" onclick="openAuthModal('login')">Log In to Comment</button>
-              </div>
-            `}
-          </div>
-
-          <!-- Comments List Container -->
-          <div id="article-comments-container">
-            <div style="text-align:center; padding:20px; color:#64748B;">Loading comments...</div>
-          </div>
+        <!-- Reused Instagram/Novel-Style Comments System -->
+        <section style="margin-top:32px;">
+          <div id="article-comments-widget"></div>
         </section>
       </div>
     `;
 
-    // Load comments
-    window.loadArticleComments(art.id);
+    // Mount the novel-style comments widget
+    renderCommentsWidget('article-comments-widget', `content_${art.id}`, 0);
   } catch (err) {
     console.error('Error rendering content reading view:', err);
     container.innerHTML = `
@@ -3419,5 +4193,382 @@ window.deleteArticleComment = async (articleId, commentId) => {
     }
   } catch (err) {
     alert(err.message || 'Error deleting comment');
+  }
+};
+
+
+/**
+ * Render Dedicated Short Story Reading View
+ */
+async function renderStoryReadingView(container, hash) {
+  const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+  const idOrSlug = urlParams.get('slug') || urlParams.get('id') || (hash.includes('/') ? hash.split('/')[1] : '');
+
+  container.innerHTML = `
+    <div class="content-reading-wrap">
+      <div style="text-align:center; padding:60px 20px; color:#64748B;">
+        <div style="width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading short story...</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const token = localStorage.getItem('rp_auth_token');
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const res = await fetch(`/api/short-stories/${encodeURIComponent(idOrSlug)}`, { headers });
+    const data = await res.json();
+
+    if (!res.ok || !data.success || !data.story) {
+      const errCode = data.code || 'UNAVAILABLE';
+      let errTitle = 'Short Story Temporarily Unavailable';
+      let errDesc = data.error || 'This short story is not accessible at this moment.';
+      let icon = '📖';
+
+      if (errCode === 'FORBIDDEN') {
+        errTitle = 'Access Restricted';
+        icon = '🚫';
+      } else if (errCode === 'DISABLED') {
+        errTitle = 'Story Temporarily Disabled';
+        icon = '⏸️';
+      } else if (errCode === 'UNPUBLISHED') {
+        errTitle = 'Unpublished Story';
+        icon = '📝';
+      }
+
+      container.innerHTML = `
+        <div class="content-reading-wrap">
+          <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
+            <a href="#forms">Home</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms">Forms</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms?category=short-stories">Short Stories</a>
+            <span class="crumb-separator">›</span>
+            <span class="crumb-current">Unavailable</span>
+          </nav>
+
+          <div class="content-restricted-alert">
+            <div style="font-size:42px; margin-bottom:12px;">${icon}</div>
+            <h2 style="font-family:var(--font-serif); color:#9A3412; margin:0 0 8px;">${escapeHtml(errTitle)}</h2>
+            <p style="color:#7C2D12; font-size:14px; margin-bottom:20px; line-height:1.6;">
+              ${escapeHtml(errDesc)}
+            </p>
+            <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+              <a href="#forms?category=short-stories" class="btn btn-primary btn-sm">« Return to Short Stories</a>
+              <a href="#forms" class="btn btn-outline btn-sm">Forms &amp; Community</a>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const story = data.story;
+    const authorName = story.author || 'Rudhra Prarthana';
+    const authorAvatar = story.authorAvatar || '/profile.png';
+    const commentsCount = Number(story.comments_count ?? story.commentsCount ?? 0);
+    const viewsCount = Number(story.views_count ?? story.viewsCount ?? 0);
+    const wordCount = Number(story.word_count ?? story.wordCount ?? 0);
+    const readTime = story.read_time || story.readTime || '10 mins read';
+    const publishedDate = story.published_at || story.publishedAt || story.created_at || story.createdAt;
+    const titleTa = story.title_ta || story.titleTa;
+    const coverImg = story.cover_image || story.coverImage;
+
+    container.innerHTML = `
+      <div class="content-reading-wrap">
+        <!-- Breadcrumbs & Back Navigation -->
+        <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
+          <a href="#forms">Home</a>
+          <span class="crumb-separator">›</span>
+          <a href="#forms">Forms</a>
+          <span class="crumb-separator">›</span>
+          <a href="#forms?category=short-stories">Short Stories</a>
+          <span class="crumb-separator">›</span>
+          <span class="crumb-current">${escapeHtml(story.title)}</span>
+        </nav>
+
+        <div class="content-reading-back-bar">
+          <a href="#forms?category=short-stories" class="content-back-btn">
+            <span>«</span> Back to Short Stories
+          </a>
+          <div style="font-size:12px; color:#64748B;">
+            Published: <strong>${new Date(publishedDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+          </div>
+        </div>
+
+        <!-- Main Short Story Article Card -->
+        <article class="content-reading-card story-reading-card">
+          <div class="content-reading-badge">
+            <span>📖</span>
+            <span>${escapeHtml(story.genre || 'Short Story')}</span>
+          </div>
+
+          <h1 class="content-reading-headline story-reading-headline">${escapeHtml(story.title)}</h1>
+          ${titleTa ? `
+            <div class="story-tamil-subheadline" style="font-size:1.15rem; color:#B88635; margin-top:-6px; margin-bottom:16px; font-weight:600;">
+              ${escapeHtml(titleTa)}
+            </div>
+          ` : ''}
+
+          <div class="content-reading-meta-bar" style="flex-wrap:wrap; gap:16px;">
+            <div class="content-author-chip">
+              <img src="${authorAvatar}" class="content-author-avatar" alt="${escapeHtml(authorName)}" onerror="this.src='/profile.png'">
+              <div>
+                <div class="content-author-name">
+                  ${escapeHtml(authorName)}
+                  <span class="forms-role-badge" style="margin-left:6px;">Official Author</span>
+                </div>
+                <div class="content-author-sub">
+                  <span>Rudhra Prarthana Literary Platform</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center; flex-wrap:wrap;">
+              <span title="Read Time">⏳ ${escapeHtml(readTime)}</span>
+              <span>•</span>
+              <span title="Word Count">📝 ${wordCount.toLocaleString()} words</span>
+              <span>•</span>
+              <span title="Total Reads">👁️ ${viewsCount.toLocaleString()} reads</span>
+              <span>•</span>
+              <span title="Comments">💬 <span id="story-meta-comments-count">${commentsCount}</span> comments</span>
+            </div>
+          </div>
+
+          ${coverImg ? `
+            <div class="story-cover-banner" style="text-align:center; margin:22px 0 28px;">
+              <img src="${escapeHtml(coverImg)}" alt="${escapeHtml(story.title)}" 
+                   style="max-height:380px; max-width:100%; border-radius:12px; box-shadow:0 8px 24px rgba(26,11,46,0.12); object-fit:cover;"
+                   onerror="this.style.display='none';">
+            </div>
+          ` : ''}
+
+          ${story.description ? `
+            <div class="story-synopsis-callout" style="background:#FAF7F2; border-left:3px solid #C89B3C; padding:14px 18px; border-radius:0 8px 8px 0; margin-bottom:26px; font-style:italic; color:#475569; font-size:14.5px; line-height:1.65;">
+              ${escapeHtml(story.description)}
+            </div>
+          ` : ''}
+
+          <!-- Formatted Rich-Text Story Body -->
+          <div class="content-reading-body story-reading-body" style="font-family:'Lora', 'Georgia', serif; font-size:1.1rem; line-height:1.85; color:#1E293B;">
+            ${story.content || ''}
+          </div>
+
+          <!-- Elegant Finishing Flourish -->
+          <div class="story-fin-ornament" style="text-align:center; margin:42px 0 16px; color:#B88635; font-size:26px;" aria-hidden="true">
+            ❦
+          </div>
+        </article>
+
+        <!-- Dedicated Comments Section -->
+        <section class="content-reading-comments-card" id="story-comments-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #F1ECE4; padding-bottom:12px;">
+            <h3 style="font-family:var(--font-serif); font-size:1.3rem; color:#1A0B2E; margin:0;">
+              💬 Reader Thoughts &amp; Discussion (<span id="story-comments-counter">${commentsCount}</span>)
+            </h3>
+          </div>
+
+          <!-- Comment Input Form -->
+          <div style="margin-bottom:28px;">
+            ${window.IS_LOGGED_IN ? `
+              <form id="story-comment-form" onsubmit="window.submitStoryComment(event, ${story.id})">
+                <textarea id="story-comment-input" rows="3" class="form-input" 
+                          style="width:100%; border-radius:10px; border:1px solid #E2E8F0; padding:12px; font-family:inherit; resize:vertical; margin-bottom:10px;"
+                          placeholder="Share your thoughts on this story with author Rudhra Prarthana and fellow members..."></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <span style="font-size:12px; color:#64748B;">Polite and warm reader camaraderie is welcomed.</span>
+                  <button type="submit" id="story-comment-submit-btn" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+                    <span>Post Comment</span>
+                  </button>
+                </div>
+              </form>
+            ` : `
+              <div style="background:#FAF7F2; border:1px dashed #C89B3C; border-radius:10px; padding:18px; text-align:center;">
+                <p style="margin:0 0 10px 0; font-size:13.5px; color:#1A0B2E;">Log in to participate in the conversation and share your feedback on this story.</p>
+                <button type="button" class="btn btn-gold btn-sm" onclick="openAuthModal('login')">Log In to Comment</button>
+              </div>
+            `}
+          </div>
+
+          <!-- Comments List Container -->
+          <div id="story-comments-container">
+            <div style="text-align:center; padding:20px; color:#64748B;">Loading comments...</div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    // Load live story comments
+    window.loadStoryComments(story.id);
+  } catch (err) {
+    console.error('Error rendering short story reading view:', err);
+    container.innerHTML = `
+      <div class="content-reading-wrap">
+        <div class="content-restricted-alert">
+          <h2>Failed to Load Story</h2>
+          <p>${escapeHtml(err.message)}</p>
+          <a href="#forms?category=short-stories" class="btn btn-primary btn-sm">Return to Short Stories</a>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Load Comments for Short Story
+ */
+window.loadStoryComments = async (storyId) => {
+  const container = document.getElementById('story-comments-container');
+  if (!container) return;
+  try {
+    const res = await fetch(`/api/short-stories/${storyId}/comments`);
+    const data = await res.json();
+    const comments = data.comments || [];
+    const total = data.total !== undefined ? data.total : comments.length;
+
+    const counter = document.getElementById('story-comments-counter');
+    if (counter) counter.textContent = total;
+    const metaCounter = document.getElementById('story-meta-comments-count');
+    if (metaCounter) metaCounter.textContent = total;
+
+    if (comments.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:32px 16px; color:#64748B; background:#FAF7F2; border-radius:10px;">
+          <div style="font-size:24px; margin-bottom:6px;">💬</div>
+          <div style="font-size:13.5px; font-weight:600; color:#1A0B2E;">No comments yet</div>
+          <div style="font-size:12px;">Be the first to share your thoughts on this story!</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = comments.map(c => `
+      <div class="comment-item" style="border-bottom:1px solid #F1ECE4; padding:16px 0;" id="story-comment-item-${c.id}">
+        <div style="display:flex; gap:12px; align-items:flex-start;">
+          <img src="${c.avatar || '/profile.png'}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png'" alt="">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <div>
+                <strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(c.author || c.displayName || c.username || 'Reader')}</strong>
+                ${c.role === 'author' || c.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
+              </div>
+              <span style="font-size:11.5px; color:#64748B;">${new Date(c.createdAt || c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div style="font-size:13px; color:#2D3748; line-height:1.6; margin-bottom:8px;">
+              ${escapeHtml(c.content)}
+            </div>
+            <div style="display:flex; gap:14px; font-size:11.5px;">
+              ${window.IS_LOGGED_IN ? `
+                <button type="button" onclick="window.toggleStoryReplyForm(${c.id})" style="border:none; background:none; color:#6B21A8; font-weight:600; cursor:pointer; padding:0;">
+                  Reply
+                </button>
+              ` : ''}
+            </div>
+
+            <!-- Inline reply form container -->
+            <div id="story-reply-form-${c.id}" style="display:none; margin-top:12px; background:#FAF7F2; padding:12px; border-radius:8px;">
+              <textarea id="story-reply-input-${c.id}" rows="2" class="form-input" style="width:100%; margin-bottom:8px;" placeholder="Write your reply..."></textarea>
+              <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="window.toggleStoryReplyForm(${c.id})">Cancel</button>
+                <button type="button" class="btn btn-gold btn-xs" onclick="window.submitStoryReply(${storyId}, ${c.id})">Submit Reply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading story comments:', err);
+    container.innerHTML = '<div style="color:#EF4444; padding:12px;">Failed to load comments.</div>';
+  }
+};
+
+window.toggleStoryReplyForm = (commentId) => {
+  const form = document.getElementById(`story-reply-form-${commentId}`);
+  if (form) {
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  }
+};
+
+window.submitStoryComment = async (e, storyId) => {
+  e.preventDefault();
+  const input = document.getElementById('story-comment-input');
+  const btn = document.getElementById('story-comment-submit-btn');
+  if (!input || !input.value.trim()) return;
+
+  const content = input.value.trim();
+  const token = localStorage.getItem('rp_auth_token');
+  if (!token) {
+    openAuthModal('login');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Posting...';
+  }
+
+  try {
+    const res = await fetch(`/api/short-stories/${storyId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      input.value = '';
+      if (typeof window.showToast === 'function') {
+        window.showToast('✅ Comment posted successfully!');
+      }
+      await window.loadStoryComments(storyId);
+    } else {
+      alert(data.error || 'Failed to post comment');
+    }
+  } catch (err) {
+    alert(err.message || 'Error submitting comment');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Post Comment';
+    }
+  }
+};
+
+window.submitStoryReply = async (storyId, parentId) => {
+  const input = document.getElementById(`story-reply-input-${parentId}`);
+  if (!input || !input.value.trim()) return;
+
+  const content = input.value.trim();
+  const token = localStorage.getItem('rp_auth_token');
+  if (!token) {
+    openAuthModal('login');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/short-stories/${storyId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content, parentId })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.toggleStoryReplyForm(parentId);
+      if (typeof window.showToast === 'function') {
+        window.showToast('✅ Reply posted successfully!');
+      }
+      await window.loadStoryComments(storyId);
+    } else {
+      alert(data.error || 'Failed to post reply');
+    }
+  } catch (err) {
+    alert(err.message || 'Error submitting reply');
   }
 };

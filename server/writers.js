@@ -443,3 +443,693 @@ export async function getWriterWorkspaceData(writerId) {
     recentEpisodes: episodes.slice(0, 10)
   };
 }
+
+
+// ============================================================================
+// WRITER PERMISSIONS, CONTENT ASSIGNMENTS & REVIEW SUBMISSIONS
+// ============================================================================
+
+/**
+ * Get permissions for a writer
+ */
+export async function getWriterPermissions(writerId) {
+  const row = await queryOne('SELECT * FROM writer_permissions WHERE writer_id = ?;', [writerId]);
+  if (!row) {
+    return {
+      writerId,
+      canNovels: 1,
+      canShortStories: 0,
+      canAudioNovels: 0,
+      canEpisodes: 1,
+      accessLevel: 'review_required',
+      fullAccess: 0
+    };
+  }
+  return {
+    id: row.id,
+    writerId: row.writer_id,
+    canNovels: Number(row.can_novels || 0),
+    canShortStories: Number(row.can_short_stories || 0),
+    canAudioNovels: Number(row.can_audio_novels || 0),
+    canEpisodes: Number(row.can_episodes || 0),
+    accessLevel: row.access_level || 'review_required',
+    fullAccess: Number(row.full_access || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+/**
+ * Update permissions for a writer (Admin only)
+ */
+export async function updateWriterPermissions(writerId, {
+  canNovels = 1,
+  canShortStories = 0,
+  canAudioNovels = 0,
+  canEpisodes = 1,
+  accessLevel = 'review_required',
+  fullAccess = 0,
+  actorId = 2
+}) {
+  const validLevels = ['view_only', 'draft_only', 'review_required', 'independent_publish'];
+  const level = validLevels.includes(accessLevel) ? accessLevel : 'review_required';
+
+  await query(`
+    INSERT INTO writer_permissions (writer_id, can_novels, can_short_stories, can_audio_novels, can_episodes, access_level, full_access, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON DUPLICATE KEY UPDATE
+      can_novels = VALUES(can_novels),
+      can_short_stories = VALUES(can_short_stories),
+      can_audio_novels = VALUES(can_audio_novels),
+      can_episodes = VALUES(can_episodes),
+      access_level = VALUES(access_level),
+      full_access = VALUES(full_access),
+      updated_at = CURRENT_TIMESTAMP;
+  `, [
+    writerId,
+    canNovels ? 1 : 0,
+    canShortStories ? 1 : 0,
+    canAudioNovels ? 1 : 0,
+    canEpisodes ? 1 : 0,
+    level,
+    fullAccess ? 1 : 0
+  ]);
+
+  await recordWriterAudit({
+    writerId,
+    actorId,
+    action: 'permissions_updated',
+    details: `Updated permissions: access=${level}, fullAccess=${fullAccess}, novels=${canNovels}, stories=${canShortStories}, audio=${canAudioNovels}, episodes=${canEpisodes}`
+  });
+
+  await createNotification({
+    userId: writerId,
+    actorId,
+    type: 'permission_change',
+    title: 'Writing Permissions Updated',
+    message: `Your publishing access level has been set to: ${level.replace('_', ' ').toUpperCase()}.`,
+    link: '#writer'
+  }).catch(() => {});
+
+  return { success: true, message: 'Writer permissions successfully saved.' };
+}
+
+/**
+ * Get assignments for a writer
+ */
+export async function getWriterAssignments(writerId, status = 'active') {
+  let sql = `
+    SELECT 
+      a.id, a.writer_id, a.content_type, a.content_id, a.title, a.instructions,
+      a.deadline, a.status, a.assigned_by, a.created_at, a.updated_at,
+      u.username AS assigned_by_name
+    FROM writer_assignments a
+    LEFT JOIN users u ON a.assigned_by = u.id
+    WHERE a.writer_id = ?
+  `;
+  const params = [writerId];
+  if (status && status !== 'all') {
+    sql += ' AND a.status = ?';
+    params.push(status);
+  }
+  sql += ' ORDER BY a.created_at DESC;';
+
+  const rows = await query(sql, params);
+  return rows.map(r => ({
+    id: r.id,
+    writerId: r.writer_id,
+    contentType: r.content_type,
+    contentId: r.content_id,
+    title: r.title || `${r.content_type} #${r.content_id}`,
+    instructions: r.instructions || '',
+    deadline: r.deadline,
+    status: r.status,
+    assignedBy: r.assigned_by_name || 'Admin',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+}
+
+/**
+ * Create a new content assignment for a writer
+ */
+export async function createWriterAssignment({
+  writerId,
+  contentType,
+  contentId,
+  title = null,
+  instructions = null,
+  deadline = null,
+  assignedBy = 2
+}) {
+  const validTypes = ['novel', 'short_story', 'audio_novel', 'chapter', 'episode'];
+  if (!validTypes.includes(contentType)) {
+    return { success: false, error: 'Invalid content type for assignment.' };
+  }
+
+  // Derive title if missing
+  let contentTitle = title;
+  if (!contentTitle) {
+    if (contentType === 'novel') {
+      const n = await queryOne('SELECT title FROM novels WHERE id = ?;', [contentId]);
+      contentTitle = n ? n.title : `Novel #${contentId}`;
+    } else if (contentType === 'short_story') {
+      const s = await queryOne('SELECT title FROM short_stories WHERE id = ? OR slug = ?;', [contentId, contentId]);
+      contentTitle = s ? s.title : `Story #${contentId}`;
+    } else if (contentType === 'audio_novel') {
+      const a = await queryOne('SELECT title FROM novels WHERE id = ? AND is_audio = 1;', [contentId]) || await queryOne('SELECT title FROM audio_novels WHERE id = ?;', [contentId]);
+      contentTitle = a ? a.title : `Audio Novel #${contentId}`;
+    } else if (contentType === 'chapter' || contentType === 'episode' || contentType === 'audio_episode') {
+      const c = await queryOne('SELECT title FROM chapters WHERE id = ?;', [contentId]);
+      contentTitle = c ? c.title : `Episode #${contentId}`;
+    }
+  }
+
+  const res = await query(`
+    INSERT INTO writer_assignments (writer_id, content_type, content_id, title, instructions, deadline, status, assigned_by)
+    VALUES (?, ?, ?, ?, ?, ?, 'active', ?);
+  `, [writerId, contentType, String(contentId), contentTitle, instructions, deadline || null, assignedBy]);
+
+  const assignmentId = res.insertId;
+
+  await recordWriterAudit({
+    writerId,
+    actorId: assignedBy,
+    action: 'content_assigned',
+    details: `Assigned ${contentType} "${contentTitle}" (ID: ${contentId}) to writer.`
+  });
+
+  await createNotification({
+    userId: writerId,
+    actorId: assignedBy,
+    type: 'assignment',
+    title: 'New Content Assignment',
+    message: `You have been assigned to: "${contentTitle}".`,
+    link: '#writer?tab=assignments'
+  }).catch(() => {});
+
+  return { success: true, assignmentId, title: contentTitle };
+}
+
+/**
+ * Revoke or complete an assignment
+ */
+export async function updateWriterAssignmentStatus(assignmentId, status, actorId = 2) {
+  if (!['active', 'completed', 'revoked'].includes(status)) {
+    return { success: false, error: 'Invalid assignment status.' };
+  }
+
+  const existing = await queryOne('SELECT * FROM writer_assignments WHERE id = ?;', [assignmentId]);
+  if (!existing) {
+    return { success: false, error: 'Assignment not found.' };
+  }
+
+  await query('UPDATE writer_assignments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;', [status, assignmentId]);
+
+  await recordWriterAudit({
+    writerId: existing.writer_id,
+    actorId,
+    action: `assignment_${status}`,
+    details: `Assignment #${assignmentId} (${existing.content_type} "${existing.title}") status changed to ${status}.`
+  });
+
+  return { success: true, status };
+}
+
+/**
+ * Validate writer access to a specific piece of content
+ */
+export async function canWriterAccessContent(writerId, contentType, contentId, requiredAction = 'read') {
+  const perms = await getWriterPermissions(writerId);
+
+  // Check view only restriction
+  if (perms.accessLevel === 'view_only' && requiredAction !== 'read') {
+    return { allowed: false, reason: 'Your account has view-only access.' };
+  }
+
+  // 1. Check active assignment (explicit assignment by Admin for this specific content)
+  if (contentId) {
+    const assignment = await queryOne(`
+      SELECT id FROM writer_assignments 
+      WHERE writer_id = ? AND content_type = ? AND content_id = ? AND status = 'active';
+    `, [writerId, contentType, String(contentId)]);
+
+    if (assignment) {
+      if (contentType === 'novel') {
+        const novel = await queryOne('SELECT access_permission FROM novels WHERE id = ?;', [contentId]);
+        if (novel && novel.access_permission === 'admin_only') {
+          return { allowed: false, reason: 'This novel is restricted to Admin Only. Writers cannot edit this content.' };
+        }
+      }
+      return { allowed: true, accessLevel: perms.accessLevel, isAssigned: true };
+    }
+  }
+
+  // 2. Check overall permission for content type
+  if (contentType === 'novel' && !perms.canNovels) {
+    return { allowed: false, reason: 'Novels management is not enabled for your account.' };
+  }
+  if (contentType === 'short_story' && !perms.canShortStories) {
+    return { allowed: false, reason: 'Short stories management is not enabled for your account.' };
+  }
+  if (contentType === 'audio_novel' && !perms.canAudioNovels) {
+    return { allowed: false, reason: 'Audio novels management is not enabled for your account.' };
+  }
+  if ((contentType === 'chapter' || contentType === 'episode') && !perms.canEpisodes) {
+    return { allowed: false, reason: 'Chapters & episodes creation is not enabled for your account.' };
+  }
+
+  // Check specific novel access permissions
+  if (contentType === 'novel' && contentId) {
+    const novel = await queryOne('SELECT author_id, access_permission FROM novels WHERE id = ?;', [contentId]);
+    if (novel) {
+      if (novel.access_permission === 'admin_only') {
+        return { allowed: false, reason: 'This novel is restricted to Admin Only. Writers cannot edit this content.' };
+      }
+      if (Number(novel.author_id) === Number(writerId)) {
+        return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+      }
+      if (novel.access_permission === 'selected_writers' || novel.access_permission === 'assigned_writers') {
+        return { allowed: false, reason: 'This novel is restricted to specifically assigned writers.' };
+      }
+      if (novel.access_permission === 'all_writers' && perms.canNovels) {
+        return { allowed: true, accessLevel: perms.accessLevel, allWritersAllowed: true };
+      }
+    }
+  }
+
+  // Check specific content article access permissions
+  if ((contentType === 'content' || contentType === 'content_article') && contentId) {
+    const art = await queryOne('SELECT author_id, access_permission FROM content_articles WHERE id = ? OR unique_slug = ?;', [contentId, String(contentId)]);
+    if (art) {
+      if (art.access_permission === 'admin_only') {
+        return { allowed: false, reason: 'This content is restricted to Admin Only. Writers cannot edit this content.' };
+      }
+      if (Number(art.author_id) === Number(writerId)) {
+        return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+      }
+      if (art.access_permission === 'selected_writers' || art.access_permission === 'assigned_writers') {
+        return { allowed: false, reason: 'This content is restricted to specifically assigned writers.' };
+      }
+      if (art.access_permission === 'all_writers') {
+        return { allowed: true, accessLevel: perms.accessLevel, allWritersAllowed: true };
+      }
+    }
+  }
+
+  // If fullAccess is granted, writer can access everything permitted (unless specifically restricted above)
+  if (perms.fullAccess) {
+    return { allowed: true, accessLevel: perms.accessLevel, fullAccess: true };
+  }
+
+  // Check direct ownership or explicit assignment
+  if (contentType === 'novel') {
+    const novel = await queryOne('SELECT author_id FROM novels WHERE id = ?;', [contentId]);
+    if (novel && Number(novel.author_id) === Number(writerId)) {
+      return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+    }
+  } else if (contentType === 'short_story') {
+    const story = await queryOne('SELECT author_id FROM short_stories WHERE id = ? OR slug = ?;', [contentId, contentId]);
+    if (story && Number(story.author_id) === Number(writerId)) {
+      return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+    }
+  } else if (contentType === 'audio_novel') {
+    const audio = await queryOne('SELECT author_id FROM audio_novels WHERE id = ?;', [contentId]);
+    if (audio && Number(audio.author_id) === Number(writerId)) {
+      return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+    }
+  } else if (contentType === 'content' || contentType === 'content_article') {
+    const art = await queryOne('SELECT author_id FROM content_articles WHERE id = ? OR unique_slug = ?;', [contentId, String(contentId)]);
+    if (art && Number(art.author_id) === Number(writerId)) {
+      return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+    }
+  } else if (contentType === 'chapter' || contentType === 'episode') {
+    const ch = await queryOne('SELECT author_id, novel_id FROM chapters WHERE id = ?;', [contentId]);
+    if (ch && Number(ch.author_id) === Number(writerId)) {
+      return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+    }
+    // Also check if writer owns parent novel or has parent access permission
+    if (ch && ch.novel_id) {
+      const parentNovel = await queryOne('SELECT author_id, access_permission FROM novels WHERE id = ?;', [ch.novel_id]);
+      if (parentNovel) {
+        if (parentNovel.access_permission === 'admin_only') {
+          return { allowed: false, reason: 'The novel for this episode has Admin-Only access permissions.' };
+        }
+        if (Number(parentNovel.author_id) === Number(writerId)) {
+          return { allowed: true, accessLevel: perms.accessLevel, isOwner: true };
+        }
+        if (parentNovel.access_permission === 'selected_writers' || parentNovel.access_permission === 'assigned_writers') {
+          return { allowed: false, reason: 'The novel for this episode is restricted to specifically assigned writers.' };
+        }
+        if (parentNovel.access_permission === 'all_writers' && perms.canEpisodes) {
+          return { allowed: true, accessLevel: perms.accessLevel, allWritersAllowed: true };
+        }
+      }
+    }
+  }
+
+  // Check active assignment
+  const assignment = await queryOne(`
+    SELECT id FROM writer_assignments 
+    WHERE writer_id = ? AND content_type = ? AND content_id = ? AND status = 'active';
+  `, [writerId, contentType, String(contentId)]);
+
+  if (assignment) {
+    return { allowed: true, accessLevel: perms.accessLevel, isAssigned: true };
+  }
+
+  // If creating new content (no contentId specified yet)
+  if (!contentId && requiredAction === 'create') {
+    return { allowed: true, accessLevel: perms.accessLevel, isCreating: true };
+  }
+
+  return { allowed: false, reason: 'You do not have active assignment permissions for this content.' };
+}
+
+/**
+ * Submit content for administrative review
+ */
+export async function createOrUpdateSubmission({
+  writerId,
+  contentType,
+  contentId,
+  title,
+  parentId = null,
+  scheduledAt = null
+}) {
+  const perms = await getWriterPermissions(writerId);
+  const requiresReview = perms.accessLevel === 'review_required';
+
+  // If writer has independent publishing permissions, they can publish/schedule directly
+  if (perms.accessLevel === 'independent_publish') {
+    const status = scheduledAt ? 'scheduled' : 'published';
+    await updateContentStatus(contentType, contentId, status, scheduledAt, 'approved');
+    return {
+      success: true,
+      independent: true,
+      status,
+      message: scheduledAt 
+        ? `Successfully scheduled for publication without review.`
+        : `Published directly without review.`
+    };
+  }
+
+  // Otherwise, review is required
+  const initialStatus = 'pending_review';
+
+  // Check if existing pending or changes_requested submission exists
+  const existingSub = await queryOne(`
+    SELECT id FROM writer_submissions 
+    WHERE writer_id = ? AND content_type = ? AND content_id = ?;
+  `, [writerId, contentType, String(contentId)]);
+
+  let subId;
+  if (existingSub) {
+    subId = existingSub.id;
+    await query(`
+      UPDATE writer_submissions 
+      SET title = ?, parent_id = ?, status = 'pending_review', scheduled_at = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?;
+    `, [title, parentId, scheduledAt || null, subId]);
+  } else {
+    const insertRes = await query(`
+      INSERT INTO writer_submissions (writer_id, content_type, content_id, title, parent_id, status, scheduled_at, submitted_at)
+      VALUES (?, ?, ?, ?, ?, 'pending_review', ?, CURRENT_TIMESTAMP);
+    `, [writerId, contentType, String(contentId), title, parentId, scheduledAt || null]);
+    subId = insertRes.insertId;
+  }
+
+  // Update content table's review_status
+  await updateContentStatus(contentType, contentId, 'draft', scheduledAt, 'pending_review');
+
+  await recordWriterAudit({
+    writerId,
+    actorId: writerId,
+    action: 'submitted_for_review',
+    details: `Submitted ${contentType} "${title}" for admin review.`
+  });
+
+  // Notify admin
+  await createNotification({
+    userId: 2,
+    actorId: writerId,
+    type: 'submission',
+    title: 'New Writer Submission for Review',
+    message: `Writer submitted ${contentType} "${title}" for your review.`,
+    link: '#admin?tab=submissions'
+  }).catch(() => {});
+
+  return {
+    success: true,
+    submissionId: subId,
+    status: initialStatus,
+    message: 'Submitted for administrative review.'
+  };
+}
+
+/**
+ * Helper to update content status across chapters, short_stories, audio_novels, or novels
+ */
+async function updateContentStatus(contentType, contentId, status, scheduledAt = null, reviewStatus = 'published', feedback = null) {
+  if (contentType === 'chapter' || contentType === 'episode' || contentType === 'audio_episode') {
+    await query(`
+      UPDATE chapters 
+      SET status = ?, scheduled_at = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?;
+    `, [status, scheduledAt || null, reviewStatus, feedback, contentId]);
+  } else if (contentType === 'short_story') {
+    await query(`
+      UPDATE short_stories 
+      SET status = ?, scheduled_at = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? OR slug = ?;
+    `, [status, scheduledAt || null, reviewStatus, feedback, contentId, contentId]);
+  } else if (contentType === 'audio_novel') {
+    await query(`
+      UPDATE audio_novels 
+      SET status = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?;
+    `, [status, reviewStatus, feedback, contentId]);
+  } else if (contentType === 'novel') {
+    await query(`
+      UPDATE novels 
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?;
+    `, [status, contentId]);
+  }
+}
+
+/**
+ * Retrieve all submissions for Admin Review Queue
+ */
+export async function getAllSubmissions({ status = 'all', writerId = null, contentType = 'all' } = {}) {
+  let sql = `
+    SELECT 
+      s.id, s.writer_id, s.content_type, s.content_id, s.title, s.parent_id,
+      s.status, s.admin_notes, s.scheduled_at, s.submitted_at, s.reviewed_at, s.reviewed_by,
+      s.created_at, s.updated_at,
+      u.username, p.display_name, p.avatar,
+      rev_u.username AS reviewer_name
+    FROM writer_submissions s
+    JOIN users u ON s.writer_id = u.id
+    LEFT JOIN profiles p ON u.id = p.user_id
+    LEFT JOIN users rev_u ON s.reviewed_by = rev_u.id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (status && status !== 'all') {
+    sql += ' AND s.status = ?';
+    params.push(status);
+  }
+  if (writerId) {
+    sql += ' AND s.writer_id = ?';
+    params.push(writerId);
+  }
+  if (contentType && contentType !== 'all') {
+    sql += ' AND s.content_type = ?';
+    params.push(contentType);
+  }
+
+  sql += ' ORDER BY s.submitted_at DESC;';
+
+  const rows = await query(sql, params);
+  return rows.map(r => ({
+    id: r.id,
+    writerId: r.writer_id,
+    writerName: r.display_name || r.username,
+    writerAvatar: sanitizeAvatar(r.avatar),
+    contentType: r.content_type,
+    contentId: r.content_id,
+    title: r.title,
+    parentId: r.parent_id,
+    status: r.status,
+    adminNotes: r.admin_notes || '',
+    scheduledAt: r.scheduled_at,
+    submittedAt: r.submitted_at,
+    reviewedAt: r.reviewed_at,
+    reviewedBy: r.reviewer_name || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+}
+
+/**
+ * Review a submission (Admin only: Approve & Publish, Approve & Schedule, Request Changes, Reject)
+ */
+export async function reviewSubmission({
+  submissionId,
+  action,
+  adminNotes = '',
+  scheduledAt = null,
+  actorId = 2
+}) {
+  const sub = await queryOne('SELECT * FROM writer_submissions WHERE id = ?;', [submissionId]);
+  if (!sub) {
+    return { success: false, error: 'Submission not found.' };
+  }
+
+  let newSubStatus = 'pending_review';
+  let newContentStatus = 'draft';
+  let newReviewStatus = 'pending_review';
+  let notifyTitle = '';
+  let notifyMsg = '';
+
+  if (action === 'approve_publish') {
+    newSubStatus = 'published';
+    newContentStatus = 'published';
+    newReviewStatus = 'published';
+    notifyTitle = 'Submission Approved & Published';
+    notifyMsg = `Your submission "${sub.title}" has been approved and published to the website!`;
+  } else if (action === 'approve_schedule') {
+    newSubStatus = 'approved';
+    newContentStatus = 'scheduled';
+    newReviewStatus = 'approved';
+    notifyTitle = 'Submission Approved & Scheduled';
+    notifyMsg = `Your submission "${sub.title}" has been approved and scheduled for ${scheduledAt ? new Date(scheduledAt).toLocaleString() : 'release'}!`;
+  } else if (action === 'request_changes') {
+    newSubStatus = 'changes_requested';
+    newContentStatus = 'draft';
+    newReviewStatus = 'changes_requested';
+    notifyTitle = 'Changes Requested on Submission';
+    notifyMsg = `Admin requested revisions on "${sub.title}": ${adminNotes || 'Please check feedback and resubmit.'}`;
+  } else if (action === 'reject') {
+    newSubStatus = 'rejected';
+    newContentStatus = 'draft';
+    newReviewStatus = 'rejected';
+    notifyTitle = 'Submission Rejected';
+    notifyMsg = `Your submission "${sub.title}" was rejected: ${adminNotes || 'Does not meet current publishing criteria.'}`;
+  } else {
+    return { success: false, error: 'Invalid review action.' };
+  }
+
+  // Update submission record
+  await query(`
+    UPDATE writer_submissions 
+    SET status = ?, admin_notes = ?, scheduled_at = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?;
+  `, [newSubStatus, adminNotes || null, scheduledAt || sub.scheduled_at || null, actorId, submissionId]);
+
+  // Update content table
+  await updateContentStatus(sub.content_type, sub.content_id, newContentStatus, scheduledAt || sub.scheduled_at, newReviewStatus, adminNotes);
+
+  // Record audit log
+  await recordWriterAudit({
+    writerId: sub.writer_id,
+    actorId,
+    action: `submission_${action}`,
+    details: `Admin executed ${action} on ${sub.content_type} "${sub.title}". Notes: ${adminNotes || 'None'}`
+  });
+
+  // Notify writer
+  await createNotification({
+    userId: sub.writer_id,
+    actorId,
+    type: 'submission_review',
+    title: notifyTitle,
+    message: notifyMsg,
+    link: '#writer'
+  }).catch(() => {});
+
+  return {
+    success: true,
+    status: newSubStatus,
+    message: notifyTitle
+  };
+}
+
+/**
+ * Get comprehensive workspace data for a writer
+ */
+export async function getEnhancedWriterWorkspaceData(writerId) {
+  const baseData = await getWriterWorkspaceData(writerId);
+  if (!baseData) return null;
+
+  const perms = await getWriterPermissions(writerId);
+  const assignments = await getWriterAssignments(writerId, 'active');
+  const submissions = await query(`
+    SELECT * FROM writer_submissions WHERE writer_id = ? ORDER BY submitted_at DESC;
+  `, [writerId]);
+
+  // Also query short stories owned or assigned
+  let shortStories = [];
+  if (perms.canShortStories) {
+    if (perms.fullAccess) {
+      shortStories = await query('SELECT * FROM short_stories ORDER BY updated_at DESC;');
+    } else {
+      const assignedStoryIds = assignments.filter(a => a.contentType === 'short_story').map(a => a.contentId);
+      if (assignedStoryIds.length > 0) {
+        shortStories = await query('SELECT * FROM short_stories WHERE author_id = ? OR id IN (?) OR slug IN (?) ORDER BY updated_at DESC;', [writerId, assignedStoryIds, assignedStoryIds]);
+      } else {
+        shortStories = await query('SELECT * FROM short_stories WHERE author_id = ? ORDER BY updated_at DESC;', [writerId]);
+      }
+    }
+  }
+
+  // Query audio novels owned or assigned (from novels where is_audio=1 or category='Audio Novels')
+  let audioNovels = [];
+  if (perms.canAudioNovels) {
+    if (perms.fullAccess) {
+      audioNovels = await query(`
+        SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
+               (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
+        FROM novels n
+        WHERE n.is_audio = 1 OR n.category = 'Audio Novels'
+        ORDER BY n.updated_at DESC;
+      `);
+    } else {
+      const assignedAudioIds = assignments.filter(a => a.contentType === 'audio_novel').map(a => a.contentId);
+      if (assignedAudioIds.length > 0) {
+        audioNovels = await query(`
+          SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
+                 (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
+          FROM novels n
+          WHERE (n.is_audio = 1 OR n.category = 'Audio Novels') AND (n.author_id = ? OR n.id IN (?))
+          ORDER BY n.updated_at DESC;
+        `, [writerId, assignedAudioIds]);
+      } else {
+        audioNovels = await query(`
+          SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
+                 (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
+          FROM novels n
+          WHERE (n.is_audio = 1 OR n.category = 'Audio Novels') AND n.author_id = ?
+          ORDER BY n.updated_at DESC;
+        `, [writerId]);
+      }
+    }
+  }
+
+  const pendingSubmissions = submissions.filter(s => s.status === 'pending_review');
+  const changesRequested = submissions.filter(s => s.status === 'changes_requested');
+
+  return {
+    ...baseData,
+    permissions: perms,
+    assignments,
+    assignmentsCount: assignments.length,
+    submissions,
+    pendingSubmissionsCount: pendingSubmissions.length,
+    changesRequestedCount: changesRequested.length,
+    shortStories,
+    audioNovels
+  };
+}

@@ -957,9 +957,13 @@ export function updateHeaderUserArea() {
             <span class="user-name-sm">${displayName}</span>
           </div>
         </div>
-        ${(user?.isAdmin && user?.isAuthorSession) ? `
-          <button class="btn btn-gold btn-sm" onclick="window.location.hash='#admin';" style="padding:4px 10px; font-size:12px; gap:4px;" title="Author & Admin Dashboard">
-            👑 Author Dashboard
+        ${(user?.isAdmin || user?.role === 'Admin' || user?.isAuthorSession) ? `
+          <button class="btn btn-gold btn-sm" onclick="window.location.hash='#admin';" style="padding:4px 9px; font-size:11.5px; font-weight:700; gap:3px; border-radius:6px; letter-spacing:0.3px; white-space:nowrap; flex-shrink:0;" title="Author & Admin Dashboard">
+            👑 AD
+          </button>
+        ` : (user?.isWriter || user?.role === 'writer') ? `
+          <button class="btn btn-gold btn-sm" onclick="window.location.hash='#writer';" style="padding:4px 9px; font-size:11.5px; font-weight:700; gap:3px; border-radius:6px; letter-spacing:0.3px; white-space:nowrap; flex-shrink:0;" title="Writer Workspace">
+            ✍️ WD
           </button>
         ` : ''}
         <button class="action-btn" onclick="handleLogout()" title="${t('btn_logout')} (Logout)" style="width:34px; height:34px; font-size:12px;">
@@ -1001,7 +1005,7 @@ export function updateHeaderUserArea() {
         </div>
         ${(user?.isAdmin && user?.isAuthorSession) ? `
           <button class="btn btn-gold btn-sm" style="width:100%; margin-bottom:8px;" onclick="window.location.hash='#admin'; closeMobileDrawer();">
-            👑 Author & Admin Dashboard
+            👑 Author & AD
           </button>
         ` : ''}
         <button class="btn btn-outline btn-sm" style="width:100%;" onclick="handleLogout(); closeMobileDrawer();">

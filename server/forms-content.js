@@ -1,3 +1,4 @@
+import { getPublicShortStories } from './short-stories.js';
 // Forms, Novel Content, and Reading Management Layer for Rudhra Prarthana Novels
 // Implements 3-Level Hierarchy: Main Title -> Sub Title -> Content Title -> Reading Content
 // With dedicated reading pages, comments, and fine-grained individual member access control
@@ -126,14 +127,16 @@ export async function getContentHierarchy(currentUser = null) {
 
   // 3. Fetch Content Articles (Content Titles)
   const articlesQuery = isAdmin
-    ? `SELECT id, unique_slug, main_category_id, sub_category_id, novel_id, chapter_num,
+    ? `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, chapter_num,
               title, summary, cover_image, author_id, author_name, status, is_published,
-              is_disabled, visibility, views_count, comments_count, sort_order, published_at, created_at
+              is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
+              published_at, scheduled_at, created_at, updated_at
        FROM content_articles 
        ORDER BY sort_order ASC, published_at DESC, id DESC;`
-    : `SELECT id, unique_slug, main_category_id, sub_category_id, novel_id, chapter_num,
+    : `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, chapter_num,
               title, summary, cover_image, author_id, author_name, status, is_published,
-              is_disabled, visibility, views_count, comments_count, sort_order, published_at, created_at
+              is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
+              published_at, scheduled_at, created_at, updated_at
        FROM content_articles 
        WHERE is_published = 1 AND is_disabled = 0 AND status = 'published'
        ORDER BY sort_order ASC, published_at DESC, id DESC;`;
@@ -159,7 +162,9 @@ export async function getContentHierarchy(currentUser = null) {
   const novelsWithEpisodes = await query(`
     SELECT n.id, n.title, n.author, n.category, n.status, n.badge, n.cover, n.description,
            n.chapters_count, n.views, n.rating, n.updated_date, n.is_audio, n.audio_voice, n.audio_duration,
+           n.content_type, n.visibility, n.author_id, n.scheduled_at, n.is_published,
            (SELECT COUNT(*) FROM comments c WHERE c.novel_id = n.id) as comments_count,
+           (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.status = 'published') as total_episodes,
            (
              SELECT c.title 
              FROM chapters c 
@@ -179,9 +184,33 @@ export async function getContentHierarchy(currentUser = null) {
              ORDER BY c.sort_order DESC, c.id DESC LIMIT 1
            ) as latest_published_at
     FROM novels n
-    WHERE n.is_published = 1
+    WHERE n.is_published = 1 AND n.status != 'Draft'
     ORDER BY latest_published_at DESC, n.sort_order ASC, n.id ASC;
   `);
+
+  let userAllowedNovelIds = new Set();
+  if (!isAdmin && userId) {
+    const rules = await query(`
+      SELECT target_id FROM content_access_rules 
+      WHERE target_type IN ('novel', 'audio_novel', 'short_story') 
+        AND user_id = ? AND rule_type = 'allow'
+        AND (expires_at IS NULL OR expires_at > NOW());
+    `, [userId]);
+    rules.forEach(r => userAllowedNovelIds.add(String(r.target_id)));
+  }
+
+  const visibleNovels = novelsWithEpisodes.filter(n => {
+    if (isAdmin) return true;
+    if (userId && Number(n.author_id) === Number(userId)) return true;
+    if (!n.is_published || n.status === 'Draft' || n.visibility === 'draft') return false;
+    if (n.status === 'Scheduled' && n.scheduled_at && new Date(n.scheduled_at) > new Date()) return false;
+    const vis = (n.visibility || 'public').toLowerCase();
+    if (vis === 'public') return true;
+    if (vis === 'private' || vis === 'admin_only') return false;
+    if (vis === 'members' || vis === 'all_members') return Boolean(userId);
+    if (vis === 'selected_members') return userAllowedNovelIds.has(String(n.id));
+    return true;
+  });
 
   // Assemble the hierarchy
   const hierarchy = [];
@@ -225,35 +254,70 @@ export async function getContentHierarchy(currentUser = null) {
         stats: null
       };
 
-      // Content Articles under this Subcategory
-      const directArticles = allArticles.filter(a => a.sub_category_id === sub.id);
-      for (const art of directArticles) {
-        if (!isAdmin && isRestricted('content', art.id)) continue;
-        subItem.articles.push({
-          id: art.id,
-          uniqueSlug: art.unique_slug,
-          mainCategoryId: art.main_category_id,
-          subCategoryId: art.sub_category_id,
-          title: art.title,
-          summary: art.summary || '',
-          coverImage: art.cover_image || null,
-          authorName: art.author_name || 'Rudhra Prarthana',
-          status: art.status,
-          viewsCount: Number(art.views_count || 0),
-          commentsCount: Number(art.comments_count || 0),
-          publishedAt: art.published_at || art.created_at,
-          link: `#content?slug=${encodeURIComponent(art.unique_slug)}`
-        });
+      // Recursive builder for unlimited content hierarchy
+      function buildContentTree(artList, parentId = null) {
+        return artList
+          .filter(a => {
+            if (parentId === null) {
+              return a.parent_id === null || a.parent_id === 0 || !a.parent_id;
+            }
+            return Number(a.parent_id) === Number(parentId);
+          })
+          .map(art => {
+            const children = buildContentTree(artList, art.id);
+            return {
+              id: art.id,
+              uniqueSlug: art.unique_slug,
+              mainCategoryId: art.main_category_id,
+              subCategoryId: art.sub_category_id,
+              parentId: art.parent_id ? Number(art.parent_id) : null,
+              title: art.title,
+              summary: art.summary || '',
+              coverImage: art.cover_image || null,
+              authorId: art.author_id,
+              authorName: art.author_name || 'Rudhra Prarthana',
+              status: art.status,
+              isPublished: Boolean(art.is_published),
+              isDisabled: Boolean(art.is_disabled),
+              visibility: art.visibility || 'public',
+              accessPermission: art.access_permission || 'admin_only',
+              viewsCount: Number(art.views_count || 0),
+              commentsCount: Number(art.comments_count || 0),
+              sortOrder: Number(art.sort_order || 0),
+              publishedAt: art.published_at || art.created_at,
+              scheduledAt: art.scheduled_at || null,
+              updatedAt: art.updated_at || art.created_at,
+              link: `#content?slug=${encodeURIComponent(art.unique_slug)}`,
+              children: children,
+              hasChildren: children.length > 0
+            };
+          });
       }
 
-      const sortedSubArticles = [...subItem.articles].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      // Filter accessible articles under this subcategory
+      const directArticles = allArticles.filter(a => a.sub_category_id === sub.id);
+      const accessibleArticles = directArticles.filter(a => {
+        if (isAdmin) return true;
+        if (isRestricted('content', a.id)) return false;
+        if (!a.is_published || a.status === 'Draft' || a.status === 'draft') return false;
+        if (a.status === 'Scheduled' && a.scheduled_at && new Date(a.scheduled_at) > new Date()) return false;
+        const vis = (a.visibility || 'public').toLowerCase();
+        if (vis === 'public') return true;
+        if (vis === 'private' || vis === 'admin_only') return false;
+        if (vis === 'members' || vis === 'all_members') return Boolean(userId);
+        return true;
+      });
+
+      subItem.articles = buildContentTree(accessibleArticles, null);
+
+      const sortedSubArticles = [...accessibleArticles].sort((a, b) => new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0));
       subItem.stats = {
-        totalItems: subItem.articles.length,
-        totalComments: subItem.articles.reduce((sum, a) => sum + Number(a.commentsCount || 0), 0),
-        totalViews: subItem.articles.reduce((sum, a) => sum + Number(a.viewsCount || 0), 0),
+        totalItems: accessibleArticles.length,
+        totalComments: accessibleArticles.reduce((sum, a) => sum + Number(a.comments_count || 0), 0),
+        totalViews: accessibleArticles.reduce((sum, a) => sum + Number(a.views_count || 0), 0),
         latestTitle: sortedSubArticles[0]?.title || null,
-        latestLink: sortedSubArticles[0]?.link || null,
-        latestDate: sortedSubArticles[0]?.publishedAt || null
+        latestLink: sortedSubArticles[0]?.unique_slug ? `#content?slug=${encodeURIComponent(sortedSubArticles[0].unique_slug)}` : null,
+        latestDate: sortedSubArticles[0]?.published_at || sortedSubArticles[0]?.created_at || null
       };
 
       mainItem.subcategories.push(subItem);
@@ -262,7 +326,7 @@ export async function getContentHierarchy(currentUser = null) {
     // Special category novel integration:
     // Ongoing Novels
     if (mainCat.id === 'ongoing-novels') {
-      const ongoingNovels = novelsWithEpisodes.filter(n => n.status === 'Ongoing' || (n.category && n.category.toLowerCase().includes('ongoing')));
+      const ongoingNovels = visibleNovels.filter(n => n.status === 'Ongoing' || (n.category && n.category.toLowerCase().includes('ongoing')));
       mainItem.novels = ongoingNovels.map(n => ({
         id: n.id,
         title: n.title,
@@ -282,7 +346,7 @@ export async function getContentHierarchy(currentUser = null) {
 
     // Completed Novels
     if (mainCat.id === 'completed-novels') {
-      const completedNovels = novelsWithEpisodes.filter(n => n.status === 'Completed' || (n.category && n.category.toLowerCase().includes('completed')));
+      const completedNovels = visibleNovels.filter(n => n.status === 'Completed' || (n.category && n.category.toLowerCase().includes('completed')));
       mainItem.novels = completedNovels.map(n => ({
         id: n.id,
         title: n.title,
@@ -302,26 +366,50 @@ export async function getContentHierarchy(currentUser = null) {
 
     // Short Stories
     if (mainCat.id === 'short-stories') {
-      const shortNovels = novelsWithEpisodes.filter(n => (n.category && n.category.toLowerCase().includes('short')));
-      mainItem.novels = shortNovels.map(n => ({
-        id: n.id,
-        title: n.title,
-        author: n.author,
-        cover: n.cover,
-        views: n.views || '0',
-        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-        commentsCount: Number(n.comments_count || 0),
-        latestEpisodeTitle: n.latest_episode_title || 'Story Collection',
-        latestEpisodeNum: n.latest_episode_num || '1',
-        updatedDate: n.updated_date || 'Collection',
-        link: `#novel?id=${encodeURIComponent(n.id)}`,
-        readLink: `#reader?novel=${encodeURIComponent(n.id)}&ch=1`
-      }));
+      try {
+        const publicStories = await getPublicShortStories();
+        if (publicStories && publicStories.length > 0) {
+          mainItem.novels = publicStories.map(s => ({
+            id: s.slug || String(s.id),
+            rawId: s.id,
+            title: s.title,
+            author: s.author,
+            genre: s.genre,
+            cover: s.coverImage || '/default-cover.jpg',
+            views: Number(s.viewsCount || 0).toLocaleString(),
+            viewsCount: Number(s.viewsCount || 0),
+            commentsCount: Number(s.commentsCount || 0),
+            latestEpisodeTitle: s.genre || 'Short Story',
+            latestEpisodeNum: '1',
+            updatedDate: s.publishedAt ? new Date(s.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent',
+            link: `#story?id=${encodeURIComponent(s.slug || s.id)}`,
+            readLink: `#story?id=${encodeURIComponent(s.slug || s.id)}`
+          }));
+        } else {
+          const shortNovels = visibleNovels.filter(n => (n.category && n.category.toLowerCase().includes('short')));
+          mainItem.novels = shortNovels.map(n => ({
+            id: n.id,
+            title: n.title,
+            author: n.author,
+            cover: n.cover,
+            views: n.views || '0',
+            viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+            commentsCount: Number(n.comments_count || 0),
+            latestEpisodeTitle: n.latest_episode_title || 'Story Collection',
+            latestEpisodeNum: n.latest_episode_num || '1',
+            updatedDate: n.updated_date || 'Collection',
+            link: `#novel?id=${encodeURIComponent(n.id)}`,
+            readLink: `#reader?novel=${encodeURIComponent(n.id)}&ch=1`
+          }));
+        }
+      } catch (err) {
+        console.error('Error fetching short stories for hierarchy:', err.message);
+      }
     }
 
     // Audio Novels
     if (mainCat.id === 'audio-novels') {
-      const audioNovels = novelsWithEpisodes.filter(n => Boolean(n.is_audio) || (n.category && n.category.toLowerCase().includes('audio')));
+      const audioNovels = visibleNovels.filter(n => Boolean(n.is_audio) || (n.category && n.category.toLowerCase().includes('audio')));
       mainItem.novels = audioNovels.map(n => ({
         id: n.id,
         title: n.title,
@@ -329,12 +417,43 @@ export async function getContentHierarchy(currentUser = null) {
         voice: n.audio_voice || n.author,
         duration: n.audio_duration || 'Full Audio',
         cover: n.cover,
+        chaptersCount: Number(n.chapters_count || 0),
+        episodesCount: Number(n.total_episodes || n.chapters_count || 0),
         views: n.views || '0',
         viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
         commentsCount: Number(n.comments_count || 0),
         latestEpisodeTitle: n.latest_episode_title || 'Audio Episode',
-        link: `#audio`
+        latestEpisodeNum: n.latest_episode_num || '1',
+        latestPublishedAt: n.latest_published_at,
+        updatedDate: n.updated_date,
+        link: `#audio?novel=${encodeURIComponent(n.id)}`,
+        readLink: `#audio?novel=${encodeURIComponent(n.id)}`
       }));
+    }
+
+    // Dynamic Matching for Custom Content Categories
+    if (!['ongoing-novels', 'completed-novels', 'short-stories', 'audio-novels', 'general', 'review-junction', 'tea-time'].includes(mainCat.id)) {
+      const customNovels = visibleNovels.filter(n => 
+        (n.category && n.category.toLowerCase() === mainCat.title.toLowerCase()) || 
+        (n.content_type && n.content_type.toLowerCase() === mainCat.id.toLowerCase())
+      );
+      if (customNovels.length > 0) {
+        mainItem.novels = customNovels.map(n => ({
+          id: n.id,
+          title: n.title,
+          author: n.author,
+          category: n.category,
+          cover: n.cover,
+          views: n.views || '0',
+          viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
+          commentsCount: Number(n.comments_count || 0),
+          latestEpisodeTitle: n.latest_episode_title || 'Episode 01',
+          latestEpisodeNum: n.latest_episode_num || '1',
+          updatedDate: n.latest_published_at ? new Date(n.latest_published_at).toLocaleDateString() : (n.updated_date || 'Recent'),
+          link: n.is_audio ? `#audio?novel=${encodeURIComponent(n.id)}` : `#novel?id=${encodeURIComponent(n.id)}`,
+          readLink: n.is_audio ? `#audio?novel=${encodeURIComponent(n.id)}` : `#reader?novel=${encodeURIComponent(n.id)}&ch=${encodeURIComponent(n.latest_episode_num || '1')}`
+        }));
+      }
     }
 
     // Precalculate category-level statistics
@@ -399,110 +518,156 @@ export async function getContentArticle(idOrSlug, currentUser = null) {
     return { success: false, error: 'The requested reading content does not exist or has been removed.', code: 'NOT_FOUND' };
   }
 
-  // 2. Administrators have bypass access
-  if (isAdmin) {
-    // Increment view count
-    await query(`UPDATE content_articles SET views_count = views_count + 1 WHERE id = ?;`, [article.id]);
-    return { success: true, article: formatArticle(article) };
-  }
-
-  // 3. Draft / Unpublished check
-  if (!article.is_published || article.status === 'unpublished' || article.status === 'draft') {
-    return { 
-      success: false, 
-      error: 'This content is currently unpublished or in draft status. Only administrators may view it.', 
-      code: 'UNPUBLISHED' 
-    };
-  }
-
-  // 4. Global disable checks (Item, Subcategory, or Main Category)
-  if (article.is_disabled || article.status === 'disabled') {
-    return { 
-      success: false, 
-      error: 'This content has been temporarily disabled by an administrator.', 
-      code: 'DISABLED' 
-    };
-  }
-
-  if (article.sub_is_disabled || article.sub_status === 'disabled') {
-    return { 
-      success: false, 
-      error: 'The parent section has been temporarily disabled by an administrator.', 
-      code: 'DISABLED' 
-    };
-  }
-
-  if (article.main_is_disabled || article.main_status === 'disabled') {
-    return { 
-      success: false, 
-      error: 'The parent category has been temporarily disabled by an administrator.', 
-      code: 'DISABLED' 
-    };
-  }
-
-  // 5. Check Individual Member Access Restrictions
-  if (userId) {
-    // A. Check article-level restriction
-    const artBlock = await queryOne(`
-      SELECT * FROM content_access_rules 
-      WHERE (target_type = 'content' OR target_type = 'article') 
-        AND (target_id = ? OR target_id = ?) 
-        AND user_id = ? AND rule_type = 'block'
-        AND (expires_at IS NULL OR expires_at > NOW())
-      ORDER BY id DESC LIMIT 1;
-    `, [String(article.id), String(article.unique_slug), userId]);
-
-    if (artBlock) {
-      const expMsg = artBlock.expires_at ? ` (until ${new Date(artBlock.expires_at).toLocaleString()})` : '';
-      const rsnMsg = artBlock.reason ? ` Reason: ${artBlock.reason}` : '';
-      return {
-        success: false,
-        error: `Your access to "${article.title}" has been restricted by an administrator.${expMsg}${rsnMsg}`,
-        code: 'FORBIDDEN',
-        reason: artBlock.reason,
-        expiresAt: artBlock.expires_at
+  // 2. Access checks for non-administrators
+  if (!isAdmin) {
+    // Draft / Unpublished check
+    if (!article.is_published || article.status === 'unpublished' || article.status === 'draft') {
+      return { 
+        success: false, 
+        error: 'This content is currently unpublished or in draft status. Only administrators may view it.', 
+        code: 'UNPUBLISHED' 
       };
     }
 
-    // B. Check subcategory-level restriction
-    const subBlock = await queryOne(`
-      SELECT * FROM content_access_rules 
-      WHERE (target_type = 'sub' OR target_type = 'subcategory') AND target_id = ? AND user_id = ? AND rule_type = 'block'
-        AND (expires_at IS NULL OR expires_at > NOW())
-      ORDER BY id DESC LIMIT 1;
-    `, [String(article.sub_category_id), userId]);
-
-    if (subBlock) {
-      return {
-        success: false,
-        error: `Your access to the section "${article.sub_category_title || 'Section'}" has been restricted by an administrator.`,
-        code: 'FORBIDDEN',
-        reason: subBlock.reason
+    // Global disable checks (Item, Subcategory, or Main Category)
+    if (article.is_disabled || article.status === 'disabled') {
+      return { 
+        success: false, 
+        error: 'This content has been temporarily disabled by an administrator.', 
+        code: 'DISABLED' 
       };
     }
 
-    // C. Check main-category-level restriction
-    const mainBlock = await queryOne(`
-      SELECT * FROM content_access_rules 
-      WHERE (target_type = 'main' OR target_type = 'main_category') AND target_id = ? AND user_id = ? AND rule_type = 'block'
-        AND (expires_at IS NULL OR expires_at > NOW())
-      ORDER BY id DESC LIMIT 1;
-    `, [String(article.main_category_id), userId]);
-
-    if (mainBlock) {
-      return {
-        success: false,
-        error: `Your access to the category "${article.main_category_title || 'Category'}" has been restricted by an administrator.`,
-        code: 'FORBIDDEN',
-        reason: mainBlock.reason
+    if (article.sub_is_disabled || article.sub_status === 'disabled') {
+      return { 
+        success: false, 
+        error: 'The parent section has been temporarily disabled by an administrator.', 
+        code: 'DISABLED' 
       };
+    }
+
+    if (article.main_is_disabled || article.main_status === 'disabled') {
+      return { 
+        success: false, 
+        error: 'The parent category has been temporarily disabled by an administrator.', 
+        code: 'DISABLED' 
+      };
+    }
+
+    // Check Individual Member Access Restrictions
+    if (userId) {
+      // A. Check article-level restriction
+      const artBlock = await queryOne(`
+        SELECT * FROM content_access_rules 
+        WHERE (target_type = 'content' OR target_type = 'article') 
+          AND (target_id = ? OR target_id = ?) 
+          AND user_id = ? AND rule_type = 'block'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY id DESC LIMIT 1;
+      `, [String(article.id), String(article.unique_slug), userId]);
+
+      if (artBlock) {
+        const expMsg = artBlock.expires_at ? ` (until ${new Date(artBlock.expires_at).toLocaleString()})` : '';
+        const rsnMsg = artBlock.reason ? ` Reason: ${artBlock.reason}` : '';
+        return {
+          success: false,
+          error: `Your access to "${article.title}" has been restricted by an administrator.${expMsg}${rsnMsg}`,
+          code: 'FORBIDDEN',
+          reason: artBlock.reason,
+          expiresAt: artBlock.expires_at
+        };
+      }
+
+      // B. Check subcategory-level restriction
+      const subBlock = await queryOne(`
+        SELECT * FROM content_access_rules 
+        WHERE (target_type = 'sub' OR target_type = 'subcategory') AND target_id = ? AND user_id = ? AND rule_type = 'block'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY id DESC LIMIT 1;
+      `, [String(article.sub_category_id), userId]);
+
+      if (subBlock) {
+        return {
+          success: false,
+          error: `Your access to the section "${article.sub_category_title || 'Section'}" has been restricted by an administrator.`,
+          code: 'FORBIDDEN',
+          reason: subBlock.reason
+        };
+      }
+
+      // C. Check main-category-level restriction
+      const mainBlock = await queryOne(`
+        SELECT * FROM content_access_rules 
+        WHERE (target_type = 'main' OR target_type = 'main_category') AND target_id = ? AND user_id = ? AND rule_type = 'block'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY id DESC LIMIT 1;
+      `, [String(article.main_category_id), userId]);
+
+      if (mainBlock) {
+        return {
+          success: false,
+          error: `Your access to the category "${article.main_category_title || 'Category'}" has been restricted by an administrator.`,
+          code: 'FORBIDDEN',
+          reason: mainBlock.reason
+        };
+      }
     }
   }
 
   // 6. Increment view count
   await query(`UPDATE content_articles SET views_count = views_count + 1 WHERE id = ?;`, [article.id]);
 
-  return { success: true, article: formatArticle(article) };
+  // 7. Resolve Parent, Children, and Siblings for nested navigation
+  let parentArticle = null;
+  if (article.parent_id) {
+    const parentRow = await queryOne(`SELECT id, title, unique_slug FROM content_articles WHERE id = ?;`, [article.parent_id]);
+    if (parentRow) {
+      parentArticle = {
+        id: parentRow.id,
+        title: parentRow.title,
+        uniqueSlug: parentRow.unique_slug,
+        link: `#content?slug=${encodeURIComponent(parentRow.unique_slug)}`
+      };
+    }
+  }
+
+  const childRows = await query(`
+    SELECT id, unique_slug, title, summary, status, published_at 
+    FROM content_articles 
+    WHERE parent_id = ? AND is_published = 1 AND is_disabled = 0
+    ORDER BY sort_order ASC, id ASC;
+  `, [article.id]);
+
+  const siblingRows = await query(`
+    SELECT id, unique_slug, title, sort_order 
+    FROM content_articles 
+    WHERE sub_category_id = ? 
+      AND (parent_id = ? OR (parent_id IS NULL AND ? IS NULL))
+      AND is_published = 1 AND is_disabled = 0
+    ORDER BY sort_order ASC, id ASC;
+  `, [article.sub_category_id, article.parent_id || null, article.parent_id || null]);
+
+  const formatted = formatArticle(article);
+  formatted.parent = parentArticle;
+  formatted.parentArticle = parentArticle;
+  formatted.children = (childRows || []).map(c => ({
+    id: c.id,
+    title: c.title,
+    uniqueSlug: c.unique_slug,
+    summary: c.summary || '',
+    status: c.status,
+    publishedAt: c.published_at,
+    link: `#content?slug=${encodeURIComponent(c.unique_slug)}`
+  }));
+  formatted.siblings = (siblingRows || []).map(s => ({
+    id: s.id,
+    title: s.title,
+    uniqueSlug: s.unique_slug,
+    link: `#content?slug=${encodeURIComponent(s.unique_slug)}`,
+    isCurrent: s.id === article.id
+  }));
+
+  return { success: true, article: formatted };
 }
 
 function formatArticle(row) {
@@ -513,10 +678,11 @@ function formatArticle(row) {
     mainCategoryTitle: row.main_category_title || 'General',
     subCategoryId: row.sub_category_id,
     subCategoryTitle: row.sub_category_title || 'Notes',
+    parentId: row.parent_id ? Number(row.parent_id) : null,
     novelId: row.novel_id || null,
     chapterNum: row.chapter_num || null,
     title: row.title,
-    content: row.content,
+    content: row.content || '',
     summary: row.summary || '',
     coverImage: row.cover_image || null,
     authorId: row.author_id,
@@ -524,6 +690,9 @@ function formatArticle(row) {
     authorAvatar: row.author_avatar || '/profile.png',
     authorRole: row.author_role || 'author',
     status: row.status,
+    visibility: row.visibility || 'public',
+    accessPermission: row.access_permission || 'admin_only',
+    scheduledAt: row.scheduled_at || null,
     isPublished: Boolean(row.is_published),
     isDisabled: Boolean(row.is_disabled),
     viewsCount: Number(row.views_count || 0),
@@ -968,32 +1137,42 @@ export async function createContentArticle({
   main_category_id,
   subCategoryId,
   sub_category_id,
+  parentId = null,
+  parent_id = null,
   title,
   uniqueSlug,
   unique_slug,
-  content,
-  summary,
-  coverImage,
-  cover_image,
+  content = '',
+  summary = '',
+  coverImage = null,
+  cover_image = null,
   authorId = 2,
   author_id = 2,
   authorName = 'Rudhra Prarthana',
   author_name = 'Rudhra Prarthana',
   status = 'published',
+  visibility = 'public',
+  accessPermission = 'admin_only',
+  access_permission = 'admin_only',
+  scheduledAt = null,
+  scheduled_at = null,
   sortOrder = 0,
   sort_order = 0,
   adminId = 2
 }) {
   const mId = mainCategoryId || main_category_id;
   const sId = subCategoryId || sub_category_id;
+  const pId = parentId !== undefined && parentId !== null && parentId !== '' ? Number(parentId) : (parent_id ? Number(parent_id) : null);
   const uSlug = uniqueSlug || unique_slug;
   const cImage = coverImage || cover_image || null;
   const aId = authorId || author_id || 2;
   const aName = authorName || author_name || 'Rudhra Prarthana';
   const sOrder = sortOrder || sort_order || 0;
+  const accPerm = accessPermission || access_permission || 'admin_only';
+  const schedAt = scheduledAt || scheduled_at || null;
 
-  if (!mId || !sId || !title || !title.trim() || !content || !content.trim()) {
-    return { success: false, error: 'Main title, sub title, content title, and reading content are required.' };
+  if (!mId || !sId || !title || !title.trim()) {
+    return { success: false, error: 'Main title, sub title, and content title are required.' };
   }
 
   const cleanTitle = title.trim();
@@ -1005,19 +1184,19 @@ export async function createContentArticle({
     cleanSlug = `${cleanSlug}-${Date.now().toString().slice(-4)}`;
   }
 
-  const isPublished = status === 'published' ? 1 : 0;
+  const isPublished = (status === 'published' || status === 'Ongoing' || status === 'Completed') ? 1 : 0;
   const isDisabled = status === 'disabled' ? 1 : 0;
 
   const result = await query(`
     INSERT INTO content_articles (
-      unique_slug, main_category_id, sub_category_id, title, content,
-      summary, cover_image, author_id, author_name, status, is_published,
-      is_disabled, sort_order, published_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
+      unique_slug, main_category_id, sub_category_id, parent_id, title, content,
+      summary, cover_image, author_id, author_name, status, visibility, access_permission,
+      is_published, is_disabled, sort_order, published_at, scheduled_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
   `, [
-    cleanSlug, mId, sId, cleanTitle, content,
-    summary || '', cImage, aId, aName, status,
-    isPublished, isDisabled, Number(sOrder)
+    cleanSlug, mId, sId, pId, cleanTitle, content || '',
+    summary || '', cImage, aId, aName, status, visibility, accPerm,
+    isPublished, isDisabled, Number(sOrder), schedAt
   ]);
 
   await recordAdminAudit({
@@ -1026,13 +1205,13 @@ export async function createContentArticle({
     targetUserId: null,
     ipAddress: null,
     userAgent: null,
-    details: `Created content article "${cleanTitle}" (ID: ${result.insertId}, Slug: ${cleanSlug})`
+    details: `Created content article "${cleanTitle}" (ID: ${result.insertId}, ParentID: ${pId}, Slug: ${cleanSlug})`
   });
 
   return { 
     success: true, 
     id: result.insertId, 
-    article: { id: result.insertId, unique_slug: cleanSlug, slug: cleanSlug },
+    article: { id: result.insertId, unique_slug: cleanSlug, slug: cleanSlug, parent_id: pId },
     slug: cleanSlug, 
     message: 'Content created successfully!' 
   };
@@ -1045,6 +1224,8 @@ export async function updateContentArticle({
   id,
   mainCategoryId,
   subCategoryId,
+  parentId,
+  parent_id,
   title,
   uniqueSlug,
   content,
@@ -1052,6 +1233,11 @@ export async function updateContentArticle({
   coverImage,
   authorName,
   status,
+  visibility,
+  accessPermission,
+  access_permission,
+  scheduledAt,
+  scheduled_at,
   sortOrder,
   adminId = 2
 }) {
@@ -1060,11 +1246,15 @@ export async function updateContentArticle({
 
   const isPublished = status !== undefined ? (status === 'published' ? 1 : 0) : art.is_published;
   const isDisabled = status !== undefined ? (status === 'disabled' ? 1 : 0) : art.is_disabled;
+  const pId = parentId !== undefined ? (parentId ? Number(parentId) : null) : (parent_id !== undefined ? (parent_id ? Number(parent_id) : null) : art.parent_id);
+  const accPerm = accessPermission || access_permission || art.access_permission;
+  const schedAt = scheduledAt !== undefined ? scheduledAt : (scheduled_at !== undefined ? scheduled_at : art.scheduled_at);
 
   await query(`
     UPDATE content_articles
     SET main_category_id = COALESCE(?, main_category_id),
         sub_category_id = COALESCE(?, sub_category_id),
+        parent_id = ?,
         title = COALESCE(?, title),
         unique_slug = COALESCE(?, unique_slug),
         content = COALESCE(?, content),
@@ -1072,6 +1262,9 @@ export async function updateContentArticle({
         cover_image = COALESCE(?, cover_image),
         author_name = COALESCE(?, author_name),
         status = COALESCE(?, status),
+        visibility = COALESCE(?, visibility),
+        access_permission = ?,
+        scheduled_at = ?,
         is_published = ?,
         is_disabled = ?,
         sort_order = COALESCE(?, sort_order)
@@ -1079,6 +1272,7 @@ export async function updateContentArticle({
   `, [
     mainCategoryId || null,
     subCategoryId || null,
+    pId,
     title ? title.trim() : null,
     uniqueSlug ? uniqueSlug.trim() : null,
     content !== undefined ? content : null,
@@ -1086,6 +1280,9 @@ export async function updateContentArticle({
     coverImage !== undefined ? coverImage : null,
     authorName || null,
     status || null,
+    visibility || null,
+    accPerm,
+    schedAt,
     isPublished,
     isDisabled,
     sortOrder !== undefined ? Number(sortOrder) : null,
@@ -1144,9 +1341,16 @@ export async function deleteContentArticle({ id, confirmTitle, adminId = 2 }) {
     return { success: false, error: `Confirmation mismatch. Please type "${art.title}" to confirm deletion.` };
   }
 
+  // Delete child articles recursively
+  const childIds = await query(`SELECT id FROM content_articles WHERE parent_id = ?;`, [id]);
+  for (const c of childIds) {
+    await deleteContentArticle({ id: c.id, confirmTitle: true, adminId });
+  }
+
   // Delete access rules for this content
   await query(`DELETE FROM content_access_rules WHERE target_type IN ('content', 'article') AND (target_id = ? OR target_id = ?);`, [String(id), String(art.unique_slug)]);
-  // Delete comments
+  // Delete comments in comments table and content_comments
+  await query(`DELETE FROM comments WHERE novel_id = ?;`, [`content_${id}`]);
   await query(`DELETE FROM content_comments WHERE content_id = ?;`, [id]);
   // Delete article
   await query(`DELETE FROM content_articles WHERE id = ?;`, [id]);
