@@ -3,10 +3,11 @@
 
 USE rp_novels_db;
 
--- 1. Seed Genuine Users (Admin & Author)
+-- 1. Seed Genuine Users (Admin & Author & Member)
 INSERT INTO users (id, username, email, password_hash, salt, role)
 VALUES 
   (2, 'rudhra_author', 'rudhra@rpnovels.com', '86a12240413a04fdf68a8f6efb3df2d2caed73dfbf0e63ec12efa28c1a44a52ff2832e6570903dec821af9374544edbc9fc7c87092fac14e65ac77190978a8f5', 'b60edbcbf0109167cb4a6ea61afca0de', 'Author'),
+  (8, 'harish', 'harish89460@gmail.com', 'f1e812a4bc07b437c19dc866d2b6e4b66ae5baa216fbb74015dda1e2e12078e10cd2f06673ecd162e425b9d2eeac6fcfcb1a32fba603f472b5a140eda7c04326', 'e29af6f5d5d3abccdcb551381e726f27', 'Reader'),
   (22, 'digitalmark', 'digitalmarkservices.in@gmail.com', '54c55dfaa04c8651a37cce1fa8828f0962383c27e8a939463b2f5bf9468088f1da457be2831f13b6ebc7f215f9b177d9c666f7f6ecfa0e527f311c1d859fa3b1', 'd32c938d827f805a9f60bfca9d25ea17', 'Admin')
 ON DUPLICATE KEY UPDATE 
   role = VALUES(role),
@@ -16,7 +17,8 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date, posts_count, topics_count, followers_count)
 VALUES
   (2, 'Rudhra Prarthana', 'ருத்ர பிரார்த்தனா', '/profile.png', 'Writing is my soul. Deeply grateful for the immense love of novel readers.', 'எழுத்தே என் உயிர். நாவல் வாசகர்களின் பேரன்பிற்கு என்றும் நன்றியுடன்.', 'Author', 'எழுத்தாளர்', 'Jan 2024', 5, 4, 1250),
-  (8, 'Harish', 'ஹரிஷ்', '/profile.png', 'Administrator and passionate reader of Rudhra Prarthana Novels.', 'நாவல் பிரியர் மற்றும் நிர்வாகி.', 'Admin', 'நிர்வாகி', 'Feb 2024', 8, 2, 420)
+  (8, 'Harish', 'ஹரிஷ்', '/profile.png', 'Passionate reader of Rudhra Prarthana Novels.', 'நாவல் பிரியர்.', 'Member', 'உறுப்பினர்', 'Feb 2024', 8, 2, 420),
+  (22, 'DigitalMark Admin', 'டிஜிட்டல் மார்க்', '/profile.png', 'Primary Administrator of Rudhra Prarthana Novels.', 'முதன்மை நிர்வாகி.', 'Admin', 'நிர்வாகி', 'Oct 2026', 1, 0, 50)
 ON DUPLICATE KEY UPDATE
   display_name = VALUES(display_name),
   title = VALUES(title),
@@ -26,7 +28,8 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO activity_status (user_id, is_enabled, is_online, last_seen)
 VALUES
   (2, 1, 0, CURRENT_TIMESTAMP),
-  (8, 1, 1, CURRENT_TIMESTAMP)
+  (8, 1, 1, CURRENT_TIMESTAMP),
+  (22, 1, 1, CURRENT_TIMESTAMP)
 ON DUPLICATE KEY UPDATE
   is_enabled = VALUES(is_enabled);
 

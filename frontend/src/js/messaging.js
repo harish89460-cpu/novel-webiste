@@ -101,6 +101,7 @@ export function initMessaging() {
   // Expose global controller functions
   window.openMessagesDrawer = openMessagesDrawer;
   window.closeMessagesDrawer = closeMessagesDrawer;
+  window.navigateToUserProfile = navigateToUserProfile;
   window.selectConversation = selectConversation;
   window.openDirectChatWithUser = openDirectChatWithUser;
   window.sendChatMessage = sendChatMessage;
@@ -211,6 +212,18 @@ export function closeMessagesDrawer() {
   const backdrop = document.getElementById('messages-backdrop');
   if (drawer) drawer.classList.remove('open');
   if (backdrop) backdrop.classList.remove('open');
+}
+
+/**
+ * Navigate to a member's public profile page from chat
+ */
+export function navigateToUserProfile(target) {
+  if (!target) return;
+  if (typeof closeMessagesDrawer === 'function') {
+    closeMessagesDrawer();
+  }
+  const cleanTarget = decodeURIComponent(String(target)).trim();
+  window.location.hash = `#member?id=${encodeURIComponent(cleanTarget)}`;
 }
 
 /**
@@ -472,7 +485,7 @@ function renderDrawerStructure() {
     <!-- WhatsApp Dark Header -->
     <div class="wa-header">
       <div class="wa-header-left">
-        <div class="wa-header-avatar-wrap" title="${myName}">
+        <div class="wa-header-avatar-wrap" onclick="navigateToUserProfile('me')" style="cursor:pointer;" title="${myName} (View Profile)">
           <img src="${myAvatar}" class="wa-header-avatar" alt="${myName}" onerror="this.src='/profile.png'">
         </div>
         <div class="wa-header-title">Messages</div>
@@ -495,39 +508,6 @@ function renderDrawerStructure() {
           </svg>
         </button>
 
-        <!-- 3-Dots Menu Button -->
-        <div style="position:relative;">
-          <button type="button" class="wa-icon-btn" onclick="toggleHeaderMenu(event)" title="Menu" aria-label="Menu">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="5" r="2"></circle>
-              <circle cx="12" cy="12" r="2"></circle>
-              <circle cx="12" cy="19" r="2"></circle>
-            </svg>
-          </button>
-          <div class="wa-thread-menu" id="wa-header-dropdown" style="top:38px; right:0; min-width:175px;">
-            <button type="button" onclick="closeAllThreadMenus(); openNewChatModal();">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-              </svg>
-              New chat
-            </button>
-            <button type="button" onclick="markAllConversationsRead(event)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              Mark all read
-            </button>
-            <button type="button" onclick="closeAllThreadMenus(); loadConversationsList();">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              Refresh chats
-            </button>
-          </div>
-        </div>
 
         <!-- Close Drawer Button -->
         <button type="button" class="wa-icon-btn" onclick="closeMessagesDrawer()" title="Close" aria-label="Close">
@@ -765,8 +745,8 @@ function renderConversationsList(list) {
       <div class="wa-thread-item ${unread > 0 ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" 
            onclick="selectConversation(${convId})">
         <!-- Circular Avatar with online indicator -->
-        <div class="wa-thread-avatar-wrap">
-          <img src="${avatar}" class="wa-thread-avatar" alt="${name}" onerror="this.src='/profile.png'">
+        <div class="wa-thread-avatar-wrap wa-avatar-wrap" style="width:48px; height:48px; flex:0 0 48px;">
+          <img src="${avatar}" class="wa-thread-avatar wa-avatar" style="width:48px; height:48px; border-radius:50%; object-fit:cover;" alt="${name}" onerror="this.src='/profile.png'">
           <span class="wa-online-dot ${isOnline ? '' : 'offline'}" title="${isOnline ? 'Online' : 'Offline'}"></span>
         </div>
 
@@ -917,6 +897,7 @@ function renderActiveConversation(data) {
   const isOnline = Boolean(other.isOnline ?? other.is_online);
   const otherUserId = other.id ? Number(other.id) : null;
   const isConvLocked = Boolean(data.isLocked || data.is_locked || conv.isLocked || conv.is_locked);
+  const memberTarget = other.username || other.id || otherUserId || '';
 
   let roleBadge = '';
   if (role === 'author' || role === 'admin') {
@@ -996,9 +977,10 @@ function renderActiveConversation(data) {
           </svg>
         </button>
 
-        <div class="chat-user-meta">
+        <div class="chat-user-meta" 
+             ${memberTarget ? `onclick="navigateToUserProfile('${encodeURIComponent(memberTarget)}')" title="View ${name}'s Profile" style="cursor:pointer;"` : ''}>
           <div class="wa-thread-avatar-wrap" style="width:40px; height:40px;">
-            <img src="${avatar}" class="wa-thread-avatar" style="width:40px; height:40px;" alt="${name}" onerror="this.src='/profile.png'">
+            <img src="${avatar}" class="wa-thread-avatar" style="width:40px; height:40px; border-radius:50%; object-fit:cover;" alt="${name}" onerror="this.src='/profile.png'">
             <span class="wa-online-dot ${isOnline ? '' : 'offline'}" style="width:11px; height:11px; bottom:1px; right:1px;"></span>
           </div>
           <div>

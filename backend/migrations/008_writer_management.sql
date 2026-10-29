@@ -7,7 +7,6 @@ ALTER TABLE users ADD COLUMN created_by INT NULL;
 ALTER TABLE users ADD COLUMN last_login TIMESTAMP NULL;
 
 ALTER TABLE users ADD INDEX idx_users_status (status);
-ALTER TABLE users ADD INDEX idx_users_role (role);
 
 -- 2. Extend novels table with author_id (user ownership reference)
 ALTER TABLE novels ADD COLUMN author_id INT NULL;

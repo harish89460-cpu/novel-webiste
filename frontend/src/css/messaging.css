@@ -508,17 +508,22 @@
 }
 
 /* Avatar Wrap with Online Dot */
-.wa-avatar-wrap {
+.wa-avatar-wrap,
+.wa-thread-avatar-wrap {
   position: relative;
   width: 48px;
   height: 48px;
+  flex: 0 0 48px;
   flex-shrink: 0;
   border-radius: 50%;
 }
 
-.wa-avatar {
+.wa-avatar,
+.wa-thread-avatar {
   width: 48px;
   height: 48px;
+  max-width: 48px;
+  max-height: 48px;
   border-radius: 50%;
   object-fit: cover;
   background: #F7F1E6;
@@ -841,6 +846,13 @@
   gap: 12px;
   min-width: 0;
   flex: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.chat-user-meta:hover {
+  opacity: 0.85;
 }
 
 .chat-user-name {

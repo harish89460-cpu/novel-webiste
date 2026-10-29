@@ -83,12 +83,78 @@ export async function runMigrations() {
     .filter(f => f.endsWith('.sql'))
     .sort();
 
+function splitSqlStatements(sql) {
+  // Strip block comments /* ... */ and single-line comments -- ...
+  const cleanedSql = sql
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--.*$/gm, '');
+
+  const statements = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+  let escape = false;
+
+  for (let i = 0; i < cleanedSql.length; i++) {
+    const char = cleanedSql[i];
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      current += char;
+      continue;
+    }
+    if (char === "'" && !inDouble && !inBacktick) {
+      inSingle = !inSingle;
+    } else if (char === '"' && !inSingle && !inBacktick) {
+      inDouble = !inDouble;
+    } else if (char === '`' && !inSingle && !inDouble) {
+      inBacktick = !inBacktick;
+    } else if (char === ';' && !inSingle && !inDouble && !inBacktick) {
+      const trimmed = current.trim();
+      if (trimmed) statements.push(trimmed);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  const trimmed = current.trim();
+  if (trimmed) statements.push(trimmed);
+  return statements;
+}
+
   for (const file of files) {
     const version = path.basename(file, '.sql');
     if (!appliedSet.has(version)) {
       console.log(`[Migration] Applying ${file}...`);
       const sqlContent = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      await dbConn.query(sqlContent);
+      const statements = splitSqlStatements(sqlContent);
+      for (let stmt of statements) {
+        // Normalize MySQL syntax compatibility:
+        stmt = stmt
+          .replace(/ADD COLUMN IF NOT EXISTS/gi, 'ADD COLUMN')
+          .replace(/ADD INDEX IF NOT EXISTS/gi, 'ADD INDEX');
+        try {
+          await dbConn.query(stmt);
+        } catch (stmtErr) {
+          const benignCodes = [
+            'ER_DUP_FIELDNAME',
+            'ER_DUP_KEYNAME',
+            'ER_TABLE_EXISTS_ERROR',
+            'ER_CANT_DROP_FIELD_OR_KEY',
+            'ER_DUP_ENTRY'
+          ];
+          if (benignCodes.includes(stmtErr.code)) {
+            console.log(`[Migration] Notice in ${file}: ${stmtErr.code} - skipping duplicate definition`);
+          } else {
+            throw stmtErr;
+          }
+        }
+      }
       await dbConn.query('INSERT INTO schema_migrations (version) VALUES (?);', [version]);
       console.log(`[Migration] Successfully applied ${file}`);
     } else {
