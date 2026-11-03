@@ -656,10 +656,8 @@ export async function updateMemberDetails({
     return { success: false, error: 'Member account not found.' };
   }
 
-  // Security Protection: Protect primary Author & Administrator account
-  const isPrimaryAdmin = Number(memberId) === 2 || 
-    existing.email === 'digitalmarkservices.in@gmail.com' || 
-    existing.username === 'rudhra_author';
+  // Security Protection: Protect primary Administrator account
+  const isPrimaryAdmin = existing.email === 'digitalmarkservices.in@gmail.com';
 
   if (isPrimaryAdmin) {
     if (status && status !== 'active') {

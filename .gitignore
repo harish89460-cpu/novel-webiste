@@ -23,9 +23,6 @@ frontend/dist/
 *.db
 database.sqlite
 
-# Backups & Snapshots
-backups/
-
 # Build caches & Temporary test directories
 .chrome_temp/
 scratch/
@@ -41,3 +38,8 @@ npm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Backups & Local Data
+backups/
+mysql_server/
+mysql_data/
