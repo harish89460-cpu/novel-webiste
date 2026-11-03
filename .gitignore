@@ -43,3 +43,4 @@ Thumbs.db
 backups/
 mysql_server/
 mysql_data/
+backend/uploads/

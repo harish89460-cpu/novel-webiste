@@ -1,7 +1,7 @@
 // Rudhra Prarthana Novels — Real-Time Private Messaging Engine
 // WhatsApp-like Features: Image Attachments, Voice Notes, Emoji Picker, Edit, Delete, & Lock/Unlock Controls
 
-import { apiFetch } from './errors.js';
+import { apiFetch, resolveApiUrl } from './errors.js';
 import { showToast } from './reader.js';
 
 function escapeHtml(str) {
@@ -14,6 +14,16 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function safeAssetUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (typeof resolveApiUrl === 'function') return resolveApiUrl(url);
+  if (typeof window !== 'undefined' && typeof window.resolveApiUrl === 'function') {
+    return window.resolveApiUrl(url);
+  }
+  return url;
+}
+
 let activeConversationId = null;
 let activeConversationData = null;
 let conversationsList = [];
@@ -21,6 +31,179 @@ let isDrawerOpen = false;
 let globalChatAvailable = true;
 let userSearchTimer = null;
 let chatChannel = null;
+
+// Real-time synchronization timers
+let activeChatPollTimer = null;
+let conversationsPollTimer = null;
+let unreadBadgePollTimer = null;
+
+function startActiveConversationPoller(convId) {
+  stopActiveConversationPoller();
+  activeChatPollTimer = setInterval(() => {
+    syncActiveConversationMessages(convId);
+  }, 2000);
+}
+
+function stopActiveConversationPoller() {
+  if (activeChatPollTimer) {
+    clearInterval(activeChatPollTimer);
+    activeChatPollTimer = null;
+  }
+}
+
+function startConversationsListPoller() {
+  stopConversationsListPoller();
+  conversationsPollTimer = setInterval(() => {
+    if (isDrawerOpen && !activeConversationId) {
+      loadConversationsSilently();
+    } else {
+      stopConversationsListPoller();
+    }
+  }, 3500);
+}
+
+function stopConversationsListPoller() {
+  if (conversationsPollTimer) {
+    clearInterval(conversationsPollTimer);
+    conversationsPollTimer = null;
+  }
+}
+
+function startUnreadBadgePoller() {
+  if (unreadBadgePollTimer) return;
+  unreadBadgePollTimer = setInterval(() => {
+    if (window.IS_LOGGED_IN) {
+      updateUnreadMessageBadge();
+    }
+  }, 10000);
+}
+
+function stopUnreadBadgePoller() {
+  if (unreadBadgePollTimer) {
+    clearInterval(unreadBadgePollTimer);
+    unreadBadgePollTimer = null;
+  }
+}
+
+async function syncActiveConversationMessages(convId) {
+  if (!isDrawerOpen || activeConversationId !== Number(convId)) {
+    stopActiveConversationPoller();
+    return;
+  }
+  try {
+    const data = await chatApi('/api/chat/conversations/' + convId);
+    if (!data || !data.success || !Array.isArray(data.messages)) return;
+    if (!isDrawerOpen || activeConversationId !== Number(convId)) return;
+
+    const streamBox = document.getElementById('messages-stream-box');
+    if (!streamBox) return;
+
+    let hasNew = false;
+    const currentUserId = window.CURRENT_USER?.id;
+
+    data.messages.forEach((msg) => {
+      if (!msg || !msg.id) return;
+      const existingEl = streamBox.querySelector('.message-bubble[data-msg-id="' + msg.id + '"]');
+      if (!existingEl) {
+        const msgSenderId = msg.senderId ?? msg.sender_id ?? msg.sender?.id;
+        const isOutgoing = Boolean(
+          msg.isMe ||
+          msg.is_me ||
+          (currentUserId && Number(msgSenderId) === Number(currentUserId))
+        );
+        if (isOutgoing) {
+          appendOutgoingBubble(msg);
+        } else {
+          appendIncomingBubble(msg);
+        }
+        hasNew = true;
+      } else {
+        const isRead = Boolean(msg.isRead ?? msg.is_read);
+        const checkmarks = existingEl.querySelector('.read-checkmarks');
+        if (checkmarks) {
+          if (isRead && !checkmarks.classList.contains('read')) {
+            checkmarks.classList.add('read');
+            checkmarks.classList.remove('unread');
+            checkmarks.textContent = '✓✓';
+          }
+        }
+        if (msg.isDeleted || msg.is_deleted) {
+          if (!existingEl.classList.contains('deleted')) {
+            existingEl.className = 'message-bubble deleted ' + (existingEl.classList.contains('outgoing') ? 'outgoing' : 'incoming');
+            existingEl.innerHTML = '<span>🚫 <i>This message was deleted</i></span><div class="bubble-meta"><span>' + formatMessageClock(new Date(msg.createdAt || msg.created_at || Date.now())) + '</span></div>';
+          }
+        } else if (msg.isEdited || msg.is_edited) {
+          const textContent = existingEl.querySelector('.bubble-text-content');
+          if (textContent && textContent.textContent !== msg.content) {
+            textContent.textContent = msg.content;
+            const meta = existingEl.querySelector('.bubble-meta');
+            if (meta && !meta.querySelector('.chat-edited-tag')) {
+              const tag = document.createElement('span');
+              tag.className = 'chat-edited-tag';
+              tag.textContent = '(edited)';
+              meta.insertBefore(tag, meta.firstChild);
+            }
+          }
+        }
+      }
+    });
+
+    if (hasNew) {
+      scrollMessagesToBottom();
+    }
+  } catch {}
+}
+
+function appendIncomingBubble(msg) {
+  const streamBox = document.getElementById('messages-stream-box');
+  if (!streamBox || !msg) return;
+
+  const msgId = msg.id || '';
+  if (msgId && streamBox.querySelector('.message-bubble[data-msg-id="' + msgId + '"]')) {
+    return;
+  }
+
+  const emptyState = streamBox.querySelector('.chat-empty-state') || streamBox.querySelector('div[style*="margin:auto"]');
+  if (emptyState) emptyState.remove();
+
+  const rawDate = msg.createdAt || msg.created_at || Date.now();
+  const timeStr = formatMessageClock(new Date(rawDate));
+  const msgType = msg.messageType || msg.message_type || 'text';
+  const attachUrl = safeAssetUrl(msg.attachmentUrl || msg.attachment_url);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble incoming';
+  bubble.setAttribute('data-msg-id', msgId);
+  bubble.setAttribute('data-msg-type', msgType);
+
+  let bodyHtml = '';
+  if (msgType === 'image' && attachUrl) {
+    bodyHtml = '<div class="chat-bubble-image-wrap" onclick="openChatImageLightbox(\'' + escapeHtml(attachUrl) + '\')">' +
+      '<img src="' + escapeHtml(attachUrl) + '" alt="Photo" loading="lazy">' +
+      '</div>' +
+      (msg.content ? '<div class="bubble-text-content">' + escapeHtml(msg.content) + '</div>' : '');
+  } else if (msgType === 'audio' && attachUrl) {
+    const meta = msg.attachmentMeta || msg.attachment_meta || {};
+    const durationSec = meta.duration ? Math.round(meta.duration) : 0;
+    const mins = Math.floor(durationSec / 60);
+    const secs = String(durationSec % 60).padStart(2, '0');
+    bodyHtml = '<div class="chat-voice-player">' +
+      '<button type="button" class="voice-play-btn" onclick="toggleVoicePlay(' + msgId + ', \'' + escapeHtml(attachUrl) + '\', this)">▶</button>' +
+      '<div class="voice-waveform-wrap">' +
+      '<div class="voice-progress-bar" onclick="seekVoiceAudio(event, \'' + escapeHtml(attachUrl) + '\')"><div class="voice-progress-fill"></div></div>' +
+      '<div class="voice-meta-row"><span class="voice-time-display">' + mins + ':' + secs + '</span><span>🎙️ Voice</span></div>' +
+      '</div></div>';
+  } else {
+    bodyHtml = '<div class="bubble-text-content">' + escapeHtml(msg.content || '') + '</div>';
+  }
+
+  const isAdmin = (window.CURRENT_USER?.role || '').toLowerCase() === 'admin' || Boolean(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.is_admin);
+  const triggerHtml = isAdmin ? '<button type="button" class="bubble-actions-trigger" onclick="toggleBubbleMenu(event, ' + msgId + ', false)" title="Message options">⋮</button>' : '';
+
+  bubble.innerHTML = triggerHtml + bodyHtml + '<div class="bubble-meta"><span>' + timeStr + '</span></div>';
+  streamBox.appendChild(bubble);
+  scrollMessagesToBottom();
+}
 
 // WhatsApp filters, search, & pinned state
 let currentChatFilter = 'all';
@@ -167,6 +350,7 @@ export function initMessaging() {
   window.addEventListener('popstate', handleChatPopState);
 
   // Initial unread count fetch if logged in
+  startUnreadBadgePoller();
   if (window.IS_LOGGED_IN) {
     updateUnreadMessageBadge();
     loadGlobalChatSettings();
@@ -233,12 +417,15 @@ export async function openMessagesDrawer(targetParam = null, pushHistory = true)
   }
 
   await loadConversationsList();
+  startConversationsListPoller();
 }
 
 /**
  * Close the Private Messages Drawer
  */
 export function closeMessagesDrawer(resetHistory = false) {
+  stopActiveConversationPoller();
+  stopConversationsListPoller();
   isDrawerOpen = false;
   activeConversationId = null;
   activeConversationData = null;
@@ -524,7 +711,7 @@ function renderDrawerStructure() {
   const container = document.getElementById('messages-body-container');
   if (!container) return;
 
-  const myAvatar = window.CURRENT_USER?.avatar || '/profile.png';
+  const myAvatar = safeAssetUrl(window.CURRENT_USER?.avatar || '/profile.png');
   const myName = escapeHtml(window.CURRENT_USER?.displayName || window.CURRENT_USER?.username || 'You');
 
   // Calculate unread total and pinned count for filter pills
@@ -745,7 +932,7 @@ function renderConversationsList(list) {
     const isPinned = pinnedIds.includes(Number(convId));
     const user = c.otherUser || c.other_user || {};
     const unread = Number(c.unreadCount ?? c.unread_count ?? 0);
-    const avatar = user.avatar || '/profile.png';
+    const avatar = safeAssetUrl(user.avatar || '/profile.png');
     const name = escapeHtml(user.displayName || user.display_name || user.username || 'Member');
     const role = (user.role || '').toLowerCase();
     const isOnline = Boolean(user.isOnline ?? user.is_online);
@@ -895,6 +1082,8 @@ export async function openDirectChatWithUser(targetUserId) {
  */
 export async function selectConversation(conversationId, pushHistory = true) {
   if (!conversationId) return;
+  stopActiveConversationPoller();
+  stopConversationsListPoller();
   activeConversationId = Number(conversationId);
   cancelEditChatMessage();
   clearChatImageAttachment();
@@ -924,6 +1113,7 @@ export async function selectConversation(conversationId, pushHistory = true) {
     }
     activeConversationData = data;
     renderActiveConversation(data);
+    startActiveConversationPoller(Number(conversationId));
 
     // Promptly refresh header unread badges
     updateUnreadMessageBadge();
@@ -965,7 +1155,7 @@ function renderActiveConversation(data) {
   const other = data.otherUser || data.other_user || conv.otherUser || conv.other_user || {};
 
   const name = escapeHtml(other.displayName || other.display_name || other.username || 'Member');
-  const avatar = other.avatar || '/profile.png';
+  const avatar = safeAssetUrl(other.avatar || '/profile.png');
   const role = (other.role || '').toLowerCase();
   const isOnline = Boolean(other.isOnline ?? other.is_online);
   const otherUserId = other.id ? Number(other.id) : null;
@@ -1577,6 +1767,7 @@ function stopAnyPlayingAudio() {
  * Image Lightbox Modal
  */
 export function openChatImageLightbox(src) {
+  const resolved = safeAssetUrl(src);
   let lightbox = document.getElementById('chat-lightbox-modal');
   if (!lightbox) {
     lightbox = document.createElement('div');
@@ -1594,7 +1785,7 @@ export function openChatImageLightbox(src) {
     document.body.appendChild(lightbox);
   }
   const imgEl = document.getElementById('chat-lightbox-target-img');
-  if (imgEl) imgEl.src = src;
+  if (imgEl) imgEl.src = resolved;
   lightbox.style.display = 'flex';
 }
 
@@ -1802,7 +1993,7 @@ function renderMessageBubbles(messages, otherUser) {
     const isEdited = Boolean(msg.isEdited ?? msg.is_edited);
     const isDeleted = Boolean(msg.isDeleted ?? msg.is_deleted);
     const msgType = msg.messageType || msg.message_type || 'text';
-    const attachUrl = msg.attachmentUrl || msg.attachment_url;
+    const attachUrl = safeAssetUrl(msg.attachmentUrl || msg.attachment_url);
     const msgId = msg.id || '';
 
     if (isDeleted) {
@@ -2007,6 +2198,9 @@ function appendOutgoingBubble(msg) {
   const streamBox = document.getElementById('messages-stream-box');
   if (!streamBox || !msg) return;
 
+  const msgId = msg.id || '';
+  if (msgId && streamBox.querySelector('.message-bubble[data-msg-id="' + msgId + '"]')) return;
+
   // Remove empty placeholder if present
   const emptyState = streamBox.querySelector('.chat-empty-state') || streamBox.querySelector('div[style*="margin:auto"]');
   if (emptyState) emptyState.remove();
@@ -2015,8 +2209,7 @@ function appendOutgoingBubble(msg) {
   const timeStr = formatMessageClock(new Date(rawDate));
   const isRead = Boolean(msg.isRead ?? msg.is_read);
   const msgType = msg.messageType || msg.message_type || 'text';
-  const attachUrl = msg.attachmentUrl || msg.attachment_url;
-  const msgId = msg.id || '';
+  const attachUrl = safeAssetUrl(msg.attachmentUrl || msg.attachment_url);
 
   const bubble = document.createElement('div');
   bubble.className = 'message-bubble outgoing';
@@ -2091,6 +2284,7 @@ function updateBubbleTextLocally(msgId, newContent) {
  * Back to Conversation List
  */
 export function backToConversationList(resetHistory = false) {
+  stopActiveConversationPoller();
   activeConversationId = null;
   activeConversationData = null;
   cancelEditChatMessage();
@@ -2098,6 +2292,7 @@ export function backToConversationList(resetHistory = false) {
   cancelVoiceRecording();
   stopAnyPlayingAudio();
   loadConversationsList();
+  startConversationsListPoller();
 
   if (resetHistory && window.innerWidth <= 640 && window.history?.state?.rp_chat_active) {
     try { window.history.back(); } catch {}
@@ -2128,69 +2323,7 @@ function handleIncomingRealtimeMessage(event) {
 
   // 1. If user is currently looking at this exact conversation
   if (isDrawerOpen && activeConversationId === convId) {
-    const streamBox = document.getElementById('messages-stream-box');
-    if (streamBox) {
-      const rawDate = msg.createdAt || msg.created_at || Date.now();
-      const timeStr = formatMessageClock(new Date(rawDate));
-      const msgType = msg.messageType || msg.message_type || 'text';
-      const attachUrl = msg.attachmentUrl || msg.attachment_url;
-      const msgId = msg.id || '';
-
-      const bubble = document.createElement('div');
-      bubble.className = 'message-bubble incoming';
-      bubble.setAttribute('data-msg-id', msgId);
-      bubble.setAttribute('data-msg-type', msgType);
-
-      let bodyHtml = '';
-      if (msgType === 'image' && attachUrl) {
-        bodyHtml = `
-          <div class="chat-bubble-image-wrap" onclick="openChatImageLightbox('${escapeHtml(attachUrl)}')">
-            <img src="${escapeHtml(attachUrl)}" alt="Photo">
-          </div>
-          ${msg.content ? `<div class="bubble-text-content">${escapeHtml(msg.content)}</div>` : ''}
-        `;
-      } else if (msgType === 'audio' && attachUrl) {
-        const meta = msg.attachmentMeta || msg.attachment_meta || {};
-        const durationSec = meta.duration ? Math.round(meta.duration) : 0;
-        const mins = Math.floor(durationSec / 60);
-        const secs = String(durationSec % 60).padStart(2, '0');
-        bodyHtml = `
-          <div class="chat-voice-player">
-            <button type="button" class="voice-play-btn" onclick="toggleVoicePlay(${msgId}, '${escapeHtml(attachUrl)}', this)">
-              ▶
-            </button>
-            <div class="voice-waveform-wrap">
-              <div class="voice-progress-bar" onclick="seekVoiceAudio(event, '${escapeHtml(attachUrl)}')">
-                <div class="voice-progress-fill"></div>
-              </div>
-              <div class="voice-meta-row">
-                <span class="voice-time-display">${mins}:${secs}</span>
-                <span>🎙️ Voice</span>
-              </div>
-            </div>
-          </div>
-        `;
-      } else {
-        bodyHtml = `<div class="bubble-text-content">${escapeHtml(msg.content || '')}</div>`;
-      }
-
-      const isAdmin = (window.CURRENT_USER?.role || '').toLowerCase() === 'admin' || Boolean(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.is_admin);
-      const triggerHtml = isAdmin ? `
-        <button type="button" class="bubble-actions-trigger" onclick="toggleBubbleMenu(event, ${msgId}, false)" title="Message options">
-          ⋮
-        </button>
-      ` : '';
-
-      bubble.innerHTML = `
-        ${triggerHtml}
-        ${bodyHtml}
-        <div class="bubble-meta">
-          <span>${timeStr}</span>
-        </div>
-      `;
-      streamBox.appendChild(bubble);
-      scrollMessagesToBottom();
-    }
+    appendIncomingBubble(msg);
     // Mark conversation read on backend
     chatApi(`/api/chat/conversations/${convId}`).catch(() => {});
   } else {
@@ -2207,7 +2340,7 @@ function handleSentRealtimeMessage(event) {
   const detail = event?.detail;
   if (detail && activeConversationId && Number(detail.conversationId) === Number(activeConversationId)) {
     const msg = detail.message;
-    if (msg && msg.id && !document.querySelector(`.message-bubble[data-msg-id="${msg.id}"]`)) {
+    if (msg) {
       appendOutgoingBubble(msg);
     }
   }
@@ -2340,7 +2473,7 @@ export async function searchEligibleChatUsers(query) {
 
       listEl.innerHTML = users.map((u) => {
         const name = escapeHtml(u.display_name || u.username);
-        const avatar = u.avatar || '/profile.png';
+        const avatar = safeAssetUrl(u.avatar || '/profile.png');
         const role = (u.role || '').toLowerCase();
         let roleBadge = '';
         if (role === 'author' || role === 'admin') {

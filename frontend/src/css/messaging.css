@@ -984,6 +984,43 @@
   box-shadow: 0 2px 8px rgba(16, 42, 67, 0.15);
 }
 
+/* Inline Chat Photo & Image Attachment Rendering */
+.chat-bubble-image-wrap {
+  margin: 2px 0 6px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  max-width: 280px;
+  background: rgba(0, 0, 0, 0.04);
+  display: block;
+  position: relative;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-bubble-image-wrap img {
+  width: 100%;
+  max-width: 280px;
+  max-height: 280px;
+  object-fit: cover;
+  display: block;
+  border-radius: 7px;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.chat-bubble-image-wrap:hover img {
+  transform: scale(1.02);
+  filter: brightness(0.96);
+}
+
+.message-bubble.outgoing .chat-bubble-image-wrap {
+  border-color: rgba(228, 194, 122, 0.3);
+}
+
+.bubble-text-content {
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
 .bubble-meta {
   font-size: 11px;
   color: #8C827A;

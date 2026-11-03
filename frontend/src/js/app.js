@@ -57,12 +57,12 @@ export function initApp() {
   updateStaticDOMElements();
 
   // Initialize Subsystems
+  initAuth();
   initReader();
   initForum();
   initMessaging();
   initNotifications();
   initSearch();
-  initAuth();
 
   // Sticky Header Scroll Effect
   const handleHeaderScroll = () => {
