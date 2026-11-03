@@ -268,6 +268,15 @@ export async function renderAppView() {
       renderTermsView(main);
     } else if (hash.startsWith('#copyright')) {
       renderCopyrightView(main);
+    } else if (hash.startsWith('#messages') || hash.startsWith('#chat')) {
+      const params = hash.includes('?') ? new URLSearchParams(hash.split('?')[1]) : null;
+      const targetParam = params?.get('user') || params?.get('id') || null;
+      if (typeof window.openMessagesDrawer === 'function') {
+        window.openMessagesDrawer(targetParam ? Number(targetParam) : null);
+      }
+      if (!main.children.length) {
+        await renderForumView(main, '#forms');
+      }
     } else if (hash === '#home' || hash.startsWith('#home')) {
       window.location.hash = '#forms';
       return;

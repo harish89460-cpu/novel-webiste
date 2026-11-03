@@ -157,6 +157,15 @@ export function initMessaging() {
   window.addEventListener('chat:message_deleted', handleRealtimeMessageDeleted);
   window.addEventListener('chat:conversation_lock', handleRealtimeConversationLock);
 
+  // Mobile visualViewport resize & scroll handling (virtual keyboard)
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleMobileViewportChange);
+    window.visualViewport.addEventListener('scroll', handleMobileViewportChange);
+  }
+
+  // Mobile back button integration
+  window.addEventListener('popstate', handleChatPopState);
+
   // Initial unread count fetch if logged in
   if (window.IS_LOGGED_IN) {
     updateUnreadMessageBadge();
@@ -164,10 +173,34 @@ export function initMessaging() {
   }
 }
 
+function handleMobileViewportChange() {
+  if (!isDrawerOpen) return;
+  const drawer = document.getElementById('messages-drawer');
+  if (!drawer) return;
+  
+  if (window.visualViewport && window.innerWidth <= 640) {
+    const vh = window.visualViewport.height;
+    drawer.style.height = `${vh}px`;
+    drawer.style.maxHeight = `${vh}px`;
+    if (activeConversationId) {
+      scrollMessagesToBottom();
+    }
+  }
+}
+
+function handleChatPopState() {
+  if (!isDrawerOpen) return;
+  if (activeConversationId) {
+    backToConversationList(false);
+  } else {
+    closeMessagesDrawer(false);
+  }
+}
+
 /**
  * Open the Private Messages Drawer
  */
-export async function openMessagesDrawer(targetParam = null) {
+export async function openMessagesDrawer(targetParam = null, pushHistory = true) {
   if (!window.IS_LOGGED_IN) {
     if (typeof window.openAuthModal === 'function') {
       window.openAuthModal('login');
@@ -181,6 +214,12 @@ export async function openMessagesDrawer(targetParam = null) {
   const backdrop = document.getElementById('messages-backdrop');
   if (drawer) drawer.classList.add('open');
   if (backdrop) backdrop.classList.add('open');
+
+  if (pushHistory && window.innerWidth <= 640 && window.history?.pushState) {
+    try {
+      window.history.pushState({ rp_drawer_open: true }, '', window.location.hash || '#forms');
+    } catch {}
+  }
 
   // Load user's global availability preference
   await loadGlobalChatSettings();
@@ -199,7 +238,7 @@ export async function openMessagesDrawer(targetParam = null) {
 /**
  * Close the Private Messages Drawer
  */
-export function closeMessagesDrawer() {
+export function closeMessagesDrawer(resetHistory = false) {
   isDrawerOpen = false;
   activeConversationId = null;
   activeConversationData = null;
@@ -210,8 +249,16 @@ export function closeMessagesDrawer() {
 
   const drawer = document.getElementById('messages-drawer');
   const backdrop = document.getElementById('messages-backdrop');
-  if (drawer) drawer.classList.remove('open');
+  if (drawer) {
+    drawer.classList.remove('open');
+    drawer.style.height = '';
+    drawer.style.maxHeight = '';
+  }
   if (backdrop) backdrop.classList.remove('open');
+
+  if (resetHistory && window.innerWidth <= 640 && window.history?.state?.rp_drawer_open) {
+    try { window.history.back(); } catch {}
+  }
 }
 
 /**
@@ -846,13 +893,19 @@ export async function openDirectChatWithUser(targetUserId) {
 /**
  * Select and load a conversation view
  */
-export async function selectConversation(conversationId) {
+export async function selectConversation(conversationId, pushHistory = true) {
   if (!conversationId) return;
   activeConversationId = Number(conversationId);
   cancelEditChatMessage();
   clearChatImageAttachment();
   cancelVoiceRecording();
   stopAnyPlayingAudio();
+
+  if (pushHistory && window.innerWidth <= 640 && window.history?.pushState) {
+    try {
+      window.history.pushState({ rp_chat_active: true, convId: Number(conversationId) }, '', window.location.hash || '#forms');
+    } catch {}
+  }
 
   const mainArea = document.getElementById('messages-main-area');
   if (!mainArea) return;
@@ -1136,6 +1189,19 @@ function renderActiveConversation(data) {
       </div>
     </div>
   `;
+
+  const compInput = document.getElementById('chat-composer-input');
+  if (compInput) {
+    compInput.addEventListener('focus', () => {
+      setTimeout(() => {
+        scrollMessagesToBottom();
+      }, 250);
+    });
+    compInput.addEventListener('input', () => {
+      compInput.style.height = 'auto';
+      compInput.style.height = Math.min(compInput.scrollHeight, 120) + 'px';
+    });
+  }
 
   scrollMessagesToBottom();
 }
@@ -1810,12 +1876,15 @@ function renderMessageBubbles(messages, otherUser) {
 }
 
 /**
- * Handle Enter to send in composer (Shift+Enter for newline)
+ * Handle Enter to send in composer (Shift+Enter for newline on desktop; newline on mobile)
  */
 export function handleComposerKeydown(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    sendChatMessage();
+    const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 640;
+    if (!isMobile) {
+      event.preventDefault();
+      sendChatMessage();
+    }
   }
 }
 window.handleComposerKeydown = handleComposerKeydown;
@@ -1831,6 +1900,7 @@ export async function sendChatMessage() {
   if (!input) return;
 
   const content = input.value.trim();
+  const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 640;
 
   // If in Edit Mode:
   if (editingMessageId) {
@@ -1892,12 +1962,13 @@ export async function sendChatMessage() {
         appendOutgoingBubble(sendRes.message);
         clearChatImageAttachment();
         input.value = '';
+        input.style.height = 'auto';
       }
     } catch (err) {
       showToast('Failed to send image: ' + err.message);
     } finally {
       if (sendBtn) sendBtn.disabled = false;
-      input.focus();
+      if (!isMobile) input.focus();
     }
     return;
   }
@@ -1906,6 +1977,7 @@ export async function sendChatMessage() {
   if (!content) return;
 
   input.value = '';
+  input.style.height = 'auto';
   if (sendBtn) sendBtn.disabled = true;
 
   try {
@@ -1924,7 +1996,7 @@ export async function sendChatMessage() {
     input.value = content; // restore text
   } finally {
     if (sendBtn) sendBtn.disabled = false;
-    input.focus();
+    if (!isMobile) input.focus();
   }
 }
 
@@ -2018,7 +2090,7 @@ function updateBubbleTextLocally(msgId, newContent) {
 /**
  * Back to Conversation List
  */
-export function backToConversationList() {
+export function backToConversationList(resetHistory = false) {
   activeConversationId = null;
   activeConversationData = null;
   cancelEditChatMessage();
@@ -2026,6 +2098,10 @@ export function backToConversationList() {
   cancelVoiceRecording();
   stopAnyPlayingAudio();
   loadConversationsList();
+
+  if (resetHistory && window.innerWidth <= 640 && window.history?.state?.rp_chat_active) {
+    try { window.history.back(); } catch {}
+  }
 }
 
 /**
