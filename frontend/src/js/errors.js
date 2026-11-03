@@ -276,9 +276,48 @@ export function renderChapterError(container, novelId, chNum, retryFn = null) {
 }
 
 /**
- * 4. Robust API Fetch Wrapper with Timeouts, 401 Session Handling, and Offline Detection
+ * 4. Robust API Fetch Wrapper with Base URL Resolution, Timeouts, and 401 Session Handling
  */
+export function getApiBaseUrl() {
+  if (typeof window !== 'undefined' && window.__API_BASE_URL__) {
+    return String(window.__API_BASE_URL__).trim().replace(/\/+$/, '');
+  }
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) {
+      return String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '');
+    }
+  } catch (_) {}
+  return '';
+}
+
+export function resolveApiUrl(pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== 'string') return pathOrUrl;
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return pathOrUrl;
+  const cleanPath = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${baseUrl}${cleanPath}`;
+}
+
+if (typeof window !== 'undefined') {
+  window.resolveApiUrl = resolveApiUrl;
+  window.getApiBaseUrl = getApiBaseUrl;
+
+  // Intercept native fetch so all relative /api and /uploads calls automatically route to VITE_API_URL if configured
+  if (!window.__NATIVE_FETCH_INTERCEPTED__) {
+    const originalFetch = window.fetch;
+    window.fetch = function (resource, init) {
+      if (typeof resource === 'string' && (resource.startsWith('/api') || resource.startsWith('/uploads'))) {
+        resource = resolveApiUrl(resource);
+      }
+      return originalFetch.call(this, resource, init);
+    };
+    window.__NATIVE_FETCH_INTERCEPTED__ = true;
+  }
+}
+
 export async function apiFetch(url, options = {}, timeoutMs = 8500) {
+  const targetUrl = resolveApiUrl(url);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -290,7 +329,7 @@ export async function apiFetch(url, options = {}, timeoutMs = 8500) {
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(targetUrl, {
       ...options,
       headers,
       signal: controller.signal

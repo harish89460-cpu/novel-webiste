@@ -238,7 +238,8 @@ export function connectRealtimeNotificationStream() {
   }
 
   try {
-    const sseUrl = `/api/notifications/stream?token=${encodeURIComponent(token)}`;
+    const rawSseUrl = `/api/notifications/stream?token=${encodeURIComponent(token)}`;
+    const sseUrl = (typeof window.resolveApiUrl === 'function') ? window.resolveApiUrl(rawSseUrl) : rawSseUrl;
     sseSource = new EventSource(sseUrl);
 
     sseSource.addEventListener('init', (e) => {
