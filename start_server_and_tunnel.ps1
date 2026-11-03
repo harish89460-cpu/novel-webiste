@@ -38,9 +38,13 @@ if ($backendHealth -and $backendHealth.status -eq 'ok') {
 
 # 3. Check for Cloudflare Tunnel (cloudflared)
 Write-Host "`n[Step 3/3] Setting up Secure HTTPS Tunnel for Vercel..." -ForegroundColor Yellow
-$cloudflared = Get-Command cloudflared -ErrorAction SilentlyContinue
+$cloudflaredCmd = Get-Command cloudflared -ErrorAction SilentlyContinue
+$cloudflaredPath = if ($cloudflaredCmd) { $cloudflaredCmd.Source }
+                   elseif (Test-Path "C:\Program Files (x86)\cloudflared\cloudflared.exe") { "C:\Program Files (x86)\cloudflared\cloudflared.exe" }
+                   elseif (Test-Path "C:\Program Files\cloudflared\cloudflared.exe") { "C:\Program Files\cloudflared\cloudflared.exe" }
+                   else { $null }
 
-if (-not $cloudflared) {
+if (-not $cloudflaredPath) {
     Write-Host "`nCloudflare Tunnel (cloudflared) is not yet installed." -ForegroundColor Yellow
     Write-Host "You can install it in 10 seconds by running in PowerShell (Admin):" -ForegroundColor White
     Write-Host "    winget install Cloudflare.cloudflared" -ForegroundColor Cyan
@@ -48,8 +52,9 @@ if (-not $cloudflared) {
     Write-Host "    https://github.com/cloudflare/cloudflared/releases/latest" -ForegroundColor Cyan
     Write-Host "`nAfter installing, re-run this script to get your live HTTPS tunnel URL!" -ForegroundColor Green
 } else {
-    Write-Host "✓ Found cloudflared at: $($cloudflared.Source)" -ForegroundColor Green
+    Write-Host "✓ Found cloudflared at: $cloudflaredPath" -ForegroundColor Green
     Write-Host "Starting Cloudflare quick tunnel to http://localhost:3000..." -ForegroundColor Cyan
     Write-Host "Look for the *.trycloudflare.com URL below to paste into Vercel:`n" -ForegroundColor Yellow
-    cloudflared tunnel --url http://localhost:3000
+    & "$cloudflaredPath" tunnel --url http://localhost:3000
 }
+
