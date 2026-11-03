@@ -1,8 +1,6 @@
 -- Rudhra Prarthana Novels — Database Migration 003
 -- Admin & Author Dashboard: Episodes Hierarchy, Publishing Scheduler, Media Management, Settings
 
-USE rp_novels_db;
-
 -- 1. Modify chapters table to support nested episode numbers (e.g. 1.1, 1.2), parent-child relationships, scheduling, and draft status
 ALTER TABLE chapters
   MODIFY COLUMN chapter_num VARCHAR(50) NOT NULL,

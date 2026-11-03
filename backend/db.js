@@ -1,3 +1,4 @@
+const recentTopicViews = new Map();
 // MySQL Relational Database Layer for Rudhra Prarthana Novels
 // Centralized single database connection pool with parameterized queries
 
@@ -32,7 +33,9 @@ export function loadEnv() {
         if (idx !== -1) {
           const key = trimmed.slice(0, idx).trim();
           const val = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-          process.env[key] = val;
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
         }
       }
     });
@@ -44,23 +47,64 @@ loadEnv();
 let poolInstance = null;
 
 /**
+ * Resolve database configuration parameters from environment variables or connection strings
+ */
+export function getDbConfig() {
+  loadEnv();
+
+  // If a full connection URI is provided (e.g. cloud environments like Railway, Render, AWS RDS)
+  const connectionUri = process.env.DATABASE_URL || process.env.MYSQL_URL || null;
+  if (connectionUri) {
+    try {
+      const url = new URL(connectionUri);
+      return {
+        host: url.hostname,
+        port: Number(url.port) || 3306,
+        user: decodeURIComponent(url.username),
+        password: decodeURIComponent(url.password),
+        database: url.pathname ? url.pathname.replace(/^\//, '') : (process.env.DB_NAME || 'rp_novels_db'),
+        ssl: (process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || url.searchParams.get('ssl') === 'true')
+          ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+          : undefined
+      };
+    } catch (_) {}
+  }
+
+  const host = process.env.DB_HOST || 'localhost';
+  const port = Number(process.env.DB_PORT) || 3306;
+  const user = process.env.DB_USER || 'root';
+  const password = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'root';
+  const database = process.env.DB_NAME || 'rp_novels_db';
+
+  let ssl = undefined;
+  if (process.env.DB_SSL === 'true' || process.env.DB_SSL === '1') {
+    ssl = {
+      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
+    };
+    if (process.env.DB_SSL_CA && fs.existsSync(process.env.DB_SSL_CA)) {
+      try {
+        ssl.ca = fs.readFileSync(process.env.DB_SSL_CA, 'utf8');
+      } catch (_) {}
+    }
+  }
+
+  return { host, port, user, password, database, ssl };
+}
+
+/**
  * Get or create the singleton MySQL connection pool
  */
 export function getDb() {
   if (!poolInstance) {
-    loadEnv();
-    const host = process.env.DB_HOST || 'localhost';
-    const port = Number(process.env.DB_PORT) || 3306;
-    const user = process.env.DB_USER || 'root';
-    const password = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'root';
-    const database = process.env.DB_NAME || 'rp_novels_db';
+    const config = getDbConfig();
 
     poolInstance = mysql.createPool({
-      host,
-      port,
-      user,
-      password,
-      database,
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      ssl: config.ssl,
       waitForConnections: true,
       connectionLimit: 15,
       maxIdle: 10,
@@ -88,27 +132,28 @@ export async function query(sql, params = []) {
  * Diagnostic health check for MySQL connection with clear troubleshooting messages
  */
 export async function testDbConnection() {
+  const config = getDbConfig();
   try {
     const pool = getDb();
     const [verRows] = await pool.query('SELECT VERSION() AS version, DATABASE() AS db;');
     const [tables] = await pool.query('SHOW TABLES;');
     const version = verRows[0]?.version || 'Unknown';
-    const currentDb = verRows[0]?.db || process.env.DB_NAME;
+    const currentDb = verRows[0]?.db || config.database;
     return {
       ok: true,
-      host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 3306,
-      user: process.env.DB_USER || 'root',
+      host: config.host,
+      port: config.port,
+      user: config.user,
       database: currentDb,
       version,
       tableCount: tables.length
     };
   } catch (err) {
     let diagnostic = '';
-    const host = process.env.DB_HOST || 'localhost';
-    const port = Number(process.env.DB_PORT) || 3306;
-    const user = process.env.DB_USER || 'root';
-    const db = process.env.DB_NAME || 'rp_novels_db';
+    const host = config.host;
+    const port = config.port;
+    const user = config.user;
+    const db = config.database;
 
     if (err.code === 'ECONNREFUSED') {
       diagnostic = `MySQL Server is stopped or port ${port} is not listening on ${host}.\n` +
@@ -118,7 +163,7 @@ export async function testDbConnection() {
         `Troubleshooting: Verify DB_USER and DB_PASSWORD credentials in .env.`;
     } else if (err.code === 'ER_BAD_DB_ERROR') {
       diagnostic = `Database '${db}' does not exist on MySQL Server.\n` +
-        `Troubleshooting: Run 'node server/migrate.js' to create and initialize the database.`;
+        `Troubleshooting: Run 'node backend/migrate.js' to create and initialize the database.`;
     } else if (err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
       diagnostic = `MySQL host '${host}' could not be reached on port ${port}.\n` +
         `Troubleshooting: Check DB_HOST and DB_PORT settings in .env.`;
@@ -562,9 +607,16 @@ export async function getForumTopicsFromDb(categoryId = null, options = {}) {
  * Fetch a single topic by ID from MySQL with real posts, reactions and nested parent relationships
  */
 export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
-  try {
-    await query(`UPDATE forum_topics SET views_count = views_count + 1 WHERE id = ?`, [topicId]);
-  } catch {}
+  const debounceKey = `${currentUserId || 'guest'}_${topicId}`;
+  const lastTime = recentTopicViews.get(debounceKey) || 0;
+  const now = Date.now();
+  if (now - lastTime > 5000) {
+    recentTopicViews.set(debounceKey, now);
+    try {
+      await query(`UPDATE forum_topics SET views_count = views_count + 1 WHERE id = ?`, [topicId]);
+    } catch {}
+  }
+  if (recentTopicViews.size > 20000) recentTopicViews.clear();
 
   const topic = await queryOne(`
     SELECT 
@@ -921,9 +973,9 @@ export async function createForumCategoryInDb({ id, title, description, icon, so
   const catIcon = (icon || '💬').trim();
 
   await query(`
-    INSERT INTO forum_categories (id, title, description, icon, sort_order, is_active, color)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
-  `, [catId, cleanTitle, (description || '').trim(), catIcon, order, active, catColor]);
+    INSERT INTO forum_categories (id, title, icon, sort_order, is_active, color)
+    VALUES (?, ?, ?, ?, ?, ?);
+  `, [catId, cleanTitle, catIcon, order, active, catColor]);
 
   return { success: true, categoryId: catId };
 }
@@ -947,10 +999,7 @@ export async function updateForumCategoryInDb(catId, { title, description, icon,
     // Synchronize category_title in forum_topics
     await query('UPDATE forum_topics SET category_title = ? WHERE category_id = ?', [cleanTitle, catId]);
   }
-  if (description !== undefined) {
-    updates.push('description = ?');
-    params.push((description || '').trim());
-  }
+  // description column removed
   if (icon !== undefined) {
     updates.push('icon = ?');
     params.push((icon || '').trim());

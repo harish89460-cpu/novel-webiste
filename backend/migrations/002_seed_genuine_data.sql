@@ -1,22 +1,20 @@
 -- Rudhra Prarthana Novels — Database Migration 002
 -- Seed Genuine Website Content and User Accounts (Zero Fake/Mock Data)
 
-USE rp_novels_db;
-
 -- 1. Seed Genuine Users (Admin & Author)
 INSERT INTO users (id, username, email, password_hash, salt, role)
 VALUES 
-  (2, 'rudhra_author', 'rudhra@rpnovels.com', '86a12240413a04fdf68a8f6efb3df2d2caed73dfbf0e63ec12efa28c1a44a52ff2832e6570903dec821af9374544edbc9fc7c87092fac14e65ac77190978a8f5', 'b60edbcbf0109167cb4a6ea61afca0de', 'Admin'),
-  (8, 'harish', 'harish89460@gmail.com', 'f1e812a4bc07b437c19dc866d2b6e4b66ae5baa216fbb74015dda1e2e12078e10cd2f06673ecd162e425b9d2eeac6fcfcb1a32fba603f472b5a140eda7c04326', 'e29af6f5d5d3abccdcb551381e726f27', 'Admin')
+  (2, 'rudhra_author', 'digitalmarkservices.in@gmail.com', 'f1cc1a04c0dd59b722fab02a6bd51f05def265027bfca575380b460196be48c769ae19a624e5f7ac3badc7e51ebfb5a36db42820461fbf4eac140d2ab20af3ae', '5da387c064cfb089b6dbf2b56f348e8b', 'Admin')
 ON DUPLICATE KEY UPDATE 
   role = VALUES(role),
-  email = VALUES(email);
+  email = VALUES(email),
+  password_hash = VALUES(password_hash),
+  salt = VALUES(salt);
 
 -- 2. Seed User Profiles
 INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date, posts_count, topics_count, followers_count)
 VALUES
-  (2, 'Rudhra Prarthana', 'ருத்ர பிரார்த்தனா', '/profile.png', 'Writing is my soul. Deeply grateful for the immense love of novel readers.', 'எழுத்தே என் உயிர். நாவல் வாசகர்களின் பேரன்பிற்கு என்றும் நன்றியுடன்.', 'Author', 'எழுத்தாளர்', 'Jan 2024', 5, 4, 1250),
-  (8, 'Harish', 'ஹரிஷ்', '/profile.png', 'Administrator and passionate reader of Rudhra Prarthana Novels.', 'நாவல் பிரியர் மற்றும் நிர்வாகி.', 'Admin', 'நிர்வாகி', 'Feb 2024', 8, 2, 420)
+  (2, 'Rudhra Prarthana', 'ருத்ர பிரார்த்தனா', '/profile.png', 'Official Administrator and Author of Rudhra Prarthana Novels', 'ருத்ரா பிரார்த்தனா நாவல்களின் நிர்வாகி மற்றும் எழுத்தாளர்', 'Author', 'எழுத்தாளர்', 'Jan 2024', 0, 0, 0)
 ON DUPLICATE KEY UPDATE
   display_name = VALUES(display_name),
   title = VALUES(title),
@@ -25,8 +23,7 @@ ON DUPLICATE KEY UPDATE
 -- 3. Seed Activity Status
 INSERT INTO activity_status (user_id, is_enabled, is_online, last_seen)
 VALUES
-  (2, 1, 0, CURRENT_TIMESTAMP),
-  (8, 1, 1, CURRENT_TIMESTAMP)
+  (2, 1, 0, CURRENT_TIMESTAMP)
 ON DUPLICATE KEY UPDATE
   is_enabled = VALUES(is_enabled);
 
@@ -234,114 +231,12 @@ ON DUPLICATE KEY UPDATE
   is_audio = VALUES(is_audio);
 
 -- 7. Seed Forum Categories
-INSERT INTO forum_categories (id, title, description, icon, sort_order)
+INSERT INTO forum_categories (id, title, icon, sort_order)
 VALUES
-  ('ongoing-novels', 'Ongoing Novels Discussion', 'Episode updates, reader theories, character analysis, and lively discussions on current serials.', '📖', 1),
-  ('review-junction', 'Review Junction', 'Detailed reader reviews, ratings, and critical literary perspectives on Rudhra Prarthana novels.', '✍️', 2),
-  ('tea-time', 'Tea Time Chit-Chat', 'Casual conversations, daily greetings, life musings, and reader camaraderie.', '☕', 3),
-  ('short-stories', 'Short Stories Hub', 'Discussions and feedback on standalone short stories, festive specials, and flash fiction.', '✨', 4),
-  ('general', 'General Discussions', 'General announcements, welcome area, and platform updates.', '💬', 5)
+  ('ongoing-novels', 'Ongoing Novels Discussion', '📖', 1),
+  ('review-junction', 'Review Junction', '✍️', 2),
+  ('tea-time', 'Tea Time Chit-Chat', '☕', 3),
+  ('short-stories', 'Short Stories Hub', '✨', 4),
+  ('general', 'General Discussions', '💬', 5)
 ON DUPLICATE KEY UPDATE
-  title = VALUES(title),
-  description = VALUES(description);
-
--- 8. Seed Genuine Forum Topics
-INSERT INTO forum_topics (
-  id, category_id, category_title, title, author_id,
-  views_count, replies_count, is_published, visibility,
-  created_at, updated_at, last_reply_author_id, last_reply_at
-) VALUES
-  (
-    'topic-nenjam-24', 'ongoing-novels', 'ONGOING NOVELS',
-    'Nenjam Marappadhillai — Your thoughts on Chapter 24?',
-    2, 145, 2, 1, 'public',
-    '2026-10-14 09:30:00', '2026-10-14 10:15:00', 8, '2026-10-14 10:15:00'
-  ),
-  (
-    'topic-kaadhal-kanave-18', 'ongoing-novels', 'ONGOING NOVELS',
-    'Kaadhal Konden Kanave — Chapter 18 Emotional Highlights',
-    2, 110, 1, 1, 'public',
-    '2026-10-13 14:20:00', '2026-10-13 18:45:00', 2, '2026-10-13 18:45:00'
-  ),
-  (
-    'topic-review-style', 'review-junction', 'REVIEW JUNCTION',
-    'A critical perspective on Rudhra Prarthana''s storytelling style',
-    8, 230, 4, 1, 'public',
-    '2026-10-12 11:00:00', '2026-10-14 08:20:00', 2, '2026-10-14 08:20:00'
-  ),
-  (
-    'topic-rain-coffee', 'tea-time', 'TEA TIME',
-    'Today''s rainfall and a hot cup of coffee ☕',
-    8, 195, 3, 1, 'public',
-    '2026-10-11 16:30:00', '2026-10-13 21:10:00', 8, '2026-10-13 21:10:00'
-  ),
-  (
-    'topic-short-story', 'short-stories', 'SHORT STORIES',
-    'Loved reading People of the Rain — Heartwarming story',
-    2, 155, 2, 1, 'public',
-    '2026-10-10 10:00:00', '2026-10-12 15:30:00', 8, '2026-10-12 15:30:00'
-  ),
-  (
-    'topic-tamil-kanave', 'ongoing-novels', 'ONGOING NOVELS',
-    'காதல் கொண்டேன் கனவே — வாசகர்களின் மனம் கவர்ந்த உணர்ச்சிப்பூர்வமான தருணங்கள்',
-    2, 178, 3, 1, 'public',
-    '2026-10-14 10:45:00', '2026-10-14 10:55:00', 8, '2026-10-14 10:55:00'
-  )
-ON DUPLICATE KEY UPDATE
-  title = VALUES(title),
-  views_count = VALUES(views_count),
-  replies_count = VALUES(replies_count);
-
--- 9. Seed Genuine Forum Posts
-INSERT INTO forum_posts (topic_id, user_id, content, created_at)
-VALUES
-  ('topic-nenjam-24', 2, 'Welcome, dear readers! Chapter 24 of ''Nenjam Marappadhillai'' is now live! Please share your thoughts and predictions right here! ❤️', '2026-10-14 09:30:00'),
-  ('topic-nenjam-24', 8, 'Chapter 24 moved at such an exciting pace! The revelation was breathtaking. Eagerly waiting for the next update!', '2026-10-14 10:15:00'),
-  ('topic-kaadhal-kanave-18', 2, 'How did you feel about the revelation in chapter 18? Drop your feedback below!', '2026-10-13 14:20:00'),
-  ('topic-review-style', 8, 'The nuanced family dynamics in RP''s novels make every character feel profoundly real. What stands out to you most?', '2026-10-12 11:00:00'),
-  ('topic-review-style', 2, 'Thank you so much Harish! Realistic emotional depth is the true compass of my writing.', '2026-10-14 08:20:00'),
-  ('topic-rain-coffee', 8, 'Perfect weather to curl up and read novels with a warm cup of coffee!', '2026-10-11 16:30:00'),
-  ('topic-short-story', 2, 'Thank you for all the lovely comments on our rainy-day special short story!', '2026-10-10 10:00:00'),
-  ('topic-tamil-kanave', 2, 'காதல் கொண்டேன் கனவே தொடரின் இந்த வார திருப்பங்கள் உங்களுக்கு பிடித்திருந்ததா? உங்கள் மேலான கருத்துக்களை இங்கே பகிருங்கள்! ❤️', '2026-10-14 10:45:00'),
-  ('topic-tamil-kanave', 8, 'கதைக்களம் மிகவும் அருமையாக செல்கிறது! அடுத்த பதிவிற்காக ஆவலுடன் காத்திருக்கிறோம்.', '2026-10-14 10:55:00');
-
--- 10. Seed Genuine Comments
-INSERT INTO comments (novel_id, chapter_num, user_id, content, created_at)
-VALUES
-  ('nenjam-marappadhillai', 24, 8, 'What an incredible chapter! The emotional confrontation between Devan and Varshini was written with such mastery.', '2026-10-14 10:30:00'),
-  ('nenjam-marappadhillai', 24, 2, 'Thank you so much Harish! More exciting moments are in store for the upcoming chapters.', '2026-10-14 10:40:00'),
-  ('kaadhal-konden-kanave', 18, 8, 'Siddharth and Ananya have stolen our hearts. Wonderful story progression!', '2026-10-13 19:00:00'),
-  ('nenjam-marappadhillai', 1, 8, 'Re-reading chapter 1 brings back all the nostalgic charm of how this wonderful story began.', '2026-10-15 12:00:00');
-
--- 11. Seed Reactions
-INSERT INTO reactions (target_type, target_id, user_id, emoji, created_at)
-VALUES
-  ('chapter', 'nenjam-marappadhillai:24', 8, '❤️', '2026-10-14 10:31:00'),
-  ('chapter', 'nenjam-marappadhillai:24', 2, '❤️', '2026-10-14 10:41:00'),
-  ('novel', 'nenjam-marappadhillai', 8, '👍', '2026-10-14 10:32:00'),
-  ('novel', 'kaadhal-konden-kanave', 8, '😍', '2026-10-13 19:05:00')
-ON DUPLICATE KEY UPDATE emoji = VALUES(emoji);
-
--- 12. Seed Likes
-INSERT INTO likes (target_type, target_id, user_id, created_at)
-VALUES
-  ('novel', 'nenjam-marappadhillai', 8, '2026-10-14 10:32:00'),
-  ('novel', 'kaadhal-konden-kanave', 8, '2026-10-13 19:05:00'),
-  ('chapter', 'nenjam-marappadhillai:24', 8, '2026-10-14 10:31:00')
-ON DUPLICATE KEY UPDATE user_id = VALUES(user_id);
-
--- 13. Seed Genuine Notifications
-INSERT INTO notifications (user_id, type, title, message, link, is_read, created_at)
-VALUES
-  (8, 'chapter_release', 'New Chapter Released!', 'Rudhra Prarthana has published Chapter 24 of Nenjam Marappadhillai.', '#reader?novel=nenjam-marappadhillai&ch=24', 0, '2026-10-14 09:30:00'),
-  (8, 'announcement', 'Welcome to Rudhra Prarthana Novels', 'Experience distraction-free reading, audio novels, and our interactive community.', '#home', 1, '2026-10-01 10:00:00'),
-  (2, 'announcement', 'Welcome Rudhra Prarthana', 'Welcome to your official author portal. Your works are loved by hundreds of thousands of readers.', '#home', 0, '2026-10-01 10:00:00');
-
--- 14. Seed Reading Progress
-INSERT INTO reading_progress (user_id, novel_id, chapter_num, progress_percentage, last_read_at)
-VALUES
-  (8, 'nenjam-marappadhillai', 24, 100, CURRENT_TIMESTAMP),
-  (8, 'kaadhal-konden-kanave', 18, 100, CURRENT_TIMESTAMP)
-ON DUPLICATE KEY UPDATE 
-  chapter_num = VALUES(chapter_num),
-  progress_percentage = VALUES(progress_percentage);
+  title = VALUES(title);

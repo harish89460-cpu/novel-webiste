@@ -4,7 +4,7 @@
 
 import { query, queryOne, getDb } from './db.js';
 import { sanitizeAvatar } from './auth.js';
-import { sendSseToUser } from './notifications.js';
+import { sendSseToUser, createNotification } from './notifications.js';
 
 /**
  * Sanitize message content to prevent Stored XSS
@@ -28,9 +28,10 @@ export async function getUserChatSettings(userId) {
   if (!row) {
     // Default is ON (1) per requirement
     await query('INSERT IGNORE INTO chat_settings (user_id, is_chat_available) VALUES (?, 1);', [userId]);
-    return { isChatAvailable: true };
+    return { isChatAvailable: true, is_chat_available: 1 };
   }
-  return { isChatAvailable: row.is_chat_available === 1 };
+  const isAvail = row.is_chat_available === 1;
+  return { isChatAvailable: isAvail, is_chat_available: row.is_chat_available };
 }
 
 export async function updateUserChatSettings(userId, isChatAvailable) {
@@ -42,9 +43,9 @@ export async function updateUserChatSettings(userId, isChatAvailable) {
   `, [userId, val]);
 
   // Broadcast settings change to user's tabs
-  sendSseToUser(userId, 'chat:settings', { isChatAvailable: val === 1 });
+  sendSseToUser(userId, 'chat:settings', { isChatAvailable: val === 1, is_chat_available: val, userId: Number(userId) });
 
-  return { success: true, isChatAvailable: val === 1 };
+  return { success: true, isChatAvailable: val === 1, is_chat_available: val };
 }
 
 /**
@@ -818,6 +819,24 @@ export async function sendMessage(conversationId, senderId, payloadOrContent) {
       message: messagePayload
     });
 
+    // 7. Persistent MySQL Notification for recipient
+    try {
+      const cleanSnippet = (content || (messageType === 'image' ? 'Sent an image attachment' : 'Sent an audio note')).replace(/<[^>]+>/g, '').trim().slice(0, 75);
+      const senderName = senderProfile?.display_name || senderProfile?.username || 'A member';
+      await createNotification({
+        userId: rId,
+        actorId: sId,
+        type: 'chat_message',
+        title: `Message from ${senderName}`,
+        message: `${senderName}: "${cleanSnippet}"`,
+        link: `#member?id=${encodeURIComponent(senderProfile?.username || sId)}&tab=chat`,
+        entityType: 'chat',
+        entityId: convId
+      });
+    } catch (notifErr) {
+      console.warn('[Chat Notification Warning]:', notifErr.message);
+    }
+
     return {
       success: true,
       message: messagePayload
@@ -1021,7 +1040,7 @@ export async function getEligibleChatUsers(currentUserId, search = '') {
 export function isWriterOrAuthor(role) {
   if (!role) return false;
   const r = role.toLowerCase().trim();
-  return r === 'writer' || r === 'author';
+  return r === 'writer' || r === 'author' || r === 'admin';
 }
 
 export async function getAdminWritersList(adminId) {
@@ -1047,7 +1066,7 @@ export async function getAdminWritersList(adminId) {
     INNER JOIN conversations c ON c.id = cp.conversation_id
     LEFT JOIN profiles p ON p.user_id = u.id
     LEFT JOIN activity_status ast ON ast.user_id = u.id
-    WHERE LOWER(u.role) IN ('writer', 'author')
+    WHERE LOWER(u.role) IN ('writer', 'author', 'admin')
     GROUP BY u.id
     ORDER BY latest_activity DESC, total_conversations DESC;
   `);
@@ -1064,6 +1083,8 @@ export async function getAdminWritersList(adminId) {
       isOnline: Boolean(w.is_online),
       lastSeen: w.last_seen,
       totalConversations: Number(w.total_conversations || 0),
+      total_conversations: Number(w.total_conversations || 0),
+      conversation_count: Number(w.total_conversations || 0),
       latestActivity: w.latest_activity
     }))
   };
@@ -1208,17 +1229,25 @@ export async function getAdminWriterChatHistory(adminId, conversationId, { ipAdd
     ORDER BY m.id ASC;
   `, [convId]);
 
-  return {
-    success: true,
-    isReadOnly: true,
+  const conversationObj = {
+    id: convId,
     conversationId: convId,
     participants: participants.map(p => ({
       id: p.id,
       username: p.username,
       displayName: p.display_name || p.username,
+      display_name: p.display_name || p.username,
       role: p.role,
       avatar: sanitizeAvatar(p.avatar)
-    })),
+    }))
+  };
+
+  return {
+    success: true,
+    isReadOnly: true,
+    conversationId: convId,
+    conversation: conversationObj,
+    participants: conversationObj.participants,
     messages: messages.map(m => ({
       id: m.id,
       senderId: m.sender_id,

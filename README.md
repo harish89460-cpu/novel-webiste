@@ -51,7 +51,7 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 
 ## 📂 Project Architecture
 
-The codebase is organized into three decoupled folders:
+The codebase is organized into decoupled folders:
 
 ```text
 rudhra-prarthana-novels/
@@ -59,10 +59,10 @@ rudhra-prarthana-novels/
 │   ├── index.html            # SPA Entry Point
 │   ├── vite.config.js        # Vite config with backend proxy and auto-start
 │   ├── package.json          # Frontend build tooling
-│   ├── public/               # Static assets (images, sw.js)
+│   ├── public/               # Static assets (images, profile.png, sw.js)
 │   └── src/
 │       ├── main.js           # Frontend entry bootstrap
-│       ├── js/               # ES Modules (app, auth, reader, comments, forum, etc.)
+│       ├── js/               # ES Modules (app, auth, reader, comments, admin, writer)
 │       └── css/              # Modular Vanilla CSS Design System
 │
 ├── backend/                  # Node.js REST API Server
@@ -80,13 +80,13 @@ rudhra-prarthana-novels/
 │   ├── notifications.js      # In-app notifications & Web Push engine
 │   ├── email.js              # Nodemailer SMTP & OTP delivery
 │   ├── migrate.js            # Database migration runner
-│   ├── migrations/           # 12 Versioned SQL migrations
+│   ├── migrations/           # 26 Versioned SQL migrations
 │   ├── uploads/              # Uploaded user avatars, audio files, and media
 │   └── package.json          # Node server dependencies
 │
 ├── db/                       # Database Reference & Documentation
 │   ├── schema/
-│   │   └── full_schema.sql   # Complete current MySQL schema DDL
+│   │   └── full_schema.sql   # Authoritative complete MySQL schema DDL (49 tables)
 │   ├── migrations/           # Reference copies of schema migrations
 │   └── README.md             # Comprehensive schema and tables documentation
 │
@@ -95,7 +95,9 @@ rudhra-prarthana-novels/
 │   ├── API_DOCUMENTATION.md  # Complete REST API reference
 │   └── DEPLOYMENT.md         # Production deployment guide
 │
-├── scripts/                  # Automated test & verification scripts
+├── scripts/                  # Automated test & verification suites
+├── backups/                  # Database backups and code archives
+├── ADMIN_SETUP.md            # Secure administrator account setup & OTP recovery guide
 ├── .env                      # Global environment credentials (DB, SMTP, VAPID)
 ├── .env.example              # Environment template
 └── package.json              # Root orchestrator scripts
@@ -150,12 +152,19 @@ rudhra-prarthana-novels/
 
 6. **Production Build & Execution:**
    ```bash
-   # Build frontend bundle
+   # Build frontend production bundle
    npm run build
 
    # Start standalone backend server (serves built frontend and API)
    npm start
    ```
+   Open `http://localhost:3000` to access the production site.
+
+---
+
+## 🔐 Administrator Access
+
+Refer to [ADMIN_SETUP.md](ADMIN_SETUP.md) for full details on administrator authentication, role-based access control, environment variables, and the automated email OTP password recovery workflow.
 
 ---
 

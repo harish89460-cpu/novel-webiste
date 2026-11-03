@@ -240,6 +240,10 @@ export async function renderAppView() {
       await renderNovelLibraryView(main, hash);
     } else if (hash.startsWith('#forum') || hash.startsWith('#forms')) {
       await renderForumView(main, hash);
+    } else if (hash.startsWith('#thread-create') || hash.startsWith('#add-thread')) {
+      await renderThreadCreateView(main, hash);
+    } else if (hash.startsWith('#thread?') || hash.startsWith('#thread/')) {
+      await renderContentReadingView(main, hash);
     } else if (hash.startsWith('#content?') || hash.startsWith('#content/')) {
       await renderContentReadingView(main, hash);
     } else if (hash.startsWith('#story?') || hash.startsWith('#story/')) {
@@ -1170,11 +1174,18 @@ async function renderForumView(container, hash = '') {
   const hierarchy = Array.isArray(hierarchyData?.hierarchy) ? hierarchyData.hierarchy : [];
   const currentCategory = currentCategoryId ? hierarchy.find(c => String(c.id) === String(currentCategoryId)) : null;
 
-  // Check if current user is an authorized administrator
+  // Check if current user is an authorized administrator or writer
   const isAdmin = Boolean(
     window.CURRENT_USER && (
       window.CURRENT_USER.isAdmin || 
-      ['admin', 'editor'].includes((window.CURRENT_USER.role || '').toLowerCase())
+      ['admin', 'administrator', 'editor'].includes((window.CURRENT_USER.role || '').toLowerCase())
+    )
+  );
+  const isPrivilegedWriter = Boolean(
+    window.CURRENT_USER && (
+      isAdmin ||
+      ['writer', 'author'].includes((window.CURRENT_USER.role || '').toLowerCase()) ||
+      window.CURRENT_USER.isWriter
     )
   );
 
@@ -1194,11 +1205,7 @@ async function renderForumView(container, hash = '') {
       }
     }
 
-    // If subcategory links to a novel, redirect directly to the existing novel page
-    if (currentSub && currentSub.novelId) {
-      window.location.hash = `#novel?id=${encodeURIComponent(currentSub.novelId)}`;
-      return;
-    }
+
 
     if (currentSub) {
       const subArticles = currentSub.articles || [];
@@ -1222,6 +1229,11 @@ async function renderForumView(container, hash = '') {
           <div class="forms-subpage-header-bar">
             <div class="forms-subpage-left">
               <a href="#forms" class="btn btn-outline btn-sm">« Back to Forms</a>
+              ${currentSub.novelId ? `
+                <a href="#novel?id=${encodeURIComponent(currentSub.novelId)}" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:4px;">
+                  <span>📖</span> Novel Synopsis
+                </a>
+              ` : ''}
               <div class="forms-subpage-icon-badge">${currentSub.icon || '📌'}</div>
               <div>
                 <h1 class="forms-subpage-title">${escapeHtml(currentSub.title)}</h1>
@@ -1233,10 +1245,10 @@ async function renderForumView(container, hash = '') {
               </div>
             </div>
 
-            ${isAdmin ? `
-              <button type="button" class="btn btn-gold btn-sm" onclick="window.openFormsAddContentModal('${escapeQuotes(parentMain?.id || '')}', '${escapeQuotes(currentSub.id)}', '${escapeQuotes(currentSub.title)}')">
-                <span style="font-size:15px; font-weight:bold; margin-right:4px;">+</span> Add New Content
-              </button>
+            ${isPrivilegedWriter ? `
+              <a href="#thread-create?sub=${encodeURIComponent(currentSub.id)}&cat=${encodeURIComponent(parentMain?.id || '')}" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; text-decoration:none;">
+                <span style="font-size:16px;">+</span> Add Thread
+              </a>
             ` : ''}
           </div>
 
@@ -1266,7 +1278,7 @@ async function renderForumView(container, hash = '') {
               <!-- Compact Forum-Style Content Articles Table -->
               <div class="forum-table-card">
                 <div class="forum-table-header forum-table-header-articles">
-                  <div>Content Title</div>
+                  <div>Thread Title</div>
                   <div>Author</div>
                   <div class="forum-table-col-center">Comments</div>
                   <div class="forum-table-col-center">Views</div>
@@ -1279,7 +1291,7 @@ async function renderForumView(container, hash = '') {
                         <div class="forum-table-cell-title">
                           <span class="forum-table-icon">${depth > 0 ? '↳ 📄' : '📄'}</span>
                           <div class="forum-table-title-meta">
-                            <a href="${art.link}" class="forum-table-title-link" title="${escapeHtml(art.title)}">${escapeHtml(art.title)}</a>
+                            <a href="#thread?id=${encodeURIComponent(art.uniqueSlug || art.id)}" class="forum-table-title-link" title="${escapeHtml(art.title)}">${escapeHtml(art.title)}</a>
                             ${art.children && art.children.length > 0 ? `<span class="forms-role-badge" style="margin-left:6px; background:#EDE9FE; color:#5B21B6;">${art.children.length} ${art.children.length === 1 ? 'part' : 'parts'}</span>` : ''}
                           </div>
                         </div>
@@ -1300,7 +1312,7 @@ async function renderForumView(container, hash = '') {
                               <span class="forum-stat-pill">👁 ${Number(art.viewsCount || 0).toLocaleString()}</span>
                             </div>
                           </div>
-                          <a href="${art.link}" class="forum-table-last-link" style="color:#B88635; font-size:11px;">Read ➔</a>
+                          <a href="#thread?id=${encodeURIComponent(art.uniqueSlug || art.id)}" class="forum-table-last-link" style="color:#B88635; font-size:11px;">Read ➔</a>
                         </div>
                       </div>
                       ${art.children && art.children.length > 0 ? renderRows(art.children, depth + 1) : ''}
@@ -1312,14 +1324,33 @@ async function renderForumView(container, hash = '') {
                       <p style="font-size:13px; color:#64748B; margin:0 0 14px;">
                         No reading content has been published in this section yet.
                       </p>
-                      ${isAdmin ? `
-                        <button type="button" class="btn btn-gold btn-sm" onclick="window.openFormsAddContentModal('${escapeQuotes(parentMain?.id || '')}', '${escapeQuotes(currentSub.id)}', '${escapeQuotes(currentSub.title)}')">
-                          + Add New Content
-                        </button>
+                      ${isPrivilegedWriter ? `
+                        <a href="#thread-create?sub=${encodeURIComponent(currentSub.id)}&cat=${encodeURIComponent(parentMain?.id || '')}" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; text-decoration:none; margin-top:10px;">
+                          + Add Thread
+                        </a>
                       ` : ''}
                     </div>
                   `}
                 </div>
+              </div>
+
+              <!-- Dedicated Forum Discussion Section for Review Forms Title -->
+              <div class="forms-discussion-card" style="margin-top:24px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid #F1F5F9; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">💬</span>
+                    <div>
+                      <h2 style="font-family:var(--font-serif, 'Cinzel', serif); font-size:1.25rem; font-weight:700; color:#0B1F33; margin:0;">
+                        ${escapeHtml(currentSub.title)} — Discussions &amp; Member Reviews
+                      </h2>
+                      <p style="font-size:12.5px; color:#64748B; margin:2px 0 0;">
+                        Participate in discussions about novels, characters, episodes, stories, and share your reading experiences.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="forms-subcategory-discussion-mount"></div>
               </div>
             </div>
 
@@ -1396,6 +1427,7 @@ async function renderForumView(container, hash = '') {
       `;
 
       loadForumMembersOnline();
+      renderCommentsWidget('forms-subcategory-discussion-mount', `review_sub_${currentSub.id}`, 0);
       return;
     }
   }
@@ -1445,9 +1477,6 @@ async function renderForumView(container, hash = '') {
                 <span>Explore Novels</span>
                 <span>➔</span>
               </a>
-              <a href="#forms" class="btn btn-outline btn-lg forms-hero-btn-outline" onclick="document.getElementById('forms-categories-root')?.scrollIntoView({ behavior: 'smooth' })">
-                <span>Join Reader Forum</span>
-              </a>
             </div>
           </div>
         </section>
@@ -1457,7 +1486,7 @@ async function renderForumView(container, hash = '') {
             <a href="#forms" class="section-link" style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-weight:600;">
               « Back to All Categories
             </a>
-            <span class="section-subtitle">${currentCategory ? (currentCategory.description || t('forum_subtitle')) : t('forum_subtitle')}</span>
+            <span class="section-subtitle">${t('forum_subtitle')}</span>
             <h1 class="section-title">${escapeHtml(activeCategoryTitle)}</h1>
           </div>
           <div>
@@ -1523,7 +1552,6 @@ async function renderForumView(container, hash = '') {
                         <a href="#forms?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}">
                           <h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2>
                         </a>
-                        <div class="forms-cat-desc">${escapeHtml(cat.description || '')}</div>
                       </div>
                     </div>
                     <div class="forms-cat-actions">
@@ -1539,7 +1567,7 @@ async function renderForumView(container, hash = '') {
                       </span>
                       ${subs.length > 0 ? `
                         <span>•</span>
-                        <span class="forum-summary-stat-item"><strong>${totalCatItems}</strong> Notes</span>
+                        <span class="forum-summary-stat-item"><strong>${totalCatItems}</strong> ${totalCatItems === 1 ? 'Title' : 'Titles'}</span>
                       ` : ''}
                       <span>•</span>
                       <span class="forum-summary-stat-item"><strong>${totalCatComments}</strong> Comments</span>
@@ -1567,7 +1595,7 @@ async function renderForumView(container, hash = '') {
                       </div>
                       <div class="forum-table-body">
                         ${subs.map(sub => {
-                          const subLink = sub.novelId ? `#novel?id=${encodeURIComponent(sub.novelId)}` : `#forms?sub=${encodeURIComponent(sub.id)}`;
+                          const subLink = `#forms?sub=${encodeURIComponent(sub.id)}`;
                           const noteCount = sub.articles?.length || 0;
                           const subComments = sub.stats?.totalComments ?? (sub.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
                           const subViews = sub.stats?.totalViews ?? (sub.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
@@ -1583,7 +1611,7 @@ async function renderForumView(container, hash = '') {
                                 </div>
                               </div>
                               <div class="forum-table-cell-author">
-                                <span class="forum-stat-pill">📄 ${noteCount} ${noteCount === 1 ? 'Note' : 'Notes'}</span>
+                                <span class="forum-stat-pill">📄 ${noteCount} ${noteCount === 1 ? 'Title' : 'Titles'}</span>
                               </div>
                               <div class="forum-table-cell-stat">
                                 <span class="forum-stat-pill">💬 ${subComments}</span>
@@ -1606,7 +1634,7 @@ async function renderForumView(container, hash = '') {
                                   </div>
                                 ` : `
                                   <div class="forum-table-meta-subrow">
-                                    <span class="forum-table-last-date" style="color:#94A3B8;">No notes yet</span>
+                                    <span class="forum-table-last-date" style="color:#94A3B8;">No threads yet</span>
                                     <div class="forum-table-mobile-badges">
                                       <span class="forum-stat-pill">💬 ${subComments}</span>
                                       <span class="forum-stat-pill">👁 ${Number(subViews).toLocaleString()}</span>
@@ -1623,6 +1651,11 @@ async function renderForumView(container, hash = '') {
 
                   <!-- 2. Compact Forum Table Layout for Novels & Stories -->
                   ${novels.length > 0 ? `
+                    ${subs.length > 0 ? `
+                      <div style="font-size:12px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.75px; margin:18px 20px 8px; display:flex; align-items:center; gap:6px;">
+                        <span>📚</span> Associated Catalog Novels &amp; Releases
+                      </div>
+                    ` : ''}
                     <div class="forum-table-card" style="margin:0 16px 16px; width:calc(100% - 32px);">
                       <div class="forum-table-header forum-table-header-novels">
                         <div>Novel / Story</div>
@@ -2479,9 +2512,9 @@ async function renderMemberProfileView(container, hash) {
       return;
     }
 
-    const maxSize = 2 * 1024 * 1024;
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      showToast('Image size must be less than 2MB.');
+      showToast('Image size must be less than 10MB.');
       event.target.value = '';
       return;
     }
@@ -3086,7 +3119,7 @@ async function renderMemberProfileView(container, hash) {
                       </button>
                     </div>
                     <small style="color:#64748B; font-size:11px;">
-                      JPG, PNG, WEBP or GIF (Max 2MB)
+                      JPG, PNG, WEBP or GIF (Max 10MB)
                     </small>
                   </div>
                 </div>
@@ -4435,9 +4468,236 @@ window.showContentRestrictionModal = ({ title, message, redirectHash } = {}) => 
 // ============================================================================
 // DEDICATED CONTENT READING VIEW (Main Title -> Sub Title -> Content Title -> Reading Content)
 // ============================================================================
+
+// ============================================================================
+// DEDICATED THREAD CREATION VIEW (Admin and Writers Only)
+// ============================================================================
+async function renderThreadCreateView(container, hash = '') {
+  const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+  const subId = urlParams.get('sub') || '';
+  const catId = urlParams.get('cat') || '';
+
+  const isPrivilegedWriter = Boolean(
+    window.CURRENT_USER && (
+      window.CURRENT_USER.isAdmin ||
+      ['admin', 'administrator', 'editor', 'writer', 'author'].includes((window.CURRENT_USER.role || '').toLowerCase()) ||
+      window.CURRENT_USER.isWriter
+    )
+  );
+
+  if (!window.IS_LOGGED_IN) {
+    showToast('Please log in as Admin or Writer to post a thread.');
+    window.location.hash = '#auth?mode=login';
+    return;
+  }
+
+  if (!isPrivilegedWriter) {
+    showToast('Access restricted: Only Admin and Writers can post threads.');
+    window.location.hash = '#forms';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="container section" style="max-width:860px; margin:0 auto; padding:40px 16px;">
+      <div style="text-align:center; padding:50px 20px; color:#64748B;">
+        <div style="width:34px; height:34px; border:3px solid #E2E8F0; border-top-color:#C89B3C; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
+        <div>Loading thread creator...</div>
+      </div>
+    </div>
+  `;
+
+  const token = localStorage.getItem('rp_auth_token');
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+  let hierarchy = [];
+  try {
+    const res = await fetch('/api/content/hierarchy', { headers });
+    const data = await res.json();
+    hierarchy = data.hierarchy || [];
+  } catch (e) {}
+
+  let targetCat = hierarchy.find(c => String(c.id) === String(catId));
+  let targetSub = null;
+  for (const c of hierarchy) {
+    const s = (c.subcategories || []).find(sub => String(sub.id) === String(subId));
+    if (s) {
+      targetSub = s;
+      if (!targetCat) targetCat = c;
+      break;
+    }
+  }
+
+  const catTitle = targetCat?.title || 'General';
+  const subTitle = targetSub?.title || 'Category Title';
+
+  container.innerHTML = `
+    <div class="container section" style="max-width:860px; margin:0 auto; padding:40px 16px;">
+      <!-- Breadcrumbs -->
+      <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
+        <a href="#forms">Home</a>
+        <span class="crumb-separator">›</span>
+        <a href="#forms">Forms</a>
+        <span class="crumb-separator">›</span>
+        <a href="#forms?category=${encodeURIComponent(targetCat?.id || catId)}">${escapeHtml(catTitle)}</a>
+        <span class="crumb-separator">›</span>
+        <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}">${escapeHtml(subTitle)}</a>
+        <span class="crumb-separator">›</span>
+        <span class="crumb-current">Add Thread</span>
+      </nav>
+
+      <div class="card" style="background:#FFFFFF; border:1px solid #E8DCCB; border-radius:16px; padding:32px; box-shadow:0 8px 30px rgba(11,31,51,0.06);">
+        <div style="border-bottom:1px solid #F1ECE4; padding-bottom:18px; margin-bottom:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <span class="forms-cat-pill" style="margin-bottom:8px; display:inline-block;">${escapeHtml(catTitle)} › ${escapeHtml(subTitle)}</span>
+              <h1 style="font-family:var(--font-serif); font-size:1.85rem; color:#0B1F33; margin:0 0 6px;">Create New Thread</h1>
+              <p style="color:#64748B; font-size:13.5px; margin:0;">
+                Post your thread with linked novel content to publish it for readers in this category.
+              </p>
+            </div>
+            <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline btn-sm">
+              « Back to Section
+            </a>
+          </div>
+        </div>
+
+        <form id="thread-create-form" onsubmit="event.preventDefault(); window.submitThreadPosting('${escapeQuotes(targetCat?.id || catId)}', '${escapeQuotes(targetSub?.id || subId)}');">
+          <div id="thread-error-banner" style="display:none; background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:18px; font-weight:600;"></div>
+
+          <!-- 1. Thread Title -->
+          <div style="margin-bottom:20px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">
+              Thread Title <span style="color:#DC2626;">*</span>
+            </label>
+            <input type="text" id="thread-title-input" class="form-input" 
+                   placeholder="e.g. Episode 1: A New Dawn — Reading &amp; Discussion" 
+                   style="width:100%; box-sizing:border-box; font-size:15px; padding:10px 14px;" required>
+          </div>
+
+          <!-- 2. Content / Description Editor -->
+          <div style="margin-bottom:20px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">
+              Content / Description Editor
+            </label>
+            <div style="font-size:12px; color:#64748B; margin-bottom:6px;">
+              Add introductory notes, episode synopsis, or discussion prompts for readers.
+            </div>
+            <textarea id="thread-content-input" class="form-input" rows="6" 
+                      placeholder="Write your episode introduction, author reflections, or background thoughts here..." 
+                      style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.6; padding:12px;"></textarea>
+          </div>
+
+          <!-- 3. Novel Content Link field -->
+          <div style="margin-bottom:26px; background:#FAF8F5; border:1px solid #E8DCCB; border-radius:10px; padding:16px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:4px;">
+              Novel Content Link <span style="color:#DC2626;">*</span>
+            </label>
+            <div style="font-size:12px; color:#856404; margin-bottom:8px;">
+              Paste the unique content link generated after saving the novel/episode in your Admin or Writer dashboard.
+            </div>
+            <input type="text" id="thread-novel-link-input" class="form-input" 
+                   placeholder="e.g. http://localhost:5173/#reader?novel=hello&amp;ch=1 or #reader?novel=hello&amp;ch=1" 
+                   style="width:100%; box-sizing:border-box; font-family:monospace; font-size:13px; padding:10px 14px;" required>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px solid #F1ECE4; padding-top:20px;">
+            <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline">
+              Cancel
+            </a>
+            <button type="submit" class="btn btn-gold btn-lg" id="btn-submit-thread" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; padding:10px 24px;">
+              🚀 Publish Thread
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+window.submitThreadPosting = async (catId, subId) => {
+  const titleInput = document.getElementById('thread-title-input');
+  const contentInput = document.getElementById('thread-content-input');
+  const linkInput = document.getElementById('thread-novel-link-input');
+  const errorBanner = document.getElementById('thread-error-banner');
+  const submitBtn = document.getElementById('btn-submit-thread');
+
+  if (errorBanner) errorBanner.style.display = 'none';
+
+  const title = (titleInput?.value || '').trim();
+  const content = (contentInput?.value || '').trim();
+  const novelLink = (linkInput?.value || '').trim();
+
+  if (!title) {
+    if (errorBanner) {
+      errorBanner.textContent = 'Please enter a thread title.';
+      errorBanner.style.display = 'block';
+    }
+    titleInput?.focus();
+    return;
+  }
+
+  if (!novelLink) {
+    if (errorBanner) {
+      errorBanner.textContent = 'Please paste the novel content link from your dashboard.';
+      errorBanner.style.display = 'block';
+    }
+    linkInput?.focus();
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Publishing...';
+  }
+
+  try {
+    const token = localStorage.getItem('rp_auth_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+
+    const res = await fetch('/api/content/threads', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        mainCategoryId: catId,
+        subCategoryId: subId,
+        title,
+        content,
+        novelLink,
+        status: 'published',
+        isPublished: 1
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to publish thread.');
+    }
+
+    showToast('Thread published successfully! 🎉');
+    window.location.hash = `#forms?sub=${encodeURIComponent(subId)}`;
+  } catch (err) {
+    if (errorBanner) {
+      errorBanner.textContent = err.message || 'Error publishing thread.';
+      errorBanner.style.display = 'block';
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '🚀 Publish Thread';
+    }
+  }
+};
+
+
+
+// ============================================================================
+// DEDICATED THREAD & CONTENT READING VIEW (Novel Reading Layout & Rules)
+// ============================================================================
 async function renderContentReadingView(container, hash) {
   const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
-  const slug = urlParams.get('slug') || urlParams.get('id') || (hash.includes('/') ? hash.split('/')[1] : '');
+  const slug = urlParams.get('id') || urlParams.get('slug') || (hash.includes('/') ? hash.split('/')[1] : '');
 
   container.innerHTML = `
     <div class="content-reading-wrap">
@@ -4501,117 +4761,118 @@ async function renderContentReadingView(container, hash) {
     const authorAvatar = art.authorAvatar || '/profile.png';
     const commentsCount = Number(art.commentsCount || 0);
 
-    container.innerHTML = `
-      <div class="content-reading-wrap">
-        <!-- Breadcrumbs & Back Bar -->
-        <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
-          <a href="#forms">Home</a>
-          <span class="crumb-separator">›</span>
-          <a href="#forms">Forms</a>
-          <span class="crumb-separator">›</span>
-          <a href="#forms">${escapeHtml(art.mainCategoryTitle)}</a>
-          <span class="crumb-separator">›</span>
-          <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
-          ${art.parent ? `
-            <span class="crumb-separator">›</span>
-            <a href="${art.parent.link}">${escapeHtml(art.parent.title)}</a>
-          ` : ''}
-          <span class="crumb-separator">›</span>
-          <span class="crumb-current">${escapeHtml(art.title)}</span>
-        </nav>
+    const rawNovelStory = art.linkedChapter?.content || (art.linkedNovel ? (art.linkedNovel.description || art.linkedNovel.synopsis) : '') || art.content || '';
+    const isHtml = rawNovelStory.includes('<p>') || rawNovelStory.includes('<div') || rawNovelStory.includes('<h');
+    const storyBody = isHtml ? rawNovelStory : rawNovelStory.split('\n\n').filter(Boolean).map(p => `<p>${p}</p>`).join('');
+    const currentMode = localStorage.getItem('rp_reader_mode') || 'light';
 
-        <div class="content-reading-back-bar">
-          <a href="${art.parent ? art.parent.link : `#forms?sub=${encodeURIComponent(art.subCategoryId || '')}`}" class="content-back-btn">
-            <span>«</span> Back to ${escapeHtml(art.parent ? art.parent.title : art.subCategoryTitle)}
-          </a>
-          <div style="font-size:12px; color:#64748B;">
-            Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+    container.innerHTML = `
+      <!-- Top Progress Track -->
+      <div class="reading-progress-track">
+        <div class="reading-progress-bar"></div>
+      </div>
+
+      <div class="reader-page mode-${currentMode}" data-reader-theme="${currentMode}">
+        <!-- Floating Reader Controls Toolbar -->
+        <div class="reader-toolbar">
+          <div class="reader-toolbar-group">
+            <button class="reader-tool-btn" onclick="adjustFontSize(-0.08)" title="Smaller">A−</button>
+            <button class="reader-tool-btn reader-tool-btn-reset" onclick="adjustFontSize(0)" title="Reset">Reset</button>
+            <button class="reader-tool-btn" onclick="adjustFontSize(0.08)" title="Larger">A+</button>
+          </div>
+          <div class="reader-toolbar-group">
+            <button class="mode-pill ${currentMode === 'light' ? 'active' : ''}" data-mode="light" onclick="setReaderMode('light')">Light</button>
+            <button class="mode-pill ${currentMode === 'sepia' ? 'active' : ''}" data-mode="sepia" onclick="setReaderMode('sepia')">Sepia</button>
+            <button class="mode-pill ${currentMode === 'dark' ? 'active' : ''}" data-mode="dark" onclick="setReaderMode('dark')">Dark</button>
+          </div>
+          <div class="reader-toolbar-group">
+            <button class="reader-tool-btn" onclick="shareChapter('copy', '${escapeQuotes(art.title)}')" title="Share Link">🔗 Share</button>
           </div>
         </div>
 
-        <!-- Main Reading Article Card -->
-        <article class="content-reading-card">
-          <div class="content-reading-badge">
-            <span>🌸</span>
-            <span>${escapeHtml(art.mainCategoryTitle)} › ${escapeHtml(art.subCategoryTitle)}${art.parent ? ` › ${escapeHtml(art.parent.title)}` : ''}</span>
+        <div class="reader-container" style="max-width:840px; margin:0 auto; padding:20px 16px;">
+          <!-- Breadcrumbs & Back Bar -->
+          <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
+            <a href="#forms">Home</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms">Forms</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms?category=${encodeURIComponent(art.mainCategoryId || '')}">${escapeHtml(art.mainCategoryTitle || 'Category')}</a>
+            <span class="crumb-separator">›</span>
+            <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle || 'Section')}</a>
+            <span class="crumb-separator">›</span>
+            <span class="crumb-current">${escapeHtml(art.title)}</span>
+          </nav>
+
+          <div class="content-reading-back-bar" style="margin-bottom:18px;">
+            <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}" class="content-back-btn">
+              « Back to ${escapeHtml(art.subCategoryTitle || 'Section')}
+            </a>
+            <div style="font-size:12px; color:#64748B;">
+              Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+            </div>
           </div>
 
-          <h1 class="content-reading-headline">${escapeHtml(art.title)}</h1>
+          <!-- Chapter Header -->
+          <div class="reader-header" style="margin-bottom:24px; text-align:left;">
+            ${art.linkedNovel ? `
+              <div style="font-size:13px; font-weight:700; color:#B88635; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+                📖 ${escapeHtml(art.linkedNovel.title)}${art.linkedChapter ? ` — ${escapeHtml(art.linkedChapter.title || ('Chapter ' + (art.linkedChapter.episodeNumber || art.linkedChapter.chapterNum)))}` : ''}
+              </div>
+            ` : ''}
+            <h1 class="reader-chapter-title" style="font-family:var(--font-serif); font-size:clamp(1.7rem, 4vw, 2.4rem); color:var(--color-navy-deep); margin:0 0 10px;">
+              ${escapeHtml(art.title)}
+            </h1>
 
-          <div class="content-reading-meta-bar">
-            <div class="content-author-chip">
-              <img src="${authorAvatar}" class="content-author-avatar" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
-              <div>
-                <div class="content-author-name">
-                  ${escapeHtml(art.authorName)}
-                  <span class="forms-role-badge" style="margin-left:6px;">Official Author</span>
+            <div class="reader-meta-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; border-top:1px solid rgba(0,0,0,0.06); border-bottom:1px solid rgba(0,0,0,0.06);">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <img src="${authorAvatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C;" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
+                <div>
+                  <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep);">
+                    ${escapeHtml(art.authorName)}
+                    <span class="forms-role-badge" style="margin-left:6px;">Official Author</span>
+                  </div>
+                  <div style="font-size:11px; color:#64748B;">Rudhra Prarthana Novels</div>
                 </div>
-                <div class="content-author-sub">
-                  <span>Rudhra Prarthana Literary Platform</span>
-                </div>
               </div>
-            </div>
 
-            <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
-              <span title="Views">👁️ ${art.viewsCount} reads</span>
-              <span>•</span>
-              <span title="Comments">💬 ${commentsCount} comments</span>
+              <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
+                <span title="Views">👁️ ${art.viewsCount || 0} reads</span>
+                <span>•</span>
+                <span title="Comments">💬 ${commentsCount} comments</span>
+              </div>
             </div>
           </div>
 
-          <!-- Formatted Reading Content -->
-          <div class="content-reading-body">
-            ${art.content || '<p style="color:#64748B; font-style:italic;">No direct body text for this section header. Select a sub-section below to begin reading.</p>'}
-          </div>
+          <!-- Distraction-Free Novel Content Body with Copy Protection (Read-Only) -->
+          <article class="reader-body reader-body-protected" id="reader-body-content" title="Content copying is restricted" style="min-height:220px; line-height:1.85; font-size:var(--reader-font-size, 1.15rem);">
+            ${storyBody || '<p style="color:#64748B; font-style:italic;">No novel content available for this thread.</p>'}
+          </article>
 
-          ${art.children && art.children.length > 0 ? `
-            <div style="margin-top:28px; padding-top:20px; border-top:1px dashed #E2E8F0;">
-              <h3 style="font-family:var(--font-serif); font-size:1.15rem; color:#1A0B2E; margin:0 0 12px; display:flex; align-items:center; gap:8px;">
-                <span>📚</span>
-                <span>Sub-sections &amp; Parts (${art.children.length})</span>
-              </h3>
-              <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">
-                ${art.children.map((c, idx) => `
-                  <a href="${c.link}" style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; text-decoration:none; color:#1A0B2E; transition:all 0.15s ease;" onmouseover="this.style.borderColor='#C89B3C'; this.style.background='#FDFBF7'" onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#F8FAFC'">
-                    <div style="min-width:0;">
-                      <div style="font-size:11px; color:#B88635; font-weight:700;">PART ${idx + 1}</div>
-                      <div style="font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(c.title)}</div>
-                    </div>
-                    <span style="color:#B88635; font-size:14px; font-weight:bold;">➔</span>
-                  </a>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-
-          ${art.siblings && art.siblings.length > 1 ? `
-            <div style="margin-top:24px; padding-top:16px; border-top:1px solid #F1ECE4; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-              <div style="font-size:12.5px; color:#64748B;">
-                Series Navigation: <strong>${art.siblings.findIndex(s => s.id === art.id) + 1} of ${art.siblings.length} parts</strong>
-              </div>
-              <div style="display:flex; gap:8px;">
-                ${(() => {
-                  const curIdx = art.siblings.findIndex(s => s.id === art.id);
-                  const prev = curIdx > 0 ? art.siblings[curIdx - 1] : null;
-                  const next = curIdx < art.siblings.length - 1 ? art.siblings[curIdx + 1] : null;
-                  return `
-                    ${prev ? `<a href="${prev.link}" class="btn btn-outline btn-xs">« Previous Part</a>` : ''}
-                    ${next ? `<a href="${next.link}" class="btn btn-gold btn-xs">Next Part »</a>` : ''}
-                  `;
-                })()}
-              </div>
-            </div>
-          ` : ''}
-        </article>
-
-        <!-- Reused Instagram/Novel-Style Comments System -->
-        <section style="margin-top:32px;">
-          <div id="article-comments-widget"></div>
-        </section>
+          <!-- Comments & Reviews Section -->
+          <section style="margin-top:40px; padding-top:24px; border-top:1px dashed #E2E8F0;">
+            <h3 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin:0 0 16px;">
+              💬 Reader Comments &amp; Discussion
+            </h3>
+            <div id="article-comments-widget"></div>
+          </section>
+        </div>
       </div>
     `;
 
-    // Mount the novel-style comments widget
+    // Attach read-only protection listeners
+    const readerContent = document.getElementById('reader-body-content');
+    if (readerContent) {
+      const handleBlockedCopy = (e) => {
+        e.preventDefault();
+        showToast('Content copying is restricted. 🔒');
+      };
+      readerContent.addEventListener('copy', handleBlockedCopy);
+      readerContent.addEventListener('contextmenu', handleBlockedCopy);
+      readerContent.addEventListener('selectstart', (e) => e.preventDefault());
+    }
+
+    // Mount novel-style comments widget
     renderCommentsWidget('article-comments-widget', `content_${art.id}`, 0);
   } catch (err) {
     console.error('Error rendering content reading view:', err);
@@ -4626,6 +4887,7 @@ async function renderContentReadingView(container, hash) {
     `;
   }
 }
+
 
 window.loadArticleComments = async (articleId) => {
   const container = document.getElementById('article-comments-container');

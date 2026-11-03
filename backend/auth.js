@@ -11,30 +11,19 @@ import { recordWriterAudit } from './writers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export function saveBase64Image(dataUrl, folder = 'avatars', prefix = 'avatar') {
-  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
-    return dataUrl;
-  }
-  try {
-    const match = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
-    if (!match) return dataUrl;
-    let ext = match[1].toLowerCase();
-    if (ext === 'jpeg') ext = 'jpg';
-    if (ext === 'svg+xml') ext = 'svg';
-    const buffer = Buffer.from(match[2], 'base64');
-    const uploadDir = path.resolve(__dirname, 'uploads', folder);
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    const filename = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, buffer);
-    return `/uploads/${folder}/${filename}`;
-  } catch (err) {
-    console.error(`Failed to save base64 image to ${folder}:`, err.message);
-    return dataUrl;
-  }
-}
+import {
+  saveBase64Image,
+  deleteLocalUploadFile,
+  parseBase64Image,
+  saveUploadedImageFile
+} from './image-upload.js';
+
+export {
+  saveBase64Image,
+  deleteLocalUploadFile,
+  parseBase64Image,
+  saveUploadedImageFile
+};
 
 export function sanitizeAvatar(rawAvatar) {
   if (!rawAvatar || typeof rawAvatar !== 'string') return '/profile.png';
@@ -163,12 +152,18 @@ export async function updateUserProfile(userId, { displayName, username, avatar,
   let finalAvatar = existingProfile?.avatar || null;
   if (avatar !== undefined) {
     if (avatar === null || avatar === '' || avatar === 'remove') {
+      if (existingProfile?.avatar) {
+        deleteLocalUploadFile(existingProfile.avatar);
+      }
       finalAvatar = null;
     } else if (typeof avatar === 'string' && avatar.trim()) {
       const trimmed = avatar.trim();
-      finalAvatar = trimmed.startsWith('data:image/')
-        ? saveBase64Image(trimmed, 'avatars', `avatar-${userId}`)
+      finalAvatar = (trimmed.startsWith('data:image/') || trimmed.startsWith('data:;base64,') || /^[A-Za-z0-9+/=]{100,}$/.test(trimmed))
+        ? saveBase64Image(trimmed, 'avatars', `avatar-${userId}`, existingProfile?.avatar)
         : trimmed;
+      if (existingProfile?.avatar && existingProfile.avatar !== finalAvatar && !finalAvatar.startsWith('data:')) {
+        deleteLocalUploadFile(existingProfile.avatar);
+      }
     }
   }
 

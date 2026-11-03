@@ -192,8 +192,11 @@ async function loadGlobalChatSettings() {
   if (!window.IS_LOGGED_IN) return;
   try {
     const res = await chatApi('/api/chat/settings');
-    if (res && res.is_chat_available !== undefined) {
-      globalChatAvailable = Boolean(res.is_chat_available);
+    const val = res?.isChatAvailable !== undefined ? res.isChatAvailable : res?.is_chat_available;
+    if (val !== undefined) {
+      globalChatAvailable = Boolean(val);
+      const toggleInput = document.getElementById('chat-global-toggle-input');
+      if (toggleInput) toggleInput.checked = globalChatAvailable;
     }
   } catch (err) {
     console.warn('[Chat] Failed to load chat settings:', err);
@@ -208,7 +211,7 @@ export async function toggleChatAvailability(newStatus) {
   try {
     const res = await chatApi('/api/chat/settings', {
       method: 'POST',
-      body: JSON.stringify({ is_chat_available: desired ? 1 : 0 })
+      body: JSON.stringify({ isChatAvailable: desired, is_chat_available: desired ? 1 : 0 })
     });
     if (res && res.success) {
       globalChatAvailable = desired;
@@ -445,6 +448,22 @@ function renderConversationsList(list) {
  * Open direct conversation with a target user
  */
 export async function openDirectChatWithUser(targetUserId) {
+  if (!window.IS_LOGGED_IN) {
+    if (typeof window.openAuthModal === 'function') {
+      window.openAuthModal('login');
+      showToast('Please sign in to send private messages.');
+    }
+    return;
+  }
+
+  isDrawerOpen = true;
+  const drawer = document.getElementById('messages-drawer');
+  const backdrop = document.getElementById('messages-backdrop');
+  if (drawer) drawer.classList.add('open');
+  if (backdrop) backdrop.classList.add('open');
+
+  renderDrawerStructure();
+
   try {
     const res = await chatApi('/api/chat/conversations', {
       method: 'POST',
@@ -458,6 +477,7 @@ export async function openDirectChatWithUser(targetUserId) {
     }
   } catch (err) {
     showToast(err.message || 'Could not open conversation with this user.');
+    await loadConversationsList();
   }
 }
 
@@ -635,7 +655,7 @@ function renderActiveConversation(data) {
             </button>
           ` : ''}
 
-          ${(window.CURRENT_USER?.role === 'admin' || window.CURRENT_USER?.is_admin) ? `
+          ${((window.CURRENT_USER?.role || '').toLowerCase() === 'admin' || Boolean(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.is_admin)) ? `
             <button class="chat-action-btn ${isConvLocked ? 'locked' : ''}" 
                     onclick="toggleConversationLockUi(${activeConversationId}, ${isConvLocked ? 'false' : 'true'})"
                     title="${isConvLocked ? 'Unlock entire conversation' : 'Lock entire conversation'}">
@@ -1156,7 +1176,7 @@ export function toggleBubbleMenu(event, msgId, isMyMessage) {
   document.querySelectorAll('.bubble-action-menu').forEach(m => m.remove());
 
   const isText = bubble.getAttribute('data-msg-type') === 'text';
-  const isAdmin = window.CURRENT_USER?.role === 'admin' || window.CURRENT_USER?.is_admin;
+  const isAdmin = (window.CURRENT_USER?.role || '').toLowerCase() === 'admin' || Boolean(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.is_admin);
 
   const menu = document.createElement('div');
   menu.className = 'bubble-action-menu';
@@ -1698,7 +1718,7 @@ function handleIncomingRealtimeMessage(event) {
         bodyHtml = `<div class="bubble-text-content">${escapeHtml(msg.content || '')}</div>`;
       }
 
-      const isAdmin = window.CURRENT_USER?.role === 'admin' || window.CURRENT_USER?.is_admin;
+      const isAdmin = (window.CURRENT_USER?.role || '').toLowerCase() === 'admin' || Boolean(window.CURRENT_USER?.isAdmin || window.CURRENT_USER?.is_admin);
       const triggerHtml = isAdmin ? `
         <button type="button" class="bubble-actions-trigger" onclick="toggleBubbleMenu(event, ${msgId}, false)" title="Message options">
           ⋮
@@ -1728,6 +1748,13 @@ function handleIncomingRealtimeMessage(event) {
 
 function handleSentRealtimeMessage(event) {
   loadConversationsSilently();
+  const detail = event?.detail;
+  if (detail && activeConversationId && Number(detail.conversationId) === Number(activeConversationId)) {
+    const msg = detail.message;
+    if (msg && msg.id && !document.querySelector(`.message-bubble[data-msg-id="${msg.id}"]`)) {
+      appendOutgoingBubble(msg);
+    }
+  }
 }
 
 function handleRealtimeReadReceipt(event) {

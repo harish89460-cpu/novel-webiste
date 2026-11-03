@@ -1,3 +1,5 @@
+const recentStoryViews = new Map();
+import { saveBase64Image, deleteLocalUploadFile } from './image-upload.js';
 import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 /**
  * Rudhra Prarthana Novels — Short Stories Backend Module
@@ -278,12 +280,19 @@ export async function getShortStoryByIdOrSlug(idOrSlug, currentUser = null, reco
     }
   }
 
-  // Record genuine read view count
+  // Record genuine read view count with debounce
   if (recordView) {
-    try {
-      await query('UPDATE short_stories SET views_count = views_count + 1 WHERE id = ?;', [row.id]);
-      row.views_count += 1;
-    } catch {}
+    const debounceKey = `${currentUser?.id || 'guest'}_${row.id}`;
+    const lastTime = recentStoryViews.get(debounceKey) || 0;
+    const now = Date.now();
+    if (now - lastTime > 5000) {
+      recentStoryViews.set(debounceKey, now);
+      try {
+        await query('UPDATE short_stories SET views_count = views_count + 1 WHERE id = ?;', [row.id]);
+        row.views_count += 1;
+      } catch {}
+    }
+    if (recentStoryViews.size > 20000) recentStoryViews.clear();
   }
 
   // Real comments count
@@ -588,7 +597,24 @@ export async function updateShortStory(id, data) {
   const author = data.author !== undefined ? String(data.author).trim() : existing.author;
   const genre = data.genre !== undefined ? String(data.genre).trim() : existing.genre;
   const description = data.description !== undefined ? String(data.description).trim() : existing.description;
-  const coverImage = data.coverImage !== undefined ? String(data.coverImage).trim() : (data.cover_image !== undefined ? String(data.cover_image).trim() : existing.cover_image);
+  const rawCover = data.coverImage !== undefined ? data.coverImage : data.cover_image;
+  let coverImage = existing.cover_image;
+  if (rawCover !== undefined) {
+    const trimmedCover = String(rawCover || '').trim();
+    if (!trimmedCover || trimmedCover === '/default-cover.jpg') {
+      if (existing.cover_image && existing.cover_image !== '/default-cover.jpg') {
+        deleteLocalUploadFile(existing.cover_image);
+      }
+      coverImage = '/default-cover.jpg';
+    } else if (trimmedCover.startsWith('data:image/') || trimmedCover.startsWith('data:;base64,') || /^[A-Za-z0-9+/=]{100,}$/.test(trimmedCover)) {
+      coverImage = saveBase64Image(trimmedCover, 'covers', `story-${id}`, existing.cover_image);
+    } else {
+      if (existing.cover_image && existing.cover_image !== trimmedCover) {
+        deleteLocalUploadFile(existing.cover_image);
+      }
+      coverImage = trimmedCover;
+    }
+  }
   const status = data.status !== undefined && ['draft', 'scheduled', 'published'].includes(data.status) ? data.status : existing.status;
   const sortOrder = data.sortOrder !== undefined ? parseInt(data.sortOrder, 10) : existing.sort_order;
 
@@ -677,7 +703,10 @@ export async function toggleShortStoryDisabled(id, forcedDisabled = null) {
  * Admin: Delete a Short Story and its comments
  */
 export async function deleteShortStory(id) {
-  const existing = await queryOne('SELECT id, title FROM short_stories WHERE id = ?;', [parseInt(id, 10)]);
+  const existing = await queryOne('SELECT id, title, cover_image FROM short_stories WHERE id = ?;', [parseInt(id, 10)]);
+  if (existing?.cover_image) {
+    deleteLocalUploadFile(existing.cover_image);
+  }
   if (!existing) {
     return { success: false, error: 'Short story not found.' };
   }

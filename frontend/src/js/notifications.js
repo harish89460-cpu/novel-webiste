@@ -119,8 +119,12 @@ export function initNotifications() {
     // Deep navigation
     if (link) {
       if (link.startsWith('#')) {
-        window.location.hash = link;
-        if (window.renderAppView) window.renderAppView();
+        const targetHash = link;
+        if (window.location.hash === targetHash) {
+          if (window.renderAppView) window.renderAppView();
+        } else {
+          window.location.hash = targetHash;
+        }
       } else {
         window.location.href = link;
       }
@@ -267,7 +271,7 @@ export function connectRealtimeNotificationStream() {
     });
 
     // Real-Time Private Chat SSE Event Dispatchers
-    ['chat:message', 'chat:message_sent', 'chat:read', 'chat:lock_change', 'chat:settings'].forEach((evtName) => {
+    ['chat:message', 'chat:message_sent', 'chat:read', 'chat:lock_change', 'chat:settings', 'chat:message_edited', 'chat:message_deleted', 'chat:conversation_lock'].forEach((evtName) => {
       sseSource.addEventListener(evtName, (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -414,7 +418,8 @@ export async function renderNotificationsDropdown() {
   if (isGuest) {
     dropdown.innerHTML = `
       <div class="notif-header">
-        <span style="font-weight:700; color:var(--color-navy-deep); font-size:13px;">Notifications</span>
+        <span style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">Notifications</span>
+        <button onclick="window.closeNotificationsDropdown()" class="notif-close-btn" title="Close" aria-label="Close notifications">✕</button>
       </div>
       <div style="padding: 28px 20px; text-align: center;">
         <div style="font-size: 32px; margin-bottom: 10px;">🔔</div>
@@ -453,12 +458,13 @@ export async function renderNotificationsDropdown() {
         <span style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">Notifications</span>
         ${unreadCount > 0 ? `<span class="notif-count-pill">${unreadCount}</span>` : ''}
       </div>
-      <div style="display:flex; align-items:center; gap:6px;">
+      <div style="display:flex; align-items:center; gap:8px;">
         ${unreadCount > 0 ? `
           <button onclick="markAllNotificationsRead()" class="notif-header-btn" title="Mark all as read">
             Mark all read
           </button>
         ` : ''}
+        <button onclick="window.closeNotificationsDropdown()" class="notif-close-btn" title="Close" aria-label="Close notifications">✕</button>
       </div>
     </div>
 
@@ -531,12 +537,19 @@ function renderNotificationItem(n) {
 function getEventIcon(type) {
   switch (type) {
     case 'comment_reply': return '↩️';
-    case 'novel_comment': return '💬';
+    case 'novel_comment':
+    case 'comment': return '💬';
     case 'comment_reaction': return '❤️';
     case 'comment_like': return '👍';
     case 'forum_reply': return '🗨️';
     case 'forum_mention': return '🏷️';
     case 'chapter_release': return '📖';
+    case 'novel_created': return '📚';
+    case 'thread_created': return '📝';
+    case 'review_discussion': return '💬';
+    case 'follow': return '👥';
+    case 'chat_message': return '✉️';
+    case 'announcement': return '📢';
     case 'account_event': return '👑';
     default: return '🔔';
   }
@@ -545,12 +558,19 @@ function getEventIcon(type) {
 function getEventLabel(type) {
   switch (type) {
     case 'comment_reply': return 'Reply';
-    case 'novel_comment': return 'Comment';
+    case 'novel_comment':
+    case 'comment': return 'Comment';
     case 'comment_reaction': return 'Reaction';
     case 'comment_like': return 'Like';
     case 'forum_reply': return 'Forum';
     case 'forum_mention': return 'Mention';
     case 'chapter_release': return 'Chapter';
+    case 'novel_created': return 'Novel';
+    case 'thread_created': return 'Thread';
+    case 'review_discussion': return 'Discussion';
+    case 'follow': return 'Follower';
+    case 'chat_message': return 'Message';
+    case 'announcement': return 'Announcement';
     case 'account_event': return 'Account';
     default: return 'Notice';
   }

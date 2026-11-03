@@ -914,6 +914,7 @@ export async function checkAuthSession() {
         updateHeaderUserArea();
         connectRealtimeNotificationStream();
         updateNotificationBadge();
+        updateUnreadMessageBadge();
       } else {
         localStorage.removeItem('rp_auth_token');
         window.IS_LOGGED_IN = false;

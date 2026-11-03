@@ -1,3 +1,4 @@
+import { saveUploadedImageFile, deleteLocalUploadFile } from './image-upload.js';
 // Admin Dashboard & Author Overview Module for Rudhra Prarthana Novels
 // Comprehensive Analytics, Media Management, and Author Settings
 
@@ -193,64 +194,32 @@ function formatBytes(bytes) {
 /**
  * Media Management: Upload new image/asset (Supports up to 10MB)
  */
-export async function uploadMediaAsset({ data: base64Data, filename = 'image.jpg', userId = null }) {
-  if (!base64Data || typeof base64Data !== 'string') {
-    return { success: false, error: 'No media file data provided.' };
+export async function uploadMediaAsset({ data: base64Data, filename = 'image.jpg', userId = null, replaceUrl = null }) {
+  const result = await saveUploadedImageFile({
+    base64Data,
+    folder: 'media',
+    prefix: 'media',
+    filename,
+    oldImageUrl: replaceUrl,
+    userId
+  });
+
+  if (!result.success) {
+    return result;
   }
 
-  const matches = base64Data.match(/^data:(image\/(jpeg|jpg|png|webp|gif));base64,(.+)$/i);
-  if (!matches) {
-    return { success: false, error: 'Only JPEG, PNG, WebP, and GIF image files are allowed.' };
-  }
-
-  const mimeType = matches[1].toLowerCase();
-  const rawBase64 = matches[3];
-  const buffer = Buffer.from(rawBase64, 'base64');
-
-  if (buffer.length > 10 * 1024 * 1024) {
-    return { success: false, error: 'File size must be under 10MB.' };
-  }
-
-  let ext = 'jpg';
-  if (mimeType.includes('png')) ext = 'png';
-  else if (mimeType.includes('webp')) ext = 'webp';
-  else if (mimeType.includes('gif')) ext = 'gif';
-
-  const cleanOriginal = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const safeFilename = `media-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
-  const uploadDir = path.resolve(__dirname, 'uploads/media');
-
-  try {
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+  return {
+    success: true,
+    media: {
+      id: result.mediaId,
+      filename: result.filename,
+      originalName: result.originalName,
+      url: result.url,
+      mimeType: result.mimeType,
+      sizeBytes: result.sizeBytes,
+      formattedSize: result.formattedSize
     }
-
-    const filePath = path.join(uploadDir, safeFilename);
-    fs.writeFileSync(filePath, buffer);
-
-    const relativeUrl = `/uploads/media/${safeFilename}`;
-
-    const res = await query(`
-      INSERT INTO media (filename, original_name, url, mime_type, size_bytes, uploaded_by)
-      VALUES (?, ?, ?, ?, ?, ?);
-    `, [safeFilename, cleanOriginal, relativeUrl, mimeType, buffer.length, userId]);
-
-    return {
-      success: true,
-      media: {
-        id: res.insertId,
-        filename: safeFilename,
-        originalName: cleanOriginal,
-        url: relativeUrl,
-        mimeType,
-        sizeBytes: buffer.length,
-        formattedSize: formatBytes(buffer.length)
-      }
-    };
-  } catch (err) {
-    console.error('[Media Upload Error]', err);
-    return { success: false, error: 'Failed to write media asset to disk.' };
-  }
+  };
 }
 
 /**
@@ -262,15 +231,8 @@ export async function deleteMediaAsset(id) {
     return { success: false, error: 'Media record not found.' };
   }
 
-  try {
-    const uploadDir = path.resolve(__dirname, 'uploads/media');
-    const filePath = path.join(uploadDir, media.filename);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (err) {
-    console.warn('[Media Delete Warning] File could not be deleted from disk:', err.message);
-  }
+  if (media.url) deleteLocalUploadFile(media.url);
+  if (media.filename) deleteLocalUploadFile(`/uploads/media/${media.filename}`);
 
   await query('DELETE FROM media WHERE id = ?;', [id]);
   return { success: true, id };

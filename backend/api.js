@@ -1,3 +1,4 @@
+import { saveUploadedImageFile, deleteLocalUploadFile, parseBase64Image } from './image-upload.js';
 import { formatISTDisplay, parseISTDateTime } from './timezone.js';
 function escapeHtml(str) { return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 // Consolidated REST API Middleware for Rudhra Prarthana Novels
@@ -94,7 +95,8 @@ import {
   savePushSubscription,
   removePushSubscription,
   getNotificationPreferences,
-  updateNotificationPreferences
+  updateNotificationPreferences,
+  broadcastAnnouncement
 } from './notifications.js';
 import {
   getEpisodesByNovel,
@@ -794,7 +796,7 @@ export async function apiMiddleware(req, res, next) {
   // 11c. Get Single Content Article for Dedicated Reading Page
   if (pathname.startsWith('/content/articles/') && !pathname.includes('/comments') && method === 'GET') {
     const slugOrId = pathname.replace('/content/articles/', '').trim();
-    const result = await getContentArticle(slugOrId, currentUser);
+    const result = await getContentArticle(slugOrId, currentUser, { incrementView: true });
     if (!result.success) {
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 403;
       return sendJson(res, result, statusCode);
@@ -805,7 +807,7 @@ export async function apiMiddleware(req, res, next) {
   // 11d. Comments for Content Article
   if (pathname.startsWith('/content/articles/') && pathname.endsWith('/comments') && method === 'GET') {
     const slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
-    const artRes = await getContentArticle(slugOrId, currentUser);
+    const artRes = await getContentArticle(slugOrId, currentUser, { incrementView: false });
     if (!artRes.success) {
       return sendJson(res, artRes, artRes.code === 'NOT_FOUND' ? 404 : 403);
     }
@@ -982,48 +984,68 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // 16. Comments: Upload Image (Max 5MB)
+  
+  // Unified Persistent Image Upload Endpoint (Covers, Avatars, Media, Comments, Chat)
+  if ((pathname === '/api/upload/image' || pathname === '/upload/image') && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Please log in to upload images.', requireLogin: true }, 401);
+    }
+
+    const body = await readJsonBody(req);
+    const base64Data = body.data || body.file || body.dataUrl || body.base64Data;
+    if (!base64Data || typeof base64Data !== 'string') {
+      return sendJson(res, { success: false, error: 'No image data provided.' }, 400);
+    }
+
+    let folder = (body.folder || 'covers').toLowerCase();
+    const isAdmin = Boolean(currentUser.isAdmin || ['admin', 'administrator', 'author'].includes((currentUser.role || '').toLowerCase()));
+    const isWriter = Boolean(isAdmin || (currentUser.role || '').toLowerCase() === 'writer');
+
+    // Role-based folder restriction
+    if (folder === 'media' && !isAdmin) {
+      folder = isWriter ? 'covers' : 'comments';
+    } else if (folder === 'covers' && !isWriter) {
+      folder = 'comments';
+    }
+
+    const result = await saveUploadedImageFile({
+      base64Data,
+      folder,
+      prefix: body.prefix || folder.slice(0, -1),
+      filename: body.filename || body.name || 'image.jpg',
+      oldImageUrl: body.replaceUrl || null,
+      userId: currentUser.id
+    });
+
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 201);
+  }
+
   if (pathname === '/comments/upload-image' && method === 'POST') {
     if (!currentUser) {
       return sendJson(res, { success: false, error: 'Please log in to upload images.', requireLogin: true }, 401);
     }
     const body = await readJsonBody(req);
-    const { data: base64Data } = body;
-
+    const base64Data = body.data || body.file;
     if (!base64Data || typeof base64Data !== 'string') {
       return sendJson(res, { success: false, error: 'No image data provided.' }, 400);
     }
 
-    const matches = base64Data.match(/^data:(image\/(jpeg|jpg|png|webp|gif));base64,(.+)$/i);
-    if (!matches) {
-      return sendJson(res, { success: false, error: 'Only JPEG, PNG, WebP, and GIF image files are allowed.' }, 400);
+    const result = await saveUploadedImageFile({
+      base64Data,
+      folder: 'comments',
+      prefix: 'comment',
+      filename: body.name || body.filename || 'image.jpg',
+      oldImageUrl: body.replaceUrl || null,
+      userId: currentUser.id
+    });
+
+    if (!result.success) {
+      return sendJson(res, result, 400);
     }
-
-    const mimeType = matches[1].toLowerCase();
-    const rawBase64 = matches[3];
-    const buffer = Buffer.from(rawBase64, 'base64');
-
-    if (buffer.length > 5 * 1024 * 1024) {
-      return sendJson(res, { success: false, error: 'Image file size must be under 5MB.' }, 400);
-    }
-
-    let ext = 'jpg';
-    if (mimeType.includes('png')) ext = 'png';
-    else if (mimeType.includes('webp')) ext = 'webp';
-    else if (mimeType.includes('gif')) ext = 'gif';
-
-    const safeName = `comment-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
-    const uploadDir = path.resolve(__dirname, 'uploads/comments');
-
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(uploadDir, safeName), buffer);
-      return sendJson(res, { success: true, url: `/uploads/comments/${safeName}` }, 200);
-    } catch (err) {
-      console.error('Failed to save comment image:', err);
-      return sendJson(res, { success: false, error: 'Failed to save image on server.' }, 500);
-    }
+    return sendJson(res, { success: true, url: result.url }, 200);
   }
 
   // 17. Reactions: Get Reactions
@@ -1137,7 +1159,7 @@ export async function apiMiddleware(req, res, next) {
 
   // 21c. Content Categories API: Lookup and Dynamic Add
   if (pathname === '/content-categories' && method === 'GET') {
-    const rows = await query('SELECT id, title, description, icon, sort_order, is_active, status FROM forum_categories ORDER BY sort_order ASC, title ASC;');
+    const rows = await query('SELECT id, title, icon, sort_order, is_active, status FROM forum_categories ORDER BY sort_order ASC, title ASC;');
     return sendJson(res, { success: true, categories: rows }, 200);
   }
 
@@ -1153,12 +1175,11 @@ export async function apiMiddleware(req, res, next) {
     if (existing) {
       return sendJson(res, { success: true, category: existing, message: 'Category already exists.' }, 200);
     }
-    const desc = (body.description || `Browse content in ${cleanTitle}`).trim();
     const icon = body.icon || '📖';
     await query(`
-      INSERT INTO forum_categories (id, title, description, icon, sort_order, is_active, status, visibility, is_disabled)
-      VALUES (?, ?, ?, ?, 99, 1, 'published', 'public', 0);
-    `, [slug, cleanTitle, desc, icon]);
+      INSERT INTO forum_categories (id, title, icon, sort_order, is_active, status, visibility, is_disabled)
+      VALUES (?, ?, ?, 99, 1, 'published', 'public', 0);
+    `, [slug, cleanTitle, icon]);
     const created = await queryOne('SELECT * FROM forum_categories WHERE id = ?;', [slug]);
     return sendJson(res, { success: true, category: created }, 201);
   }
@@ -1378,7 +1399,8 @@ export async function apiMiddleware(req, res, next) {
       success: true,
       chapterId: result.episode?.id,
       chapter: result.episode,
-      episode: result.episode
+      episode: result.episode,
+      contentLink: result.contentLink
     }, 201);
   }
 
@@ -1591,7 +1613,8 @@ export async function apiMiddleware(req, res, next) {
     const result = await uploadMediaAsset({
       data: body.data,
       filename: body.filename || 'image.jpg',
-      userId: currentUser.id
+      userId: currentUser.id,
+      replaceUrl: body.replaceUrl || null
     });
     if (!result.success) {
       return sendJson(res, result, 400);
@@ -2130,8 +2153,16 @@ export async function apiMiddleware(req, res, next) {
       author: currentUser.displayName || currentUser.username,
       isPublished: shouldPublish ? 1 : 0,
       visibility: shouldPublish ? 'public' : 'draft',
+      accessPermission: 'assigned_writers',
       status: body.status || 'Ongoing'
     });
+    if (result.success && result.novel?.id) {
+      await query(`
+        INSERT INTO writer_assignments (writer_id, content_type, content_id, title, status, assigned_by)
+        VALUES (?, 'novel', ?, ?, 'active', ?)
+        ON DUPLICATE KEY UPDATE status = 'active';
+      `, [currentUser.id, result.novel.id, result.novel.title, currentUser.id]).catch(() => {});
+    }
     if (!result.success) {
       return sendJson(res, result, 400);
     }
@@ -2205,6 +2236,20 @@ export async function apiMiddleware(req, res, next) {
   if (pathname === '/writer/episodes' && method === 'POST') {
     if (requireWriterOrAdmin(currentUser, res)) return;
     const body = await readJsonBody(req);
+    if (!body.novelId) {
+      const userNovel = await queryOne('SELECT id, author_id FROM novels WHERE author_id = ? ORDER BY id ASC LIMIT 1;', [currentUser.id]);
+      if (userNovel) {
+        body.novelId = userNovel.id;
+      } else {
+        const defaultId = `novel-writer-${currentUser.id}-${Date.now().toString().slice(-4)}`;
+        const authorName = currentUser.displayName || currentUser.username || 'Writer';
+        await query(
+          'INSERT INTO novels (id, title, author, author_id, genre, category, description, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?);',
+          [defaultId, `${authorName}'s Literary Works`, authorName, currentUser.id, 'General', 'Ongoing Novels', 'Writer collection', 'Ongoing']
+        );
+        body.novelId = defaultId;
+      }
+    }
     const novel = await queryOne('SELECT id, author_id FROM novels WHERE id = ?;', [body.novelId]);
     if (!novel) {
       return sendJson(res, { success: false, error: 'Associated novel not found.' }, 404);
@@ -2269,7 +2314,10 @@ export async function apiMiddleware(req, res, next) {
       return sendJson(res, { success: false, error: 'Episode not found.' }, 404);
     }
     if (!currentUser.isAdmin && Number(existing.author_id) !== Number(currentUser.id)) {
-      return sendJson(res, { success: false, error: 'Access denied: You can only edit episodes of your own novels.' }, 403);
+      const access = await canWriterAccessContent(currentUser.id, 'episode', episodeId, 'edit');
+      if (!access.allowed) {
+        return sendJson(res, { success: false, error: access.reason || 'Access denied: You do not have permission to edit this novel content.' }, 403);
+      }
     }
     let isIndependent = currentUser.isAdmin;
     if (!currentUser.isAdmin) {
@@ -2294,6 +2342,8 @@ export async function apiMiddleware(req, res, next) {
         if (!isIndependent && existing.status !== 'published') {
           body.status = 'draft';
         }
+      } else if (!body.status) {
+        body.status = existing.status;
       } else {
         body.status = existing.status === 'published' ? 'published' : 'draft';
       }
@@ -2639,26 +2689,205 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, articles }, 200);
   }
 
+  /* ========================================================
+     PUBLISHED NOVEL MANAGEMENT ENDPOINTS (Admin & Writer)
+     ======================================================== */
+  if (pathname === '/published-novels' && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+    const isWriter = currentUser.isWriter === true || ['writer', 'author'].includes((currentUser.role || '').toLowerCase());
+    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
+
+    const sql = `
+      SELECT a.id, a.unique_slug, a.main_category_id, a.sub_category_id,
+             a.novel_id, a.chapter_num, a.novel_link, a.title, a.content, a.summary,
+             a.author_id, a.author_name, a.status, a.views_count, a.comments_count,
+             a.published_at, a.updated_at,
+             c.id AS chapter_id, c.title AS chapter_title, c.content AS chapter_content,
+             n.title AS novel_title,
+             fc.title AS category_title,
+             cs.title AS subcategory_title
+      FROM content_articles a
+      LEFT JOIN chapters c ON a.novel_id = c.novel_id AND (a.chapter_num = c.chapter_num OR a.chapter_num = c.episode_number)
+      LEFT JOIN novels n ON a.novel_id = n.id
+      LEFT JOIN forum_categories fc ON a.main_category_id = fc.id
+      LEFT JOIN content_subcategories cs ON a.sub_category_id = cs.id
+      WHERE (a.status = 'published' OR a.is_published = 1)
+        AND (? = 1 OR a.author_id = ?)
+      ORDER BY a.published_at DESC, a.id DESC;
+    `;
+    const rows = await query(sql, [isAdmin ? 1 : 0, currentUser.id]);
+
+    const items = rows.map(r => ({
+      id: r.id,
+      slug: r.unique_slug,
+      title: r.title || r.chapter_title || 'Untitled',
+      content: r.chapter_content || r.content || '',
+      summary: r.summary || '',
+      novelId: r.novel_id,
+      chapterNum: r.chapter_num,
+      chapterId: r.chapter_id,
+      novelTitle: r.novel_title || 'Rudhra Novels',
+      categoryTitle: r.category_title || r.main_category_id || 'General',
+      subcategoryTitle: r.subcategory_title || r.sub_category_id || '',
+      novelLink: r.novel_link || (r.novel_id && r.chapter_num ? `#reader?novel=${encodeURIComponent(r.novel_id)}&ch=${encodeURIComponent(r.chapter_num)}` : null),
+      readerUrl: `#thread?id=${r.id}`,
+      authorId: r.author_id,
+      authorName: r.author_name || (r.author_id === 2 ? 'Rudhra Prarthana' : 'Writer'),
+      viewsCount: r.views_count || 0,
+      commentsCount: r.comments_count || 0,
+      publishedAt: r.published_at,
+      updatedAt: r.updated_at
+    }));
+
+    return sendJson(res, { success: true, items }, 200);
+  }
+
+  if (pathname.startsWith('/published-novels/') && !pathname.endsWith('/delete') && method === 'GET') {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const id = parseInt(pathname.replace('/published-novels/', ''), 10);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+
+    const sql = `
+      SELECT a.id, a.unique_slug, a.main_category_id, a.sub_category_id,
+             a.novel_id, a.chapter_num, a.novel_link, a.title, a.content, a.summary,
+             a.author_id, a.author_name, a.status, a.views_count, a.comments_count,
+             a.published_at, a.updated_at,
+             c.id AS chapter_id, c.title AS chapter_title, c.content AS chapter_content,
+             n.title AS novel_title
+      FROM content_articles a
+      LEFT JOIN chapters c ON a.novel_id = c.novel_id AND (a.chapter_num = c.chapter_num OR a.chapter_num = c.episode_number)
+      LEFT JOIN novels n ON a.novel_id = n.id
+      WHERE a.id = ?;
+    `;
+    const article = await queryOne(sql, [id]);
+    if (!article) return sendJson(res, { success: false, error: 'Published novel not found.' }, 404);
+
+    if (!isAdmin && Number(article.author_id) !== Number(currentUser.id)) {
+      return sendJson(res, { success: false, error: 'Access denied: You can only manage your own published novels.' }, 403);
+    }
+
+    const item = {
+      id: article.id,
+      slug: article.unique_slug,
+      title: article.title || article.chapter_title,
+      content: article.chapter_content || article.content || '',
+      summary: article.summary || '',
+      novelId: article.novel_id,
+      chapterNum: article.chapter_num,
+      chapterId: article.chapter_id,
+      novelTitle: article.novel_title,
+      novelLink: article.novel_link,
+      authorId: article.author_id,
+      authorName: article.author_name,
+      publishedAt: article.published_at,
+      updatedAt: article.updated_at
+    };
+
+    return sendJson(res, { success: true, item }, 200);
+  }
+
+  if (pathname.startsWith('/published-novels/') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const id = parseInt(pathname.replace('/published-novels/', ''), 10);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+
+    const article = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    if (!article) return sendJson(res, { success: false, error: 'Published novel not found.' }, 404);
+
+    if (!isAdmin && Number(article.author_id) !== Number(currentUser.id)) {
+      return sendJson(res, { success: false, error: 'Access denied: You do not have permission to edit this published novel.' }, 403);
+    }
+
+    const body = await readJsonBody(req);
+    const title = (body.title || '').trim();
+    const content = (body.content || '').trim();
+
+    if (!title) {
+      return sendJson(res, { success: false, error: 'Title cannot be empty.' }, 400);
+    }
+    if (!content) {
+      return sendJson(res, { success: false, error: 'Content cannot be empty.' }, 400);
+    }
+
+    // Update existing content_articles in-place (preserves unique_slug, novel_link, id)
+    await query(`
+      UPDATE content_articles 
+      SET title = ?, content = ?, updated_at = NOW() 
+      WHERE id = ?;
+    `, [title, content, id]);
+
+    // If linked to a chapter in chapters, update chapter in-place
+    if (article.novel_id && article.chapter_num) {
+      await query(`
+        UPDATE chapters 
+        SET title = ?, content = ?, updated_at = NOW() 
+        WHERE novel_id = ? AND (chapter_num = ? OR episode_number = ?);
+      `, [title, content, article.novel_id, String(article.chapter_num), String(article.chapter_num)]);
+    }
+
+    return sendJson(res, {
+      success: true,
+      message: 'Published novel updated successfully.',
+      item: { id, title, content }
+    }, 200);
+  }
+
+  if (pathname.startsWith('/published-novels/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    const id = parseInt(pathname.replace('/published-novels/', '').replace('/delete', ''), 10);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+
+    const article = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    if (!article) return sendJson(res, { success: false, error: 'Published novel not found.' }, 404);
+
+    if (!isAdmin && Number(article.author_id) !== Number(currentUser.id)) {
+      return sendJson(res, { success: false, error: 'Access denied: You do not have permission to delete this published novel.' }, 403);
+    }
+
+    // Safely remove comments on this published article
+    await query('DELETE FROM content_comments WHERE content_id = ?;', [id]);
+
+    // If there is an associated chapter that belongs to this novel/author and is not used elsewhere
+    if (article.novel_id && article.chapter_num) {
+      const otherArticles = await queryOne(
+        'SELECT id FROM content_articles WHERE novel_id = ? AND chapter_num = ? AND id != ? LIMIT 1;',
+        [article.novel_id, article.chapter_num, id]
+      );
+      if (!otherArticles) {
+        // Safe to remove the chapter and its reader comments as well
+        await query('DELETE FROM comments WHERE novel_id = ? AND chapter_num = ?;', [article.novel_id, String(article.chapter_num)]);
+        await query('DELETE FROM chapters WHERE novel_id = ? AND (chapter_num = ? OR episode_number = ?);', [article.novel_id, String(article.chapter_num), String(article.chapter_num)]);
+      }
+    }
+
+    // Delete the published article
+    await query('DELETE FROM content_articles WHERE id = ?;', [id]);
+
+    return sendJson(res, {
+      success: true,
+      message: 'Published novel and associated records removed safely.'
+    }, 200);
+  }
+
   if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/delete') && !pathname.endsWith('/toggle') && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
     const id = pathname.replace('/admin/content/articles/', '').trim();
-    const result = await getContentArticle(id, currentUser);
+    const result = await getContentArticle(id, currentUser, { incrementView: false });
     if (!result.success) return sendJson(res, result, 404);
     return sendJson(res, result, 200);
   }
 
-  if (pathname === '/admin/content/articles' && method === 'POST') {
+  if ((pathname === '/admin/content/articles' || pathname === '/content/threads' || pathname === '/content/articles') && method === 'POST') {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
-    const isAdmin = currentUser.isAdmin === true;
-    const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+    const isWriter = currentUser.isWriter === true || ['writer', 'author'].includes((currentUser.role || '').toLowerCase());
     if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
     const body = await readJsonBody(req);
-    if (!isAdmin && isWriter) {
-      const access = await canWriterAccessContent(currentUser.id, 'content', null, 'create');
-      if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
-      body.authorId = currentUser.id;
-      body.authorName = currentUser.displayName || currentUser.username;
-    }
+    body.authorId = currentUser.id;
+    body.authorName = currentUser.displayName || currentUser.username || (isAdmin ? 'Rudhra Prarthana' : 'Writer');
+    body.status = 'published';
+    body.isPublished = 1;
     const result = await createContentArticle({ ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 201);
@@ -2877,6 +3106,32 @@ export async function apiMiddleware(req, res, next) {
       return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     }
     const result = await markAllNotificationsReadInDb(currentUser.id);
+    return sendJson(res, result, 200);
+  }
+
+  // 35.5. Notifications: Admin / Writer Broadcast Announcement
+  if (pathname === '/notifications/announcement' && method === 'POST') {
+    if (!currentUser) {
+      return sendJson(res, { success: false, error: 'Authentication required' }, 401);
+    }
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
+    const isWriter = currentUser.isWriter === true || ['writer', 'author'].includes((currentUser.role || '').toLowerCase());
+    if (!isAdmin && !isWriter) {
+      return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required to broadcast announcements.' }, 403);
+    }
+    const body = await readJsonBody(req);
+    const title = (body.title || '').trim();
+    const message = (body.message || '').trim();
+    if (!title || !message) {
+      return sendJson(res, { success: false, error: 'Title and message are required.' }, 400);
+    }
+    const result = await broadcastAnnouncement({
+      actorId: currentUser.id,
+      title,
+      message,
+      link: body.link || '#forms',
+      targetRole: body.target || 'all'
+    });
     return sendJson(res, result, 200);
   }
 
@@ -3199,7 +3454,8 @@ export async function apiMiddleware(req, res, next) {
   if (pathname === '/chat/settings' && (method === 'POST' || method === 'PUT')) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     const body = await readJsonBody(req);
-    const isChatAvailable = body.isChatAvailable !== false && body.isChatAvailable !== 0 && body.isChatAvailable !== '0';
+    const rawVal = body.isChatAvailable !== undefined ? body.isChatAvailable : body.is_chat_available;
+    const isChatAvailable = rawVal !== false && rawVal !== 0 && rawVal !== '0';
     const result = await updateUserChatSettings(currentUser.id, isChatAvailable);
     return sendJson(res, result, 200);
   }

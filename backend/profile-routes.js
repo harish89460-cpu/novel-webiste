@@ -3,6 +3,7 @@
 // Statistics, Follows, Saved Novels, Activity Timeline, and Topic Reads.
 
 import { query, queryOne } from './db.js';
+import { createNotification } from './notifications.js';
 
 /**
  * Handle Profile Subsystem Endpoints
@@ -31,6 +32,27 @@ export async function handleProfileEndpoints(req, res, pathname, method, parsed,
     } else {
       await query('INSERT INTO follows (follower_id, following_id) VALUES (?, ?);', [currentUser.id, targetUser.id]);
       isFollowing = true;
+
+      // Genuine notification for new follower
+      try {
+        const followerProfile = await queryOne(`
+          SELECT COALESCE(p.display_name, u.username) AS name
+          FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;
+        `, [currentUser.id]);
+
+        await createNotification({
+          userId: targetUser.id,
+          actorId: currentUser.id,
+          type: 'follow',
+          title: 'New Follower',
+          message: `${followerProfile?.name || currentUser.username} started following you!`,
+          link: `#member?id=${encodeURIComponent(currentUser.username)}`,
+          entityType: 'user',
+          entityId: currentUser.id
+        });
+      } catch (err) {
+        console.warn('[Follow Notification Error]:', err.message);
+      }
     }
 
     const followersCountRow = await queryOne('SELECT COUNT(*) AS count FROM follows WHERE following_id = ?;', [targetUser.id]);

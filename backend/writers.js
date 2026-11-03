@@ -948,9 +948,6 @@ export async function canWriterAccessContent(writerId, contentType, contentId, r
   if (contentType === 'novel' && contentId) {
     const novel = await queryOne('SELECT author_id, access_permission FROM novels WHERE id = ?;', [contentId]);
     if (novel) {
-      if (novel.access_permission === 'admin_only') {
-        return { allowed: false, reason: 'This novel is restricted to Admin Only. Writers cannot edit this content.' };
-      }
       if (Number(novel.author_id) === Number(writerId)) {
         if (!perms.canNovels) {
           return { allowed: false, reason: 'Novels management is not enabled for your account.' };
@@ -962,6 +959,9 @@ export async function canWriterAccessContent(writerId, contentType, contentId, r
           canPublishIndependently: canIndependentPublish,
           canSchedule
         };
+      }
+      if (novel.access_permission === 'admin_only') {
+        return { allowed: false, reason: 'This novel is restricted to Admin Only. Writers cannot edit this content.' };
       }
     }
   }

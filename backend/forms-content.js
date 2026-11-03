@@ -1,10 +1,12 @@
 import { getPublicShortStories } from './short-stories.js';
+import { checkAndPublishDueNovels } from './scheduler.js';
 // Forms, Novel Content, and Reading Management Layer for Rudhra Prarthana Novels
 // Implements 3-Level Hierarchy: Main Title -> Sub Title -> Content Title -> Reading Content
 // With dedicated reading pages, comments, and fine-grained individual member access control
 
 import { query, queryOne, getDb } from './db.js';
 import { recordAdminAudit } from './admin-members.js';
+import { createNotification } from './notifications.js';
 
 /**
  * Check if a given user is an authorized administrator or editor
@@ -108,6 +110,7 @@ export async function checkAccessRestriction({ targetType, targetId, userId }) {
  * Main Titles -> Sub Titles -> Content Titles
  */
 export async function getContentHierarchy(currentUser = null) {
+  await checkAndPublishDueNovels().catch(() => {});
   const isAdmin = isUserAdmin(currentUser);
   const userId = currentUser ? currentUser.id : null;
 
@@ -127,13 +130,13 @@ export async function getContentHierarchy(currentUser = null) {
 
   // 3. Fetch Content Articles (Content Titles)
   const articlesQuery = isAdmin
-    ? `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, chapter_num,
+    ? `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
               title, summary, cover_image, author_id, author_name, status, is_published,
               is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
               published_at, scheduled_at, created_at, updated_at
        FROM content_articles 
        ORDER BY sort_order ASC, published_at DESC, id DESC;`
-    : `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, chapter_num,
+    : `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
               title, summary, cover_image, author_id, author_name, status, is_published,
               is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
               published_at, scheduled_at, created_at, updated_at
@@ -142,6 +145,23 @@ export async function getContentHierarchy(currentUser = null) {
        ORDER BY sort_order ASC, published_at DESC, id DESC;`;
   
   const allArticles = await query(articlesQuery);
+
+  // 3.5. Fetch discussion comments counts for review/subcategories
+  const subCommentsMap = new Map();
+  try {
+    const subCommentCounts = await query(`
+      SELECT novel_id, COUNT(*) AS count 
+      FROM comments 
+      WHERE novel_id LIKE 'review_sub_%' AND status = 'approved'
+      GROUP BY novel_id;
+    `);
+    for (const row of subCommentCounts) {
+      const subId = row.novel_id.replace(/^review_sub_/, '');
+      subCommentsMap.set(subId, Number(row.count || 0));
+    }
+  } catch (err) {
+    console.warn('Failed to query subcategory discussion comments:', err.message);
+  }
 
   // 4. Fetch Active Access Rules to filter for non-admin readers
   let userRestrictions = [];
@@ -221,7 +241,6 @@ export async function getContentHierarchy(currentUser = null) {
     const mainItem = {
       id: mainCat.id,
       title: mainCat.title,
-      description: mainCat.description || mainCat.desc || '',
       icon: mainCat.icon || '💬',
       color: mainCat.color || '#2E1065',
       sortOrder: Number(mainCat.sort_order || 0),
@@ -271,6 +290,9 @@ export async function getContentHierarchy(currentUser = null) {
               mainCategoryId: art.main_category_id,
               subCategoryId: art.sub_category_id,
               parentId: art.parent_id ? Number(art.parent_id) : null,
+              novelId: art.novel_id || null,
+              novelLink: art.novel_link || null,
+              chapterNum: art.chapter_num || null,
               title: art.title,
               summary: art.summary || '',
               coverImage: art.cover_image || null,
@@ -311,9 +333,11 @@ export async function getContentHierarchy(currentUser = null) {
       subItem.articles = buildContentTree(accessibleArticles, null);
 
       const sortedSubArticles = [...accessibleArticles].sort((a, b) => new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0));
+      const subDiscussionComments = subCommentsMap.get(sub.id) || 0;
+      subItem.discussionComments = subDiscussionComments;
       subItem.stats = {
         totalItems: accessibleArticles.length,
-        totalComments: accessibleArticles.reduce((sum, a) => sum + Number(a.comments_count || 0), 0),
+        totalComments: accessibleArticles.reduce((sum, a) => sum + Number(a.comments_count || 0), 0) + subDiscussionComments,
         totalViews: accessibleArticles.reduce((sum, a) => sum + Number(a.views_count || 0), 0),
         latestTitle: sortedSubArticles[0]?.title || null,
         latestLink: sortedSubArticles[0]?.unique_slug ? `#content?slug=${encodeURIComponent(sortedSubArticles[0].unique_slug)}` : null,
@@ -487,11 +511,13 @@ export async function getContentHierarchy(currentUser = null) {
   return { success: true, hierarchy };
 }
 
+const recentArticleViews = new Map();
+
 /**
  * Retrieve a single content article for dedicated reading page
  * with full authorization and restriction checks
  */
-export async function getContentArticle(idOrSlug, currentUser = null) {
+export async function getContentArticle(idOrSlug, currentUser = null, { incrementView = true } = {}) {
   if (!idOrSlug) {
     return { success: false, error: 'Content identifier is required.', code: 'NOT_FOUND' };
   }
@@ -614,8 +640,20 @@ export async function getContentArticle(idOrSlug, currentUser = null) {
     }
   }
 
-  // 6. Increment view count
-  await query(`UPDATE content_articles SET views_count = views_count + 1 WHERE id = ?;`, [article.id]);
+  // 6. Increment view count (only for authentic reader page visits, not comments or admin operations)
+  if (incrementView && !isAdmin) {
+    const debounceKey = `${userId || 'guest'}_${article.id}`;
+    const lastTime = recentArticleViews.get(debounceKey) || 0;
+    const now = Date.now();
+    if (now - lastTime > 5000) {
+      recentArticleViews.set(debounceKey, now);
+      await query(`UPDATE content_articles SET views_count = views_count + 1 WHERE id = ?;`, [article.id]);
+      article.views_count = Number(article.views_count || 0) + 1;
+    }
+    if (recentArticleViews.size > 20000) {
+      recentArticleViews.clear();
+    }
+  }
 
   // 7. Resolve Parent, Children, and Siblings for nested navigation
   let parentArticle = null;
@@ -667,6 +705,57 @@ export async function getContentArticle(idOrSlug, currentUser = null) {
     isCurrent: s.id === article.id
   }));
 
+  // Resolve linked novel and episode content if novelLink or novelId is attached
+  let resolvedNovelId = article.novel_id;
+  let resolvedChapterNum = article.chapter_num;
+
+  if (!resolvedNovelId && article.novel_link) {
+    const novelMatch = article.novel_link.match(/[?&]novel=([^&]+)/i) || article.novel_link.match(/[?&]id=([^&]+)/i);
+    if (novelMatch) resolvedNovelId = decodeURIComponent(novelMatch[1]);
+    const chMatch = article.novel_link.match(/[?&]ch=([^&#\s]+)/i) || article.novel_link.match(/[?&]chapter=([^&#\s]+)/i);
+    if (chMatch) resolvedChapterNum = decodeURIComponent(chMatch[1]);
+  }
+
+  let linkedNovel = null;
+  let linkedChapter = null;
+
+  if (resolvedNovelId) {
+    try {
+      linkedNovel = await queryOne(
+        `SELECT id, title, author, author_id, cover, description, genre, status FROM novels WHERE id = ? LIMIT 1;`,
+        [resolvedNovelId]
+      );
+
+      if (linkedNovel) {
+        if (resolvedChapterNum) {
+          linkedChapter = await queryOne(`
+            SELECT id, novel_id, chapter_num, episode_number, title, title_ta, content, word_count, read_time, release_date, published_at, status 
+            FROM chapters 
+            WHERE novel_id = ? AND (chapter_num = ? OR episode_number = ?)
+            LIMIT 1;
+          `, [linkedNovel.id, String(resolvedChapterNum), String(resolvedChapterNum)]);
+        }
+        if (!linkedChapter) {
+          linkedChapter = await queryOne(`
+            SELECT id, novel_id, chapter_num, episode_number, title, title_ta, content, word_count, read_time, release_date, published_at, status 
+            FROM chapters 
+            WHERE novel_id = ?
+            ORDER BY sort_order ASC, id ASC
+            LIMIT 1;
+          `, [linkedNovel.id]);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to resolve linked novel/chapter:', e.message);
+    }
+  }
+
+  formatted.linkedNovel = linkedNovel;
+  formatted.linkedChapter = linkedChapter;
+  formatted.novelLink = article.novel_link || null;
+  formatted.novelId = resolvedNovelId || null;
+  formatted.chapterNum = resolvedChapterNum || null;
+
   return { success: true, article: formatted };
 }
 
@@ -680,6 +769,7 @@ function formatArticle(row) {
     subCategoryTitle: row.sub_category_title || 'Notes',
     parentId: row.parent_id ? Number(row.parent_id) : null,
     novelId: row.novel_id || null,
+    novelLink: row.novel_link || null,
     chapterNum: row.chapter_num || null,
     title: row.title,
     content: row.content || '',
@@ -822,7 +912,7 @@ export async function deleteContentComment({ commentId, userId, isAdmin }) {
 /**
  * Create a new Main Title (forum_category)
  */
-export async function createMainCategory({ id, title, description, icon = '💬', color = '#2E1065', sortOrder, sort_order, adminId = 2 }) {
+export async function createMainCategory({ id, title, icon = '💬', color = '#2E1065', sortOrder, sort_order, adminId = 2 }) {
   if (!title || !title.trim()) {
     return { success: false, error: 'Main title is required.' };
   }
@@ -846,9 +936,9 @@ export async function createMainCategory({ id, title, description, icon = '💬'
   }
 
   await query(`
-    INSERT INTO forum_categories (id, title, description, icon, color, sort_order, is_active, status, is_disabled)
-    VALUES (?, ?, ?, ?, ?, ?, 1, 'published', 0);
-  `, [cleanId, cleanTitle, description || '', icon, color, finalSortOrder]);
+    INSERT INTO forum_categories (id, title, icon, color, sort_order, is_active, status, is_disabled)
+    VALUES (?, ?, ?, ?, ?, 1, 'published', 0);
+  `, [cleanId, cleanTitle, icon, color, finalSortOrder]);
 
   await recordAdminAudit({
     adminId,
@@ -865,7 +955,7 @@ export async function createMainCategory({ id, title, description, icon = '💬'
 /**
  * Update an existing Main Title
  */
-export async function updateMainCategory({ id, title, description, icon, color, sortOrder, sort_order, adminId = 2 }) {
+export async function updateMainCategory({ id, title, icon, color, sortOrder, sort_order, adminId = 2 }) {
   const cat = await queryOne(`SELECT * FROM forum_categories WHERE id = ?;`, [id]);
   if (!cat) return { success: false, error: 'Main category not found.' };
 
@@ -877,14 +967,12 @@ export async function updateMainCategory({ id, title, description, icon, color, 
   await query(`
     UPDATE forum_categories 
     SET title = COALESCE(?, title),
-        description = COALESCE(?, description),
         icon = COALESCE(?, icon),
         color = COALESCE(?, color),
         sort_order = COALESCE(?, sort_order)
     WHERE id = ?;
   `, [
     title ? title.trim() : null,
-    description !== undefined ? description : null,
     icon || null,
     color || null,
     finalSortOrder,
@@ -1191,6 +1279,12 @@ export async function createContentArticle({
   sub_category_id,
   parentId = null,
   parent_id = null,
+  novelId = null,
+  novel_id = null,
+  novelLink = null,
+  novel_link = null,
+  chapterNum = null,
+  chapter_num = null,
   title,
   uniqueSlug,
   unique_slug,
@@ -1223,6 +1317,22 @@ export async function createContentArticle({
   const accPerm = accessPermission || access_permission || 'admin_only';
   const schedAt = scheduledAt || scheduled_at || null;
 
+  let nLink = novelLink || novel_link || null;
+  let nId = novelId || novel_id || null;
+  let chNum = chapterNum || chapter_num || null;
+
+  if (nLink) {
+    nLink = String(nLink).trim();
+    const novelMatch = nLink.match(/[?&]novel=([^&#\s]+)/i) || nLink.match(/[?&]id=([^&#\s]+)/i);
+    if (novelMatch && !nId) {
+      nId = decodeURIComponent(novelMatch[1]);
+    }
+    const chMatch = nLink.match(/[?&]ch=([^&#\s]+)/i) || nLink.match(/[?&]chapter=([^&#\s]+)/i);
+    if (chMatch && !chNum) {
+      chNum = decodeURIComponent(chMatch[1]);
+    }
+  }
+
   if (!mId || !sId || !title || !title.trim()) {
     return { success: false, error: 'Main title, sub title, and content title are required.' };
   }
@@ -1241,13 +1351,13 @@ export async function createContentArticle({
 
   const result = await query(`
     INSERT INTO content_articles (
-      unique_slug, main_category_id, sub_category_id, parent_id, title, content,
-      summary, cover_image, author_id, author_name, status, visibility, access_permission,
+      unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
+      title, content, summary, cover_image, author_id, author_name, status, visibility, access_permission,
       is_published, is_disabled, sort_order, published_at, scheduled_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
   `, [
-    cleanSlug, mId, sId, pId, cleanTitle, content || '',
-    summary || '', cImage, aId, aName, status, visibility, accPerm,
+    cleanSlug, mId, sId, pId, nId, nLink, chNum,
+    cleanTitle, content || '', summary || '', cImage, aId, aName, status, visibility, accPerm,
     isPublished, isDisabled, Number(sOrder), schedAt
   ]);
 
@@ -1260,10 +1370,35 @@ export async function createContentArticle({
     details: `Created content article "${cleanTitle}" (ID: ${result.insertId}, ParentID: ${pId}, Slug: ${cleanSlug})`
   });
 
+  // Notify followers if published
+  if (isPublished) {
+    try {
+      const followers = await query(`
+        SELECT follower_id AS user_id FROM follows WHERE following_id = ?;
+      `, [aId]);
+      for (const f of followers) {
+        if (Number(f.user_id) !== Number(aId)) {
+          await createNotification({
+            userId: f.user_id,
+            actorId: aId,
+            type: 'thread_created',
+            title: 'New Thread Published',
+            message: `${aName || 'Author'} published a new thread: "${cleanTitle}".`,
+            link: `#thread?id=${encodeURIComponent(cleanSlug)}`,
+            entityType: 'content_article',
+            entityId: result.insertId
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('[Thread Creation Notification Error]:', err.message);
+    }
+  }
+
   return { 
     success: true, 
     id: result.insertId, 
-    article: { id: result.insertId, unique_slug: cleanSlug, slug: cleanSlug, parent_id: pId },
+    article: { id: result.insertId, unique_slug: cleanSlug, slug: cleanSlug, parent_id: pId, title: cleanTitle, novel_link: nLink },
     slug: cleanSlug, 
     message: 'Content created successfully!' 
   };

@@ -322,15 +322,15 @@ export async function createNotification({
 
   // RULE 2: Respect user's notification preferences
   const prefs = await getNotificationPreferences(recipientId);
-  if (type === 'novel_comment' && !prefs.notifyComments) return null;
+  if ((type === 'novel_comment' || type === 'comment') && !prefs.notifyComments) return null;
   if (type === 'comment_reply' && !prefs.notifyReplies) return null;
   if ((type === 'comment_reaction' || type === 'comment_like') && !prefs.notifyReactions) return null;
-  if ((type === 'forum_reply' || type === 'forum_mention') && !prefs.notifyForum) return null;
-  if (type === 'chapter_release' && !prefs.notifyChapters) return null;
-  if (type === 'account_event' && !prefs.notifySystem) return null;
+  if ((type === 'forum_reply' || type === 'forum_mention' || type === 'thread_created' || type === 'review_discussion') && !prefs.notifyForum) return null;
+  if ((type === 'chapter_release' || type === 'novel_created') && !prefs.notifyChapters) return null;
+  if ((type === 'account_event' || type === 'announcement' || type === 'follow' || type === 'chat_message') && !prefs.notifySystem) return null;
 
   // RULE 3: Deduplication safeguard
-  // Check if an identical notification was recently generated (within 15 minutes)
+  // Check if an identical notification was recently generated (within 5 minutes)
   const recentDuplicate = await queryOne(`
     SELECT id, created_at 
     FROM notifications 
@@ -339,7 +339,7 @@ export async function createNotification({
       AND type = ?
       AND (entity_type = ? OR (entity_type IS NULL AND ? IS NULL))
       AND (entity_id = ? OR (entity_id IS NULL AND ? IS NULL))
-      AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+      AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
     LIMIT 1;
   `, [
     recipientId, 
@@ -533,4 +533,46 @@ export async function markAllNotificationsReadInDb(userId) {
   sendSseToUser(uId, 'unread_count', { unreadCount: 0 });
 
   return { success: true, unreadCount: 0 };
+}
+
+/**
+ * Broadcast an announcement or notice to all users or specific roles
+ */
+export async function broadcastAnnouncement({
+  actorId = 2,
+  title,
+  message,
+  link = '#forms',
+  targetRole = 'all'
+}) {
+  let userRows = [];
+  if (targetRole === 'writers') {
+    userRows = await query(`SELECT id FROM users WHERE role IN ('writer', 'author') OR is_writer = 1;`);
+  } else if (targetRole === 'members') {
+    userRows = await query(`SELECT id FROM users WHERE role NOT IN ('admin', 'administrator');`);
+  } else {
+    userRows = await query(`SELECT id FROM users;`);
+  }
+
+  const cleanActorId = Number(actorId);
+  const sentNotifications = [];
+
+  for (const u of userRows) {
+    if (Number(u.id) !== cleanActorId) {
+      const notif = await createNotification({
+        userId: u.id,
+        actorId: cleanActorId,
+        type: 'announcement',
+        title: title.trim(),
+        message: message.trim(),
+        link: link.trim(),
+        entityType: 'announcement',
+        entityId: null
+      }).catch(() => null);
+
+      if (notif) sentNotifications.push(notif);
+    }
+  }
+
+  return { success: true, count: sentNotifications.length };
 }

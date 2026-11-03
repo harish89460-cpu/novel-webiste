@@ -1,38 +1,37 @@
-# Rudhra Prarthana Novels — Scripts Directory Catalog & Guide
+# Production Test & Verification Suites
 
-This directory contains **49 active automation, verification, testing, and maintenance scripts** for the platform.
+**Rudhra Prarthana Novels (ருத்ரா பிரார்த்தனா நாவல்கள்)**
 
-For the full detailed breakdown and technical specifications, refer to [docs/SCRIPTS_CATALOG.md](../docs/SCRIPTS_CATALOG.md).
-
----
-
-## 1. Quick-Reference Matrix
-
-| Goal | Recommended Script | Command |
-|---|---|---|
-| **Verify System Integrity & Clean Data** | `verify_cleaned_production_system.js` | `node scripts/verify_cleaned_production_system.js` |
-| **Test Admin Login & Email OTP Delivery** | `test_admin_auth_and_otp.js` | `node scripts/test_admin_auth_and_otp.js` |
-| **Verify Full Application Architecture** | `verify_complete_application_audit.js` | `node scripts/verify_complete_application_audit.js` |
-| **Test Novel Auto-Slug & Transliteration** | `test_auto_slug_generation.js` | `node scripts/test_auto_slug_generation.js` |
-| **Verify Comment Hierarchy & Replies** | `verify_novel_comments_and_replies.js` | `node scripts/verify_novel_comments_and_replies.js` |
-| **Verify Audio Novels Flow & Uploads** | `verify_audio_novels_flow.js` | `node scripts/verify_audio_novels_flow.js` |
-| **Verify Writer Program & Approval Flow** | `verify_writers_flow.js` | `node scripts/verify_writers_flow.js` |
-| **Test User Presence & Heartbeats** | `verify_presence_flow.js` | `node scripts/verify_presence_flow.js` |
-| **Create Database JSON Backup** | `create_full_backup.js` | `node scripts/create_full_backup.js` |
-| **Inspect MySQL Table Counts** | `audit_database_contents.js` | `node scripts/audit_database_contents.js` |
-| **Check MySQL Connection & Charset** | `verify_mysql_connection.py` | `python scripts/verify_mysql_connection.py` |
+This directory contains the production-grade regression testing suites, automated verification scripts, and database maintenance utilities.
 
 ---
 
-## 2. Categories Overview (49 Active Scripts)
+## Suite Catalog
 
-- **Database Backups, Migrations & Schema Audits** (6 scripts): `backup_db.py`, `create_full_backup.js`, `create_audit_backup.js`, `inspect_schema.js`, `audit_database_contents.js`, `audit_content_details.js`.
-- **Data Cleanup & Sanitization** (5 scripts): `inspect_all_data_for_cleanup.js`, `execute_safe_cleanup.js`, `execute_fake_data_cleanup.js`, `inspect_forum_and_comments.js`, `restore_genuine_data.js`.
-- **Authentication, Security & OTP** (4 scripts): `test_admin_auth_and_otp.js`, `test_auth_access_control.py`, `update_author_credentials.js`, `verify_admin_security_flow.js`.
-- **Novels, Episodes & Media Management** (6 scripts): `test_novel_creation_flow.js`, `test_auto_slug_generation.js`, `test_direct_cover_upload.js`, `test_image_browser_flow.js`, `verify_cover_fill_comprehensive.js`, `verify_browser_novel_navigation.js`.
-- **Comments, Nested Replies & Rich Editor** (4 scripts): `verify_comment_toolbar_and_data.js`, `verify_latest_comments_first.js`, `verify_novel_comments_and_replies.js`, `verify_novel_reply_rich_editor.js`.
-- **Community Forum & Discussion Workflows** (6 scripts): `verify_forum_comments_flow.js`, `verify_forum_e2e_browser.js`, `verify_forum_live_e2e.js`, `verify_forum_stats_api.js`, `verify_forum_stats_and_audio.js`, `verify_remove_start_discussion.js`.
-- **Audio Novels & Streaming** (1 script): `verify_audio_novels_flow.js`.
-- **Writer Program & Editorial Dashboards** (4 scripts): `check_writers.js`, `test_writer_redesign_e2e.js`, `verify_writers_flow.js`, `verify_writer_redesign_browser.js`.
-- **User Presence & Notifications** (3 scripts): `verify_presence_flow.js`, `verify_presence_responsive.js`, `verify_realtime_notifications_flow.js`.
-- **System Health, Responsive & E2E Audits** (10 scripts): `test_system_health.py`, `verify_mysql_connection.py`, `verify_full_system.py`, `verify_cleaned_production_system.js`, `verify_complete_application_audit.js`, `verify_reader_novel_flow.js`, `verify_responsive_admin.js`, `capture_admin_screens.py`, `capture_reader_views.py`, `test_homepage_section_management_e2e.js`.
+| Script | Purpose & Scope | Execution Command |
+| :--- | :--- | :--- |
+| **`verify_production_readiness_e2e.cjs`** | Comprehensive Master E2E suite verifying health, authentication, reader registration, novel CRUD, chapter/episode hierarchy, comments, reactions, and clean state restoration. | `node scripts/verify_production_readiness_e2e.cjs` |
+| **`verify_image_uploads.cjs`** | Tests unified image upload API (`/api/upload/image`), physical disk storage, MIME validation, file size limits, cover replacement with old file cleanup, profile avatar updates, and media gallery CRUD. | `node scripts/verify_image_uploads.cjs` |
+| **`verify_chapter_episode_workflow.cjs`** | Verifies decoupled 2-step hierarchy: Admin/Writer creates root chapter (metadata only), then creates episodes (rich content) under the chapter. | `node scripts/verify_chapter_episode_workflow.cjs` |
+| **`verify_chapter_edit_functionality.cjs`** | Verifies editing chapter title preserves all associated child episodes and rich story content without data loss or hierarchy distortion. | `node scripts/verify_chapter_edit_functionality.cjs` |
+| **`verify_novel_auto_publishing.cjs`** | Tests future scheduled release and live background scheduler execution every 30 seconds independently without requiring an open browser. | `node scripts/verify_novel_auto_publishing.cjs` |
+| **`test_admin_auth_and_otp.js`** | Validates Author Portal authentication, salted Scrypt password verification, and live SMTP email OTP password recovery. | `node scripts/test_admin_auth_and_otp.js` |
+| **`verify_writer_access_system.cjs`** | Verifies writer permissions, granular novel assignments, independent publishing controls, and immediate access revocation. | `node scripts/verify_writer_access_system.cjs` |
+| **`verify_whatsapp_chat.js`** | Verifies real-time messaging, photo attachments, voice notes, message editing, message unsending, and user/admin chat locks. | `node scripts/verify_whatsapp_chat.js` |
+| **`execute_safe_production_cleanup.cjs`** | Transactional database cleanup utility that removes test content while preserving schemas, site settings, homepage sections, and the production admin account. | `node scripts/execute_safe_production_cleanup.cjs` |
+
+---
+
+## Running All Production Checks
+
+To execute the complete production verification suite:
+
+```bash
+node scripts/verify_production_readiness_e2e.cjs
+node scripts/verify_image_uploads.cjs
+node scripts/verify_chapter_episode_workflow.cjs
+node scripts/verify_chapter_edit_functionality.cjs
+node scripts/verify_writer_access_system.cjs
+node scripts/test_admin_auth_and_otp.js
+node scripts/verify_whatsapp_chat.js
+```

@@ -5,65 +5,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
+import { getDbConfig, loadEnv } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Load environment variables
-export function loadEnv() {
-  const envPath = fs.existsSync(path.resolve(__dirname, '.env'))
-    ? path.resolve(__dirname, '.env')
-    : path.resolve(__dirname, '../.env');
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, 'utf8');
-    content.split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const idx = trimmed.indexOf('=');
-        if (idx !== -1) {
-          const key = trimmed.slice(0, idx).trim();
-          const val = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
-          process.env[key] = val;
-        }
-      }
-    });
-  }
-}
-
-loadEnv();
+export { loadEnv };
 
 export async function runMigrations() {
   loadEnv();
-  const host = process.env.DB_HOST || 'localhost';
-  const port = Number(process.env.DB_PORT) || 3306;
-  const user = process.env.DB_USER || 'root';
-  const password = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'root';
-  const database = process.env.DB_NAME || 'rp_novels_db';
+  const config = getDbConfig();
 
-  console.log(`[Migration] Connecting to MySQL at ${host}:${port} as ${user}...`);
+  console.log(`[Migration] Connecting to MySQL at ${config.host}:${config.port} as ${config.user}...`);
 
-  // 1. Initial connection without database to create DB if needed
-  const rootConn = await mysql.createConnection({
-    host,
-    port,
-    user,
-    password,
-    multipleStatements: true
-  });
+  // 1. Initial connection without database to create DB if needed (optional for managed DBs)
+  try {
+    const rootConn = await mysql.createConnection({
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      ssl: config.ssl,
+      multipleStatements: true
+    });
 
-  await rootConn.query(`
-    CREATE DATABASE IF NOT EXISTS \`${database}\`
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-  `);
-  await rootConn.end();
+    await rootConn.query(`
+      CREATE DATABASE IF NOT EXISTS \`${config.database}\`
+      CHARACTER SET utf8mb4
+      COLLATE utf8mb4_unicode_ci;
+    `);
+    await rootConn.end();
+  } catch (err) {
+    // If user lacks permission to create database (e.g. managed cloud DB), log note and continue
+    console.log(`[Migration] Database creation check: ${err.message}. Proceeding to connect to \`${config.database}\`...`);
+  }
 
   // 2. Connect with target database
   const dbConn = await mysql.createConnection({
-    host,
-    port,
-    user,
-    password,
-    database,
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    password: config.password,
+    database: config.database,
+    ssl: config.ssl,
     multipleStatements: true
   });
 
@@ -96,11 +79,55 @@ export async function runMigrations() {
     }
   }
 
+  // 4. Verify Admin Account in new database (ensures existing credentials are initialized if empty)
+  const [adminUser] = await dbConn.query('SELECT id, username, email FROM users WHERE id = 2 OR username = ?;', ['rudhra_author']);
+  if (!adminUser || adminUser.length === 0) {
+    console.log('[Migration] Initializing authorized production Admin account...');
+    await dbConn.query(`
+      INSERT INTO users (id, username, email, password_hash, salt, role, status)
+      VALUES (
+        2,
+        'rudhra_author',
+        'digitalmarkservices.in@gmail.com',
+        'f1cc1a04c0dd59b722fab02a6bd51f05def265027bfca575380b460196be48c769ae19a624e5f7ac3badc7e51ebfb5a36db42820461fbf4eac140d2ab20af3ae',
+        '5da387c064cfb089b6dbf2b56f348e8b',
+        'Admin',
+        'active'
+      )
+      ON DUPLICATE KEY UPDATE
+        email = VALUES(email),
+        role = VALUES(role),
+        status = VALUES(status);
+    `);
+    await dbConn.query(`
+      INSERT INTO profiles (user_id, display_name, display_name_ta, avatar, bio, bio_ta, title, title_ta, joined_date, posts_count, topics_count, followers_count)
+      VALUES (
+        2,
+        'Rudhra Prarthana',
+        'ருத்ர பிரார்த்தனா',
+        '/profile.png',
+        'Official Administrator and Author of Rudhra Prarthana Novels',
+        'ருத்ரா பிரார்த்தனா நாவல்களின் நிர்வாகி மற்றும் எழுத்தாளர்',
+        'Author',
+        'எழுத்தாளர்',
+        'Jan 2024',
+        0, 0, 0
+      )
+      ON DUPLICATE KEY UPDATE display_name = VALUES(display_name);
+    `);
+    await dbConn.query(`
+      INSERT INTO activity_status (user_id, is_enabled, is_online, last_seen)
+      VALUES (2, 1, 0, CURRENT_TIMESTAMP)
+      ON DUPLICATE KEY UPDATE is_enabled = 1;
+    `);
+    console.log('[Migration] Authorized production Admin account successfully initialized.');
+  }
+
   await dbConn.end();
   console.log('[Migration] All migrations completed successfully.');
 }
 
-// Allow direct execution: node server/migrate.js
+// Allow direct execution: node backend/migrate.js
 if (process.argv[1] && process.argv[1].endsWith('migrate.js')) {
   runMigrations().catch(err => {
     console.error('[Migration Error]:', err);

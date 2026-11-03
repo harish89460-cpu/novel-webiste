@@ -1,8 +1,6 @@
 -- Rudhra Prarthana Novels — Database Migration 012
 -- Complete Real-Time Notifications, Push Subscriptions, and Notification Preferences Schema
 
-USE rp_novels_db;
-
 -- 1. Extend notifications table with actor, entity metadata, and indexes
 SET @exist_actor := (
   SELECT COUNT(*) FROM information_schema.COLUMNS 

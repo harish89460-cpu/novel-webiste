@@ -40,6 +40,43 @@ function formatReleaseDate(date = new Date()) {
 }
 
 /**
+ * Notify all readers, commenters, and followers about a newly published chapter
+ */
+export async function notifyChapterRelease(novelId, chapterNum, explicitAuthor = null) {
+  try {
+    const novelRow = await queryOne('SELECT title, author, author_id FROM novels WHERE id = ?;', [novelId]);
+    const novelTitle = novelRow?.title || 'Novel';
+    const authorName = explicitAuthor || novelRow?.author || 'Rudhra Prarthana';
+    const authorId = novelRow?.author_id || 2;
+
+    const readers = await query(`
+      SELECT DISTINCT user_id FROM (
+        SELECT user_id FROM reading_progress WHERE novel_id = ?
+        UNION
+        SELECT user_id FROM comments WHERE novel_id = ?
+        UNION
+        SELECT follower_id AS user_id FROM follows WHERE following_id = ?
+      ) u WHERE user_id IS NOT NULL AND user_id != ?;
+    `, [novelId, novelId, authorId, authorId]);
+
+    for (const reader of readers) {
+      await createNotification({
+        userId: reader.user_id,
+        actorId: authorId,
+        type: 'chapter_release',
+        title: 'New Chapter Released!',
+        message: `${authorName} has published Chapter ${chapterNum} of ${novelTitle}.`,
+        link: `#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(chapterNum)}`,
+        entityType: 'chapter',
+        entityId: `${novelId}:${chapterNum}`
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[Chapter Release Notification Error]:', e.message);
+  }
+}
+
+/**
  * Reliable Backend Scheduler Engine
  * Automatically checks and publishes all due scheduled episodes across all novels.
  * Prevents duplicate publishing and updates novel chapter counts and timestamps.
@@ -82,31 +119,7 @@ export async function checkAndPublishDueEpisodes() {
 
     // Send genuine notifications to readers for newly published episodes
     for (const ep of dueRows) {
-      try {
-        const readers = await query(`
-          SELECT DISTINCT user_id FROM reading_progress WHERE novel_id = ?
-          UNION
-          SELECT DISTINCT user_id FROM comments WHERE novel_id = ?;
-        `, [ep.novel_id, ep.novel_id]);
-
-        const novelRow = await queryOne('SELECT title, author FROM novels WHERE id = ?;', [ep.novel_id]);
-        const novelTitle = novelRow?.title || 'Novel';
-        const authorName = novelRow?.author || 'Rudhra Prarthana';
-
-        for (const reader of readers) {
-          await createNotification({
-            userId: reader.user_id,
-            type: 'chapter_release',
-            title: 'New Chapter Released!',
-            message: `${authorName} has published Chapter ${ep.chapter_num} of ${novelTitle}.`,
-            link: `#reader?novel=${ep.novel_id}&ch=${ep.chapter_num}`,
-            entityType: 'chapter',
-            entityId: `${ep.novel_id}:${ep.chapter_num}`
-          }).catch(() => {});
-        }
-      } catch (e) {
-        console.warn('Scheduler notification error:', e.message);
-      }
+      await notifyChapterRelease(ep.novel_id, ep.chapter_num);
     }
 
     console.log(`[Scheduler] Automatically published ${publishedIds.length} due episode(s).`);
@@ -328,11 +341,22 @@ export async function getEpisodeById(id) {
  * Create a new Chapter, Episode, or Sub-Episode
  */
 export async function createEpisode(data) {
-  const rawNovelId = String(data.novelId || '').trim();
+  let rawNovelId = String(data.novelId || '').trim();
   const content = (data.content || '').trim();
 
   if (!rawNovelId) {
-    return { success: false, error: 'novelId is required.' };
+    const authorId = data.authorId || 2;
+    const authorNovel = await queryOne('SELECT id, title FROM novels WHERE author_id = ? ORDER BY id ASC LIMIT 1;', [authorId]);
+    if (authorNovel) {
+      rawNovelId = authorNovel.id;
+    } else {
+      const anyNovel = await queryOne('SELECT id, title FROM novels ORDER BY id ASC LIMIT 1;');
+      if (anyNovel) {
+        rawNovelId = anyNovel.id;
+      } else {
+        return { success: false, error: 'No novel container available to store content.' };
+      }
+    }
   }
 
   // Verify novel exists by id or title
@@ -511,36 +535,13 @@ export async function createEpisode(data) {
   // If published, refresh novel chapters count and notify readers
   if (status === 'published') {
     await refreshNovelStats(novelId);
-
-    try {
-      const readers = await query(`
-        SELECT DISTINCT user_id FROM reading_progress WHERE novel_id = ?
-        UNION
-        SELECT DISTINCT user_id FROM comments WHERE novel_id = ?;
-      `, [novelId, novelId]);
-
-      const novelRow = await queryOne('SELECT title, author FROM novels WHERE id = ?;', [novelId]);
-      const novelTitle = novelRow?.title || 'Novel';
-      const authorName = novelRow?.author || 'Rudhra Prarthana';
-
-      for (const reader of readers) {
-        await createNotification({
-          userId: reader.user_id,
-          type: 'chapter_release',
-          title: 'New Chapter Released!',
-          message: `${authorName} has published Chapter ${finalChapterNum} of ${novelTitle}.`,
-          link: `#reader?novel=${novelId}&ch=${finalChapterNum}`,
-          entityType: 'chapter',
-          entityId: `${novelId}:${finalChapterNum}`
-        }).catch(() => {});
-      }
-    } catch (e) {
-      console.warn('Chapter release notif error:', e.message);
-    }
+    await notifyChapterRelease(novelId, finalChapterNum);
   }
 
   const created = await getEpisodeById(newId);
-  return { success: true, episode: created };
+  const epNum = created.episodeNumber || created.chapterNum || created.num || finalChapterNum;
+  const contentLink = `#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(epNum)}`;
+  return { success: true, episode: created, contentLink };
 }
 
 /**
@@ -655,6 +656,7 @@ export async function updateEpisode(id, data) {
     status,
     scheduledAt,
     timezone,
+    data.reviewStatus || null,
     publishedAt,
     sortOrder,
     id
@@ -663,8 +665,15 @@ export async function updateEpisode(id, data) {
   // Refresh novel stats if status changed to/from published
   await refreshNovelStats(novelId);
 
+  // If newly published, notify readers and followers
+  if (status === 'published' && existing.status !== 'published') {
+    await notifyChapterRelease(novelId, chapterNum);
+  }
+
   const updated = await getEpisodeById(id);
-  return { success: true, episode: updated };
+  const epNum = updated.episodeNumber || updated.chapterNum || updated.num || '1';
+  const contentLink = `#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(epNum)}`;
+  return { success: true, episode: updated, contentLink };
 }
 
 /**

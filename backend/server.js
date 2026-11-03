@@ -168,8 +168,17 @@ const server = http.createServer(async (req, res) => {
   res.end('Not Found');
 });
 
-// Verify MySQL connection and start server
+// Verify MySQL connection, run auto-migrations, and start server
 async function startServer() {
+  // 1. Auto-apply migrations and ensure required schema/tables exist
+  try {
+    const { runMigrations } = await import('./migrate.js');
+    await runMigrations();
+  } catch (migErr) {
+    console.warn('[Auto-Migration Note]:', migErr.message);
+  }
+
+  // 2. Test database connection & health
   const dbHealth = await testDbConnection();
   if (dbHealth.ok) {
     console.log(`✓ MySQL Database Connected successfully [Host: ${dbHealth.host}:${dbHealth.port}, DB: ${dbHealth.database}, Ver: ${dbHealth.version}, Tables: ${dbHealth.tableCount}]`);

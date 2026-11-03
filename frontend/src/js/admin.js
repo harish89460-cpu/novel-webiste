@@ -1,3 +1,105 @@
+
+window.showSavedContentLinkModal = ({ title, type, contentLink }) => {
+  const existing = document.getElementById('saved-content-link-modal');
+  if (existing) existing.remove();
+
+  const fullLink = (contentLink && contentLink.startsWith('http')) 
+    ? contentLink 
+    : `${window.location.origin}/${(contentLink || '').startsWith('#') ? contentLink : '#' + (contentLink || '')}`;
+
+  const modal = document.createElement('div');
+  modal.id = 'saved-content-link-modal';
+  modal.className = 'admin-modal-backdrop';
+  modal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(3px);';
+  modal.innerHTML = `
+    <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#FFFFFF; border-radius:16px; width:100%; max-width:540px; padding:28px; box-shadow:0 24px 48px rgba(0,0,0,0.25); text-align:center; border:1px solid #E8DCCB;">
+      <div style="font-size:46px; line-height:1; margin-bottom:12px;">✅</div>
+      <h3 style="font-family:'Playfair Display',serif; font-size:1.5rem; color:#0B1F33; margin:0 0 8px;">
+        ${escapeQuotes(title || 'Content')} Saved Successfully!
+      </h3>
+      <p style="color:#64748B; font-size:13.5px; margin:0 0 20px; line-height:1.6;">
+        Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>+ Add Thread</strong> on the frontend category page.
+      </p>
+
+      <div style="background:#FAF8F5; border:1px solid #E8DCCB; border-radius:10px; padding:14px; margin-bottom:20px; text-align:left;">
+        <label style="font-size:11px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:6px;">
+          Generated Unique Content Link
+        </label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="generated-content-link-input" readonly value="${fullLink}" class="form-input" style="font-family:monospace; font-size:12.5px; background:#FFFFFF; flex:1; padding:8px 10px; border:1px solid #CBD5E1; border-radius:6px;" onclick="this.select()">
+          <button type="button" class="btn btn-gold btn-sm" id="btn-copy-modal-link" onclick="window.copyGeneratedModalLink('${fullLink}')" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; white-space:nowrap; padding:8px 14px;">
+            📋 Copy Link
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:center; gap:12px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="padding:8px 18px;">
+          Done
+        </button>
+        <a href="#forms" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
+          Go to Categories ➔
+        </a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+};
+
+window.copyGeneratedModalLink = (link) => {
+  navigator.clipboard.writeText(link).then(() => {
+    const btn = document.getElementById('btn-copy-modal-link');
+    if (btn) btn.innerHTML = '✓ Copied!';
+    showToast('Unique content link copied to clipboard! 📋');
+  }).catch(() => {
+    const input = document.getElementById('generated-content-link-input');
+    if (input) {
+      input.select();
+      document.execCommand('copy');
+      showToast('Unique content link copied to clipboard! 📋');
+    }
+  });
+};
+
+
+window.updateNovelSchedulePreview = () => {
+  const dateVal = document.getElementById('nc-sched-date')?.value;
+  const hourVal = document.getElementById('nc-sched-hour')?.value || '12';
+  const minVal = document.getElementById('nc-sched-minute')?.value || '00';
+  const ampmVal = document.getElementById('nc-sched-ampm')?.value || 'PM';
+  const previewBox = document.getElementById('nc-sched-preview-box');
+  if (!previewBox) return;
+
+  if (!dateVal) {
+    previewBox.textContent = 'Please choose a publication date.';
+    return;
+  }
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [y, m, d] = dateVal.split('-');
+  const monthName = months[parseInt(m, 10) - 1] || m;
+  const formatted = `${d} ${monthName} ${y}, ${hourVal}:${minVal} ${ampmVal} IST (Asia/Kolkata)`;
+
+  let h = parseInt(hourVal, 10);
+  if (ampmVal === 'PM' && h < 12) h += 12;
+  if (ampmVal === 'AM' && h === 12) h = 0;
+  const hh = String(h).padStart(2, '0');
+  const schedStr = `${dateVal} ${hh}:${minVal}:00`;
+
+  const now = new Date();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+  if (schedStr < nowStr) {
+    previewBox.style.background = '#FEF2F2';
+    previewBox.style.borderColor = '#FCA5A5';
+    previewBox.innerHTML = `<span style="color:#DC2626;">⚠️ Warning: Selected time is in the past! (${formatted})</span>`;
+  } else {
+    previewBox.style.background = '#EEF2FF';
+    previewBox.style.borderColor = '#C7D2FE';
+    previewBox.innerHTML = `<span style="color:#1E1B4B;">🕒 Scheduled Release: ${formatted}</span>`;
+  }
+};
+
 // Rudhra Prarthana Novels — Admin & Author Dashboard Controller
 // Secure Admin Login, Novel Management, Nested Episodes Hierarchy,
 // Reader-Style Rich-Text Editor, Publishing Scheduler, Media Management, Settings & Logout
@@ -1027,7 +1129,8 @@ export async function renderAdminDashboard(container, requestedTab) {
     audio: 'Audio Novels',
     'short-stories': 'Short Stories',
     episodes: 'Episodes',
-    editor: 'Editor',
+    editor: 'Novel Content Writing',
+    'published-novels': 'Published Novel Management',
     scheduler: 'Schedule',
     writers: 'Writer Management',
     members: 'Member Account Management',
@@ -1130,8 +1233,17 @@ export async function renderAdminDashboard(container, requestedTab) {
                     onclick="switchAdminTab('editor')">
               <span class="admin-nav-item-content">
                 ${ADMIN_ICONS.edit}
-                <span>Editor</span>
+                <span>Novel Writing</span>
               </span>
+            </button>
+
+            <button type="button" class="admin-nav-item ${adminState.activeTab === 'published-novels' ? 'active' : ''}" 
+                    onclick="switchAdminTab('published-novels')">
+              <span class="admin-nav-item-content">
+                <span>📚</span>
+                <span>Published Novels</span>
+              </span>
+              <span class="admin-nav-pill" id="nav-published-count">-</span>
             </button>
 
             <button type="button" class="admin-nav-item ${adminState.activeTab === 'scheduler' ? 'active' : ''}" 
@@ -1450,6 +1562,9 @@ function renderActiveAdminTab() {
       break;
     case 'editor':
       renderEditorTab(canvas);
+      break;
+    case 'published-novels':
+      renderPublishedNovelsTab(canvas);
       break;
     case 'scheduler':
       renderSchedulerTab(canvas);
@@ -2188,12 +2303,39 @@ function renderNovelCreateFormContent(canvas) {
 
             <!-- Conditional Scheduled Date / Time Picker -->
             <div id="nc-scheduled-container" class="novel-conditional-panel" style="display:none; margin-top:16px;">
-              <div class="form-group">
-                <label class="form-label" for="nc-scheduled-at">
-                  Scheduled Publication Date & Time <span class="required-star">*</span>
-                </label>
-                <input type="datetime-local" id="nc-scheduled-at" class="form-input" style="max-width:320px;">
-                <div class="form-field-hint">The system will automatically publish this novel when the scheduled time arrives.</div>
+              <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:16px;">
+                <div style="font-weight:700; font-size:13.5px; color:var(--color-navy-deep); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                  <span>⏰</span> Schedule Publication (Asia/Kolkata — IST)
+                </div>
+                <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap:10px; align-items:end;">
+                  <div>
+                    <label class="form-label" style="font-size:12px; font-weight:600; margin-bottom:4px;">Date <span style="color:#EF4444;">*</span></label>
+                    <input type="date" id="nc-sched-date" class="form-input" onchange="updateNovelSchedulePreview()">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:12px; font-weight:600; margin-bottom:4px;">Hour</label>
+                    <select id="nc-sched-hour" class="form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateNovelSchedulePreview()">
+                      <option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:12px; font-weight:600; margin-bottom:4px;">Minute (00-59)</label>
+                    <select id="nc-sched-minute" class="form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateNovelSchedulePreview()">
+                      <option value="00">00</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option><option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option><option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55">55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:12px; font-weight:600; margin-bottom:4px;">AM / PM</label>
+                    <select id="nc-sched-ampm" class="form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateNovelSchedulePreview()">
+                      <option value="AM">AM</option>
+                      <option value="PM" selected>PM</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="nc-sched-preview-box" style="margin-top:12px; background:#EEF2FF; border:1px solid #C7D2FE; border-radius:6px; padding:10px 12px; font-size:13px; font-weight:600; color:#1E1B4B;">
+                  Select date and time to confirm schedule
+                </div>
+                <div class="form-field-hint" style="margin-top:8px;">The system will automatically publish this novel to readers when the scheduled time arrives.</div>
               </div>
             </div>
 
@@ -2262,7 +2404,7 @@ function renderNovelCreateFormContent(canvas) {
               Save Draft
             </button>
             <button type="submit" class="btn btn-gold" id="nc-submit-btn">
-              Create Novel
+              Save Novel
             </button>
           </div>
         </div>
@@ -2605,11 +2747,13 @@ window.handleNovelCoverFileSelected = async (file) => {
     if (spinner) spinner.style.display = 'flex';
 
     try {
-      const res = await apiFetch('/api/admin/media/upload', {
+      const res = await apiFetch('/api/upload/image', {
         method: 'POST',
         body: JSON.stringify({
           data: localDataUrl,
-          filename: file.name
+          folder: 'covers',
+          filename: file.name,
+          replaceUrl: novelCreateState.coverUrl || null
         })
       });
       const data = await res.json();
@@ -2952,12 +3096,20 @@ window.submitNovelCreateForm = async (isDraft = false) => {
       : (contentType === 'short_story' ? 'Short Stories' : (status === 'Completed' ? 'Completed Novels' : 'Ongoing Novels'))
   );
 
-  // Scheduled date
+  // Scheduled date & time (Asia/Kolkata - IST)
   let scheduledAt = null;
   if (status === 'Scheduled') {
-    const schedInput = document.getElementById('nc-scheduled-at')?.value;
-    if (schedInput) {
-      scheduledAt = new Date(schedInput).toISOString();
+    const dateVal = document.getElementById('nc-sched-date')?.value;
+    const hourVal = document.getElementById('nc-sched-hour')?.value || '12';
+    const minVal = document.getElementById('nc-sched-minute')?.value || '00';
+    const ampmVal = document.getElementById('nc-sched-ampm')?.value || 'PM';
+    if (dateVal) {
+      let h = parseInt(hourVal, 10);
+      if (ampmVal === 'PM' && h < 12) h += 12;
+      if (ampmVal === 'AM' && h === 12) h = 0;
+      const hh = String(h).padStart(2, '0');
+      const mm = String(minVal).padStart(2, '0');
+      scheduledAt = `${dateVal} ${hh}:${mm}:00`;
     }
   }
 
@@ -2970,7 +3122,7 @@ window.submitNovelCreateForm = async (isDraft = false) => {
     status = 'Draft';
   }
 
-  const isPublished = (isDraft || status === 'Draft' || visibility === 'draft') ? 0 : 1;
+  const isPublished = (isDraft || status === 'Draft' || status === 'Scheduled' || visibility === 'draft') ? 0 : 1;
   const description = synopsis || shortDesc || '';
 
   // Prevent duplicate submissions
@@ -3033,7 +3185,7 @@ window.submitNovelCreateForm = async (isDraft = false) => {
       showToast(errMsg);
       if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Novel';
+        submitBtn.textContent = 'Save Novel';
       }
       if (draftBtn) {
         draftBtn.disabled = false;
@@ -3044,6 +3196,8 @@ window.submitNovelCreateForm = async (isDraft = false) => {
 
     // Success!
     showToast(isDraft ? `Novel draft "${title}" saved! 📝` : `Novel "${title}" created successfully! 🎉`);
+    const contentLink = data.contentLink || (`#novel?id=${encodeURIComponent(slug)}`);
+    window.showSavedContentLinkModal({ title, type: 'novel', contentLink });
 
     // Reload admin initial data so all tabs & novel lists update
     await loadAdminInitialData();
@@ -3066,7 +3220,7 @@ window.submitNovelCreateForm = async (isDraft = false) => {
     showToast(errMsg);
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Create Novel';
+      submitBtn.textContent = 'Save Novel';
     }
     if (draftBtn) {
       draftBtn.disabled = false;
@@ -3229,10 +3383,16 @@ window.openEditNovelModal = (novelId) => {
       if (spinner) spinner.style.display = 'flex';
 
       try {
-        const res = await apiFetch('/api/admin/media/upload', {
-          method: 'POST',
-          body: JSON.stringify({ data: dataUrl, filename: file.name })
-        });
+        const currentCover = input ? input.value : null;
+      const res = await apiFetch('/api/upload/image', {
+        method: 'POST',
+        body: JSON.stringify({
+          data: dataUrl,
+          folder: 'covers',
+          filename: file.name,
+          replaceUrl: currentCover
+        })
+      });
         const data = await res.json();
         if (spinner) spinner.style.display = 'none';
 
@@ -3965,7 +4125,7 @@ window.openAudioNovelModal = (audioNovelId = null) => {
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const dataUrl = e.target.result;
       const previewImg = document.getElementById('an-cover-preview-img');
       const urlInput = document.getElementById('an-cover-url');
@@ -3973,9 +4133,32 @@ window.openAudioNovelModal = (audioNovelId = null) => {
       const textSpan = document.getElementById('an-choose-cover-text');
 
       if (previewImg) previewImg.src = dataUrl;
-      if (urlInput) urlInput.value = dataUrl;
-      if (removeBtn) removeBtn.style.display = 'inline-flex';
-      if (textSpan) textSpan.textContent = 'Replace Cover Image';
+      const currentCover = urlInput?.value || null;
+
+      try {
+        showToast('Uploading audio novel cover...');
+        const res = await apiFetch('/api/upload/image', {
+          method: 'POST',
+          body: JSON.stringify({
+            data: dataUrl,
+            folder: 'covers',
+            filename: file.name,
+            replaceUrl: currentCover
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          if (urlInput) urlInput.value = data.url;
+          if (previewImg) previewImg.src = data.url;
+          if (removeBtn) removeBtn.style.display = 'inline-flex';
+          if (textSpan) textSpan.textContent = 'Replace Cover Image';
+          showToast('Audio novel cover uploaded successfully! 🎧');
+        } else {
+          if (urlInput) urlInput.value = dataUrl;
+        }
+      } catch (err) {
+        if (urlInput) urlInput.value = dataUrl;
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -4300,7 +4483,7 @@ async function renderEpisodesTab(canvas) {
         <p class="admin-page-subtitle">Manage chapter hierarchy, episodes, sub-episodes, and publication status.</p>
       </div>
       <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button type="button" class="btn btn-gold btn-sm" id="btn-admin-add-chapter" onclick="startNewChapterInEditor('${currentNovelId}')" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+        <button type="button" class="btn btn-gold btn-sm" id="btn-admin-add-chapter" onclick="openAddChapterModal('${currentNovelId}')" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
           <span style="font-size:16px; line-height:1;">+</span>
           <span>Add Chapter</span>
         </button>
@@ -4366,7 +4549,7 @@ async function loadAndRenderEpisodesTree(novelId) {
             Start organizing your novel with chapters (e.g. Chapter 1), episodes (e.g. Episode 1.1), and nested sub-episodes (e.g. Sub-Episode 1.1.1).
           </p>
           <div style="display:flex; justify-content:center; gap:10px;">
-            <button type="button" class="btn btn-gold btn-sm" onclick="startNewChapterInEditor('${novelId}')">+ Add Chapter 1</button>
+            <button type="button" class="btn btn-gold btn-sm" onclick="openAddChapterModal('${novelId}')">+ Add Chapter 1</button>
             <button type="button" class="btn btn-outline btn-sm" onclick="startNewEpisodeInEditor('${novelId}')">+ Add Episode</button>
           </div>
         </div>
@@ -4426,7 +4609,7 @@ function renderEpisodeTreeItem(ep) {
           <button type="button" class="btn btn-gold btn-xs" onclick="startNewEpisodeInEditor('${ep.novelId}', ${ep.id})" title="Add Episode to this Chapter" style="padding:5px 10px; font-size:12px; font-weight:700;">
             ➕ Add Episode
           </button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="editEpisodeInEditor(${ep.id})" title="Edit in Rich-Text Editor">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openEditChapterModal(${ep.id})" title="Edit Chapter Title">
             ✏️ Edit
           </button>
           <button type="button" class="btn btn-outline btn-sm" onclick="duplicateEpisodeAction(${ep.id})" title="Duplicate Chapter">
@@ -4594,6 +4777,8 @@ window.submitEditItemTitle = async (itemId) => {
 
 /**
  * Modal to Add a New Chapter directly under the selected novel
+ * Streamlined workflow: requires only chapter title & basic details (no content required).
+ * After creation, automatically navigates to Episode Creation for that chapter.
  */
 window.openAddChapterModal = (novelId) => {
   const existingModal = document.getElementById('modal-add-chapter');
@@ -4611,7 +4796,7 @@ window.openAddChapterModal = (novelId) => {
     if (!isNaN(n) && n > maxChapterNum) maxChapterNum = n;
   }
   const nextChapterNum = maxChapterNum + 1;
-  const defaultTitle = `${novelTitle} (${nextChapterNum})`;
+  const defaultTitle = `${novelTitle} (Chapter ${nextChapterNum})`;
 
   const modalHtml = `
     <div class="admin-modal-backdrop" id="modal-add-chapter" style="position:fixed; inset:0; background:rgba(11,31,51,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
@@ -4647,7 +4832,7 @@ window.openAddChapterModal = (novelId) => {
             </div>
           </div>
 
-          <div class="form-group" style="margin-bottom:14px;">
+          <div class="form-group" style="margin-bottom:16px;">
             <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:4px; display:block;">
               Status
             </label>
@@ -4657,18 +4842,19 @@ window.openAddChapterModal = (novelId) => {
             </select>
           </div>
 
-          <div class="form-group" style="margin-bottom:16px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:4px; display:block;">
-              Story Content (Optional summary or opening)
-            </label>
-            <textarea id="add-chapter-content-input" class="form-input" rows="3" style="width:100%; font-family:var(--font-sans);" placeholder="Enter chapter story text or notes..."></textarea>
+          <!-- Step Info Callout -->
+          <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:12px 14px; margin-bottom:18px; display:flex; align-items:flex-start; gap:10px;">
+            <span style="font-size:18px; line-height:1;">✨</span>
+            <div style="font-size:12.5px; color:#166534; line-height:1.45;">
+              <strong>Streamlined Chapter Workflow:</strong> Only chapter title and basic settings are required. Once created, you will automatically navigate to <strong>Episode Creation</strong> to write episodes and story content.
+            </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid #F1F5F9; padding-top:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; border-top:1px solid #F1F5F9; padding-top:14px;">
             <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-add-chapter').remove()">Cancel</button>
             <div style="display:flex; gap:8px;">
               <button type="submit" id="btn-submit-add-chapter" class="btn btn-gold btn-sm" style="padding:8px 20px; font-weight:700;">
-                Create Chapter
+                Create Chapter & Add Episode →
               </button>
             </div>
           </div>
@@ -4683,7 +4869,6 @@ window.openAddChapterModal = (novelId) => {
 window.submitAddChapter = async (novelId) => {
   const title = document.getElementById('add-chapter-title-input')?.value?.trim();
   const status = document.getElementById('add-chapter-status-select')?.value || 'published';
-  const content = document.getElementById('add-chapter-content-input')?.value?.trim() || '<p>Chapter story begins here...</p>';
   const submitBtn = document.getElementById('btn-submit-add-chapter');
 
   if (!title) {
@@ -4703,29 +4888,38 @@ window.submitAddChapter = async (novelId) => {
         parentId: null,
         title,
         titleTa: title,
-        content,
+        content: '',
         status
       })
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
       showToast(data.error || 'Failed to create chapter.');
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter & Add Episode →'; }
       return;
     }
 
-    showToast(`Chapter "${title}" created successfully! 🎉`);
+    const createdChapter = data.episode;
     document.getElementById('modal-add-chapter')?.remove();
-    loadAndRenderEpisodesTree(novelId);
+    showToast(`Chapter "${title}" created successfully! Opening Episode Creation...`);
+
+    // Reload tree in background
+    if (typeof loadAndRenderEpisodesTree === 'function') {
+      loadAndRenderEpisodesTree(novelId).catch(() => {});
+    }
+
+    // Automatically navigate to the Episode Creation page for that chapter
+    if (createdChapter && createdChapter.id) {
+      startNewEpisodeInEditor(novelId, createdChapter.id);
+    } else {
+      startNewEpisodeInEditor(novelId);
+    }
   } catch (err) {
     showToast('Error creating chapter: ' + err.message);
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter'; }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter & Add Episode →'; }
   }
 };
 
-/**
- * Modal to Add an Episode (under Chapter) or Sub-Episode (under Episode)
- */
 window.openAddEpisodeModal = (novelId, defaultParentId = null) => {
   const existingModal = document.getElementById('modal-add-episode');
   if (existingModal) existingModal.remove();
@@ -5006,43 +5200,24 @@ window.deleteEpisodeAction = async (episodeId, title) => {
    6. READER-STYLE RICH-TEXT EDITOR
    ======================================================== */
 window.startNewChapterInEditor = (novelId) => {
-  const currentNovelId = novelId || adminState.selectedNovelId || adminState.novels[0]?.id;
-  const novel = adminState.novels.find(n => n.id === currentNovelId);
-  const novelTitle = novel?.title || 'Novel';
-
-  // Find max root chapter
-  const rootChapters = (adminState.episodes || []).filter(e => !e.parentId);
-  let maxNum = 0;
-  for (const r of rootChapters) {
-    const n = parseInt(String(r.chapterNum || r.episodeNumber || '0'), 10);
-    if (!isNaN(n) && n > maxNum) maxNum = n;
-  }
-  const nextNum = String(maxNum + 1);
-
-  adminState.editingEpisode = {
-    id: null,
-    novelId: currentNovelId,
-    parentId: null,
-    parentType: null,
-    parentNum: null,
-    hierarchyType: 'Chapter',
-    episodeNumber: nextNum,
-    title: `${novelTitle} (Chapter ${nextNum})`,
-    content: '',
-    status: 'draft',
-    scheduledAt: null,
-    timezone: 'Asia/Kolkata'
-  };
-  adminState.selectedNovelId = currentNovelId;
-  adminState.editorStep = 1;
-  adminState.editorDirty = false;
-  switchAdminTab('editor');
+  openAddChapterModal(novelId);
 };
 
-window.startNewEpisodeInEditor = (novelId, parentChapterId = null) => {
+window.startNewEpisodeInEditor = async (novelId, parentChapterId = null) => {
   const currentNovelId = novelId || adminState.selectedNovelId || adminState.novels[0]?.id;
   const novel = adminState.novels.find(n => n.id === currentNovelId);
   const novelTitle = novel?.title || 'Novel';
+
+  // Refresh episodes if empty or if looking for a specific parentChapterId
+  if (!adminState.episodes || adminState.episodes.length === 0 || parentChapterId) {
+    try {
+      const res = await apiFetch(`/api/admin/episodes?novelId=${encodeURIComponent(currentNovelId)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.episodes)) {
+        adminState.episodes = data.episodes;
+      }
+    } catch (e) {}
+  }
 
   let parentChapter = null;
   if (parentChapterId) {
@@ -5153,6 +5328,157 @@ window.startNewSubEpisodeInEditor = (novelId, parentEpisodeId) => {
   switchAdminTab('editor');
 };
 
+
+/**
+ * Modal to Edit ONLY Chapter Title (Chapter-specific edit form)
+ * Does NOT redirect to episode editor or modify episode content.
+ * Preserves all associated episodes, comments, and database relationships.
+ */
+window.openEditChapterModal = async (chapterId) => {
+  const existingModal = document.getElementById('modal-edit-chapter');
+  if (existingModal) existingModal.remove();
+
+  let chapter = null;
+  for (const ch of (adminState.episodes || [])) {
+    if (Number(ch.id) === Number(chapterId)) {
+      chapter = ch;
+      break;
+    }
+  }
+
+  if (!chapter) {
+    try {
+      const res = await apiFetch(`/api/admin/episodes/${chapterId}`);
+      const data = await res.json();
+      if (data.success && data.episode) {
+        chapter = data.episode;
+      }
+    } catch (e) {
+      console.warn('Error fetching chapter details:', e);
+    }
+  }
+
+  if (!chapter) {
+    showToast('Chapter details could not be loaded.');
+    return;
+  }
+
+  const currentNovelId = chapter.novelId || adminState.selectedNovelId;
+  const novel = (adminState.novels || []).find(n => n.id === currentNovelId);
+  const novelTitle = novel?.title || 'Novel';
+  const chapterNum = chapter.chapterNum || chapter.episodeNumber || '1';
+  const subsCount = (chapter.subEpisodes || []).length;
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-edit-chapter" style="position:fixed; inset:0; background:rgba(11,31,51,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:520px; border-radius:12px; box-shadow:0 12px 36px rgba(0,0,0,0.2); overflow:hidden;">
+        <div style="background:var(--color-navy-deep); color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">✏️ Edit Chapter Title</h3>
+          <button type="button" onclick="document.getElementById('modal-edit-chapter').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <form id="form-edit-chapter" onsubmit="event.preventDefault(); submitEditChapter(${chapter.id});" style="padding:20px;">
+          <!-- Novel & Chapter Info Card -->
+          <div style="display:flex; gap:12px; margin-bottom:16px; background:#F8FAFC; padding:10px 14px; border-radius:8px; border:1px solid #E2E8F0; align-items:center;">
+            <div>
+              <div style="font-size:11px; text-transform:uppercase; color:#64748B; font-weight:700;">Novel</div>
+              <div style="font-weight:700; color:var(--color-navy-deep); font-size:14px;">${escapeHtml(novelTitle)}</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+              <span class="chapter-number-badge" style="background:var(--color-gold); color:var(--color-navy-deep); font-weight:800; font-size:12px; padding:3px 8px; border-radius:4px;">
+                Chapter ${escapeHtml(chapterNum)}
+              </span>
+              <div style="font-size:11px; color:#64748B; margin-top:2px;">${subsCount} associated episode${subsCount === 1 ? '' : 's'}</div>
+            </div>
+          </div>
+
+          <!-- Chapter Title Input (ONLY field editable) -->
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:block;">
+              Chapter Title <span style="color:#EF4444;">*</span>
+            </label>
+            <input type="text" id="edit-chapter-title-input" class="form-input" 
+                   value="${escapeQuotes(chapter.title || '')}" 
+                   placeholder="Enter chapter title" required
+                   style="width:100%; font-size:14.5px; font-weight:700; padding:10px 12px;">
+            <div style="font-size:11.5px; color:#64748B; margin-top:5px; line-height:1.4;">
+              Edit the chapter title only. All ${subsCount} associated episode(s), story contents, and reader comments remain intact.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid #F1F5F9; padding-top:14px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-edit-chapter').remove()">Cancel</button>
+            <div style="display:flex; gap:8px;">
+              <button type="submit" id="btn-submit-edit-chapter" class="btn btn-gold btn-sm" style="padding:8px 22px; font-weight:700;">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const inputEl = document.getElementById('edit-chapter-title-input');
+  if (inputEl) {
+    inputEl.focus();
+    inputEl.select();
+  }
+};
+
+window.submitEditChapter = async (chapterId) => {
+  const title = document.getElementById('edit-chapter-title-input')?.value?.trim();
+  const submitBtn = document.getElementById('btn-submit-edit-chapter');
+
+  if (!title) {
+    showToast('Please enter a chapter title.');
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
+
+  try {
+    const res = await apiFetch(`/api/admin/episodes/${chapterId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to update chapter title.');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Changes'; }
+      return;
+    }
+
+    document.getElementById('modal-edit-chapter')?.remove();
+    showToast('Chapter title updated successfully! 🎉');
+
+    // Update title in local memory state
+    for (const ch of (adminState.episodes || [])) {
+      if (Number(ch.id) === Number(chapterId)) {
+        ch.title = title;
+        break;
+      }
+    }
+
+    // Update DOM label immediately
+    const titleEl = document.getElementById(`item-title-${chapterId}`);
+    if (titleEl) {
+      titleEl.textContent = title;
+    }
+
+    // Refresh episodes tree in background
+    if (adminState.selectedNovelId && typeof loadAndRenderEpisodesTree === 'function') {
+      loadAndRenderEpisodesTree(adminState.selectedNovelId).catch(() => {});
+    }
+  } catch (err) {
+    showToast('Error updating chapter: ' + err.message);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Changes'; }
+  }
+};
+
 window.editEpisodeInEditor = async (episodeId) => {
   try {
     const res = await apiFetch(`/api/admin/episodes/${episodeId}`);
@@ -5162,6 +5488,11 @@ window.editEpisodeInEditor = async (episodeId) => {
       return;
     }
     const ep = data.episode;
+    // Guard: If this is a root chapter container (not an episode), route to chapter title edit modal
+    if (!ep.parentId && !ep.parent_id) {
+      openEditChapterModal(ep.id);
+      return;
+    }
     adminState.editingEpisode = {
       id: ep.id,
       novelId: ep.novelId,
@@ -5193,12 +5524,12 @@ window.goToEditorStep = (step) => {
     const plainText = surface?.innerText?.trim() || '';
 
     if (!title) {
-      showToast('Please enter an episode title before proceeding to preview.');
+      showToast('Please enter a content title before proceeding to preview.');
       document.getElementById('editor-title-input')?.focus();
       return;
     }
     if (!plainText) {
-      showToast('Episode story content cannot be empty. Please write your content before previewing.');
+      showToast('Novel content cannot be empty. Please write your content before previewing.');
       surface?.focus();
       return;
     }
@@ -5206,19 +5537,28 @@ window.goToEditorStep = (step) => {
     if (!adminState.editingEpisode) adminState.editingEpisode = {};
     adminState.editingEpisode.title = title;
     adminState.editingEpisode.content = content;
-    adminState.editingEpisode.novelId = document.getElementById('editor-novel-select')?.value || adminState.editingEpisode.novelId;
-    adminState.editingEpisode.episodeNumber = document.getElementById('editor-num-input')?.value?.trim() || adminState.editingEpisode.episodeNumber;
+    adminState.editingEpisode.novelId = document.getElementById('editor-novel-id')?.value || document.getElementById('editor-novel-select')?.value || adminState.editingEpisode.novelId;
     const parentIdVal = document.getElementById('editor-parent-id')?.value;
     if (parentIdVal) adminState.editingEpisode.parentId = parseInt(parentIdVal, 10);
 
     adminState.editorStep = 2;
     const canvas = document.getElementById('admin-main-canvas');
     if (canvas) renderEditorTab(canvas);
-  } else if (step === 1) {
+  } else {
+    const title = document.getElementById('editor-title-input')?.value?.trim();
+    const surface = document.getElementById('editor-surface');
+    if (adminState.editingEpisode) {
+      if (title !== undefined) adminState.editingEpisode.title = title;
+      if (surface) adminState.editingEpisode.content = surface.innerHTML;
+    }
     adminState.editorStep = 1;
     const canvas = document.getElementById('admin-main-canvas');
     if (canvas) renderEditorTab(canvas);
   }
+};
+
+window.generateAdminPublishLink = async () => {
+  await saveEpisodePayload('draft', false);
 };
 
 function renderEditorTab(canvas) {
@@ -5266,45 +5606,29 @@ function renderEditorTab(canvas) {
   const readTimeStr = `${readTimeMins} min read`;
 
   canvas.innerHTML = `
-    <!-- Top Stepper Workflow: Step 1 -> Step 2 -> Step 3 -->
-    <div class="editor-stepper-container">
-      <div class="editor-step-item ${editorStep === 1 ? 'active' : 'completed'}" onclick="goToEditorStep(1)">
-        <span class="step-num">${editorStep > 1 ? '✓' : '1'}</span>
-        <span class="step-label">Step 1: Write Content</span>
+    <!-- Top Workflow Bar: Write Mode | Preview Option | Generate Publish Link -->
+    <div class="editor-stepper-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="btn ${editorStep === 1 ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="goToEditorStep(1)" style="font-weight:700;">
+          ✍️ 1. Write Content
+        </button>
+        <span style="color:#94A3B8;">➔</span>
+        <button type="button" class="btn ${editorStep === 2 ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="goToEditorStep(2)" style="font-weight:700;">
+          👁️ 2. Preview Option (Reader View)
+        </button>
       </div>
-      <div class="editor-step-arrow">➔</div>
-      <div class="editor-step-item ${editorStep === 2 ? 'active' : (editorStep > 2 ? 'completed' : '')}" onclick="goToEditorStep(2)">
-        <span class="step-num">${editorStep > 2 ? '✓' : '2'}</span>
-        <span class="step-label">Step 2: Preview</span>
-      </div>
-      <div class="editor-step-arrow">➔</div>
-      <div class="editor-step-item ${editorStep === 3 ? 'active' : ''}">
-        <span class="step-num">3</span>
-        <span class="step-label">Step 3: Publish or Schedule</span>
+
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
+          💾 Save Draft
+        </button>
+        <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700; padding:8px 18px; box-shadow:0 2px 8px rgba(200,155,60,0.3);">
+          🔗 Generate Publish Link
+        </button>
       </div>
     </div>
 
-    <!-- Context Banner: Displaying known novel, hierarchy, and assigned number -->
-    <div class="editor-context-banner">
-      <div class="context-item">
-        <span class="context-icon">📚</span>
-        <span class="context-label">Novel:</span>
-        <strong class="context-val">${escapeHtml(novelTitle)}</strong>
-      </div>
-      <div class="context-divider">|</div>
-      <div class="context-item">
-        <span class="context-icon">📁</span>
-        <span class="context-label">Hierarchy:</span>
-        <span class="context-badge ${hierarchyClass}">${escapeHtml(hierarchyLabel)}</span>
-      </div>
-      <div class="context-divider">|</div>
-      <div class="context-item">
-        <span class="context-icon">🏷️</span>
-        <span class="context-label">Assigned #:</span>
-        <strong class="context-val">${escapeHtml(ep.episodeNumber || 'Auto')}</strong>
-      </div>
-    </div>
-
+    <!-- Dedicated Writing Surface -->
     ${editorStep === 1 
       ? renderEditorStep1Write(ep, currentNovelId, isEditing) 
       : renderEditorStep2Preview(ep, novelTitle, hierarchyLabel, wordCount, readTimeStr)
@@ -5318,60 +5642,52 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
   return `
     <div class="admin-page-header" style="margin-bottom:14px;">
       <div class="admin-page-title-group">
-        <h1 class="admin-page-title">${isEditing ? `Edit: ${escapeHtml(ep.title || 'Untitled')}` : 'Write Content'}</h1>
-        <p class="admin-page-subtitle">Rich-text writing surface with automatic local draft backup.</p>
+        <h1 class="admin-page-title">${isEditing ? `Edit Novel Content: ${escapeHtml(ep.title || 'Untitled')}` : 'Novel Content Writing'}</h1>
+        <p class="admin-page-subtitle">Write, format, preview reader experience, and generate unique publish links for frontend threads.</p>
       </div>
       <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center;">
         <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
           💾 Save Draft
         </button>
-        <button type="button" class="btn btn-gold btn-sm" onclick="goToEditorStep(2)" style="font-weight:700;">
-          Preview Episode ➔
+        <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(2)" style="font-weight:600;">
+          👁️ Preview Option ➔
+        </button>
+        <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700; padding:8px 18px;">
+          🔗 Generate Publish Link
         </button>
       </div>
     </div>
 
     <div class="editor-container">
-      <!-- 1. Novel selection first, 2. Title second -->
-      <div class="editor-meta-grid">
-        <input type="hidden" id="editor-parent-id" value="${ep.parentId ? escapeHtml(ep.parentId) : ''}">
-        <input type="hidden" id="editor-status-select" value="${ep.status || 'draft'}">
+      <input type="hidden" id="editor-novel-id" value="${escapeHtml(currentNovelId || '')}">
+      <input type="hidden" id="editor-parent-id" value="${ep.parentId ? escapeHtml(ep.parentId) : ''}">
+      <input type="hidden" id="editor-status-select" value="${ep.status || 'draft'}">
 
-        <div class="form-group editor-novel-group">
-          <label class="form-label" for="editor-novel-select" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-            <span>📚</span> Novel <span style="color:#EF4444;">*</span>
-          </label>
-          <select id="editor-novel-select" class="form-input editor-novel-select" onchange="onEditorNovelChange(this.value)" style="font-size:14px; font-weight:600; height:42px;">
-            ${adminState.novels.map(n => `
-              <option value="${n.id}" ${n.id === currentNovelId ? 'selected' : ''}>${escapeHtml(n.title)}</option>
-            `).join('')}
-          </select>
+      ${adminState.editingPublishedId ? `
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">✏️</span>
+            <div>
+              <strong style="color:#1E40AF; font-size:13.5px;">Editing Published Novel</strong>
+              <div style="font-size:12px; color:#3B82F6;">Saving will update the live reader page immediately while preserving the original link and all comments.</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="cancelEditingPublishedNovelAdmin()" style="font-size:12px;">Cancel Edit</button>
         </div>
+      ` : ''}
 
-        <div class="form-group editor-title-group">
-          <label class="form-label" for="editor-title-input" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-            <span>📝</span> Title <span style="color:#EF4444;">*</span>
-          </label>
-          <input type="text" id="editor-title-input" class="form-input editor-title-input" 
-                 placeholder="Enter episode or chapter title" 
-                 value="${escapeHtml(ep.title || '')}"
-                 oninput="onEditorContentChange()"
-                 style="font-size:15px; font-weight:700; height:42px;">
-        </div>
-      </div>
-
-      <!-- Episode Numbering Strip -->
-      <div class="editor-meta-strip">
-        <div class="editor-num-wrap">
-          <span class="editor-strip-label">Episode #:</span>
-          <input type="text" id="editor-num-input" class="editor-num-input" placeholder="e.g. 1.1" 
-                 value="${escapeHtml(ep.episodeNumber || '')}"
-                 oninput="onEditorContentChange()">
-          <span class="editor-strip-hint">(Generated from parent relationship)</span>
-        </div>
-
-        <div style="font-size:12px; color:var(--color-text-muted);">
-          <span>Draft autosaves to local storage as you type</span>
+      <!-- Freely Enter Title -->
+      <div class="form-group editor-title-card" style="background:#FFFFFF; border:1px solid var(--color-border); border-radius:10px; padding:16px 20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <label class="form-label" for="editor-title-input" style="font-weight:700; color:var(--color-navy-deep); font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">📝</span> Title <span style="color:#EF4444;">*</span>
+        </label>
+        <input type="text" id="editor-title-input" class="form-input editor-title-input" 
+               placeholder="Enter title..." 
+               value="${escapeHtml(ep.title || '')}"
+               oninput="onEditorContentChange()"
+               style="font-size:16px; font-weight:700; height:46px; width:100%; border-radius:8px;">
+        <div style="font-size:12px; color:var(--color-text-muted); margin-top:6px;">
+          Freely enter your title and content below without selecting predefined options.
         </div>
       </div>
 
@@ -5451,8 +5767,11 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
           <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
             💾 Save Draft
           </button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="goToEditorStep(2)" style="font-weight:700;">
-            Preview Episode ➔
+          <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(2)" style="font-weight:600;">
+            👁️ Preview Option ➔
+          </button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700;">
+            🔗 Generate Publish Link
           </button>
         </div>
       </div>
@@ -5476,7 +5795,7 @@ function renderEditorStep2Preview(ep, novelTitle, hierarchyLabel, wordCount, rea
           ⏰ Schedule Publication
         </button>
         <button type="button" class="btn btn-gold btn-sm btn-publish-now" onclick="executePublishNow()" style="font-weight:700; padding:8px 16px;">
-          🚀 Publish Now
+          💾 Save Episode
         </button>
       </div>
     </div>
@@ -5493,19 +5812,7 @@ function renderEditorStep2Preview(ep, novelTitle, hierarchyLabel, wordCount, rea
         </span>
       </div>
 
-      <div class="preview-confirm-grid">
-        <div class="confirm-stat-box">
-          <span class="stat-label">📚 Novel</span>
-          <span class="stat-val">${escapeHtml(novelTitle)}</span>
-        </div>
-        <div class="confirm-stat-box">
-          <span class="stat-label">📁 Hierarchy</span>
-          <span class="stat-val">${escapeHtml(hierarchyLabel)}</span>
-        </div>
-        <div class="confirm-stat-box">
-          <span class="stat-label">🏷️ Episode Number</span>
-          <span class="stat-val">${escapeHtml(ep.episodeNumber || 'Auto')}</span>
-        </div>
+      <div class="preview-confirm-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
         <div class="confirm-stat-box">
           <span class="stat-label">📝 Content Title</span>
           <span class="stat-val">${escapeHtml(ep.title || 'Untitled')}</span>
@@ -5529,7 +5836,7 @@ function renderEditorStep2Preview(ep, novelTitle, hierarchyLabel, wordCount, rea
             ⏰ Schedule Publication
           </button>
           <button type="button" class="btn btn-gold btn-sm btn-publish-now" onclick="executePublishNow()" style="font-weight:700; padding:8px 16px;">
-            🚀 Publish Now
+            💾 Save Episode
           </button>
         </div>
       </div>
@@ -5570,7 +5877,7 @@ function renderEditorStep2Preview(ep, novelTitle, hierarchyLabel, wordCount, rea
             ⏰ Schedule Publication
           </button>
           <button type="button" class="btn btn-gold btn-sm btn-publish-now" onclick="executePublishNow()" style="font-weight:700; padding:8px 16px;">
-            🚀 Publish Now
+            💾 Save Episode
           </button>
         </div>
       </div>
@@ -5637,11 +5944,48 @@ window.promptInsertLink = () => {
 };
 
 window.promptInsertImage = () => {
-  const url = prompt('Enter image URL or select from media library:');
-  if (url) {
-    document.execCommand('insertImage', false, url);
-    onEditorContentChange();
+  let fileInput = document.getElementById('chapter-editor-image-file');
+  if (!fileInput) {
+    fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.id = 'chapter-editor-image-file';
+    fileInput.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    fileInput.style.display = 'none';
+    fileInput.onchange = async (event) => {
+      const file = event.target?.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('Please select a valid image file.');
+        event.target.value = '';
+        return;
+      }
+      showToast('Uploading image...');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const res = await apiFetch('/api/upload/image', {
+            method: 'POST',
+            body: JSON.stringify({ data: e.target.result, folder: 'media', filename: file.name })
+          });
+          const data = await res.json();
+          if (res.ok && data.url) {
+            document.execCommand('insertImage', false, data.url);
+            onEditorContentChange();
+            showToast('Image uploaded and inserted! ✓');
+          } else {
+            throw new Error(data.error || 'Upload failed.');
+          }
+        } catch (err) {
+          showToast('Error uploading image: ' + err.message);
+        } finally {
+          event.target.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    document.body.appendChild(fileInput);
   }
+  fileInput.click();
 };
 
 window.onEditorContentChange = () => {
@@ -5719,7 +6063,7 @@ window.openSchedulePublicationModal = () => {
 
   const minsOptions = Array.from({ length: 60 }, (_, i) => {
     const val = String(i).padStart(2, '0');
-    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>:${val}</option>`;
+    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>${val}</option>`;
   }).join('');
 
   const modalHtml = `
@@ -5758,13 +6102,10 @@ window.openSchedulePublicationModal = () => {
                 <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">Hour (1-12)</div>
               </div>
               <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                  <input type="number" id="sched-input-minute" class="form-input" min="0" max="59" step="1" value="${defMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onMinuteType(this, 'sched-minute-select')" onblur="normalizeMinuteOnBlur(this, 'sched-minute-select')" title="Type any minute 00-59">
-                  <select id="sched-minute-select" class="form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onMinuteSelect(this, 'sched-input-minute')" title="Or choose minute 00-59">
-                    ${minsOptions}
-                  </select>
-                </div>
-                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">Minute (00-59, type or select)</div>
+                <select id="sched-input-minute" class="form-input" style="width:100%; padding:9px 8px; font-weight:600; text-align:center;" onchange="updateScheduleModalPreview()">
+                  ${minsOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:4px;">Minute (00-59)</div>
               </div>
               <div>
                 <select id="sched-input-ampm" class="form-input" style="width:100%; padding:9px 8px; font-weight:700; text-align:center;" onchange="updateScheduleModalPreview()">
@@ -5950,22 +6291,48 @@ function updateWordCounters() {
 async function saveEpisodePayload(forcedStatus, redirectAfterSave = true) {
   const ep = adminState.editingEpisode || {};
   const title = (document.getElementById('editor-title-input')?.value || ep.title || '').trim();
-  const novelId = document.getElementById('editor-novel-select')?.value || ep.novelId || adminState.selectedNovelId;
+  const novelId = document.getElementById('editor-novel-id')?.value || document.getElementById('editor-novel-select')?.value || ep.novelId || adminState.selectedNovelId || adminState.novels[0]?.id || 'hello';
   const parentIdVal = document.getElementById('editor-parent-id')?.value || ep.parentId || null;
   const episodeNumber = (document.getElementById('editor-num-input')?.value || ep.episodeNumber || '').trim();
   const surface = document.getElementById('editor-surface');
   const content = (surface ? surface.innerHTML : ep.content || '').trim();
   const plainText = (surface ? surface.innerText : (ep.content || '').replace(/<[^>]*>/g, ' ')).trim();
-  const status = forcedStatus || ep.status || 'published';
+  const status = forcedStatus || 'draft'; // Strictly draft: content is never directly published from dashboard
 
   if (!title) {
-    showToast('Please enter an episode title.');
+    showToast('Please enter a content title.');
     document.getElementById('editor-title-input')?.focus();
     return;
   }
   if (!plainText) {
-    showToast('Episode story content cannot be empty.');
+    showToast('Content cannot be empty.');
     return;
+  }
+
+  // If editing an existing published novel, update in-place immediately without generating duplicate records
+  const publishedId = adminState.editingPublishedId || ep.publishedArticleId;
+  if (publishedId) {
+    try {
+      const res = await apiFetch(`/api/published-novels/${publishedId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ title, content })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.error || 'Failed to update published novel.');
+        return;
+      }
+      showToast(`Published novel "${title}" updated successfully! Changes are live on reader page.`);
+      adminState.editorDirty = false;
+      adminState.editingPublishedId = null;
+      adminState.editingEpisode = null;
+      localStorage.removeItem('rp_admin_editor_draft');
+      switchAdminTab('published-novels');
+      return;
+    } catch (err) {
+      showToast('Error updating published novel: ' + err.message);
+      return;
+    }
   }
 
   let scheduledAt = null;
@@ -6008,6 +6375,9 @@ async function saveEpisodePayload(forcedStatus, redirectAfterSave = true) {
     }
 
     showToast(`Episode "${title}" successfully saved as ${status}!`);
+    const epNum = data.episode?.episodeNumber || data.episode?.chapterNum || episodeNumber || '1';
+    const contentLink = data.contentLink || (`#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(epNum)}`);
+    window.showSavedContentLinkModal({ title, type: 'episode', contentLink });
     adminState.editorDirty = false;
     localStorage.removeItem('rp_admin_editor_draft');
 
@@ -6033,6 +6403,219 @@ if (typeof window !== 'undefined' && !window._rp_editor_beforeunload_registered)
   });
 }
 
+
+/* ========================================================
+   PUBLISHED NOVEL MANAGEMENT VIEW (Admin)
+   ======================================================== */
+async function renderPublishedNovelsTab(canvas) {
+  canvas.innerHTML = `
+    <div class="admin-page-header" style="margin-bottom:16px;">
+      <div class="admin-page-title-group">
+        <h1 class="admin-page-title" style="display:flex; align-items:center; gap:8px;">
+          <span>📚</span> Published Novel Management
+        </h1>
+        <p class="admin-page-subtitle">Manage, edit, and review all novels and story content published for readers across categories.</p>
+      </div>
+      <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center;">
+        <button type="button" class="btn btn-gold btn-sm" onclick="adminState.editingPublishedId = null; adminState.editingEpisode = null; switchAdminTab('editor');">
+          ✍️ + Write Novel Content
+        </button>
+      </div>
+    </div>
+
+    <!-- Summary Stats Strip -->
+    <div id="admin-published-summary-mount" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+      <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Published Items</div>
+        <div id="pub-stat-total" style="font-size:24px; font-weight:800; color:#0B1F33; margin-top:4px;">Loading…</div>
+      </div>
+      <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Total Reader Views</div>
+        <div id="pub-stat-views" style="font-size:24px; font-weight:800; color:#2563EB; margin-top:4px;">-</div>
+      </div>
+      <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Reader Reviews / Comments</div>
+        <div id="pub-stat-comments" style="font-size:24px; font-weight:800; color:#10B981; margin-top:4px;">-</div>
+      </div>
+    </div>
+
+    <div id="admin-published-table-mount">
+      <div style="text-align:center; padding:40px; color:#64748B;">Loading published novels…</div>
+    </div>
+  `;
+
+  await loadPublishedNovelsAdmin();
+}
+
+async function loadPublishedNovelsAdmin() {
+  const mount = document.getElementById('admin-published-table-mount');
+  if (!mount) return;
+
+  try {
+    const res = await apiFetch('/api/published-novels');
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Failed to load published novels: ${data.error || 'Server error'}</div>`;
+      return;
+    }
+
+    const items = data.items || [];
+    const navCount = document.getElementById('nav-published-count');
+    if (navCount) navCount.textContent = items.length;
+
+    const totalViews = items.reduce((acc, i) => acc + (i.viewsCount || 0), 0);
+    const totalComments = items.reduce((acc, i) => acc + (i.commentsCount || 0), 0);
+
+    const totalEl = document.getElementById('pub-stat-total');
+    const viewsEl = document.getElementById('pub-stat-views');
+    const commentsEl = document.getElementById('pub-stat-comments');
+    if (totalEl) totalEl.textContent = items.length;
+    if (viewsEl) viewsEl.textContent = totalViews.toLocaleString();
+    if (commentsEl) commentsEl.textContent = totalComments.toLocaleString();
+
+    if (items.length === 0) {
+      mount.innerHTML = `
+        <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:12px; padding:48px 24px; text-align:center;">
+          <div style="font-size:40px; margin-bottom:12px;">📚</div>
+          <h3 style="font-size:18px; font-weight:700; color:#0B1F33; margin:0 0 6px;">No Published Novels Found</h3>
+          <p style="color:#64748B; font-size:14px; margin:0 0 20px;">You haven't published any novel content to the frontend categories yet.</p>
+          <button type="button" class="btn btn-gold btn-sm" onclick="switchAdminTab('editor')">
+            ✍️ + Write Your First Novel Content
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    mount.innerHTML = `
+      <div class="admin-table-wrapper" style="box-shadow:0 1px 3px rgba(0,0,0,0.05); border-radius:12px; overflow-x:auto;">
+        <table class="admin-table" style="width:100%; border-collapse:collapse; min-width:850px;">
+          <thead>
+            <tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0;">
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Title & Reader Link</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Category / Section</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Author</th>
+              <th style="padding:14px 18px; text-align:center; font-size:12.5px; font-weight:700; color:#475569;">Views / Comments</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Published Date</th>
+              <th style="padding:14px 18px; text-align:right; font-size:12.5px; font-weight:700; color:#475569;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => `
+              <tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'">
+                <td style="padding:14px 18px;">
+                  <div style="font-weight:700; font-size:14.5px; color:#0B1F33; margin-bottom:4px;">
+                    <a href="#thread?id=${item.id}" target="_blank" style="color:#0B1F33; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                      <span>${escapeHtml(item.title)}</span>
+                      <span style="font-size:11px; color:#3B82F6;">↗</span>
+                    </a>
+                  </div>
+                  <div style="font-size:12px; color:#64748B; display:flex; align-items:center; gap:8px;">
+                    <span style="background:#F1F5F9; padding:2px 6px; border-radius:4px; font-family:monospace; font-size:11px;">#thread?id=${item.id}</span>
+                    <button type="button" class="btn btn-outline" style="padding:1px 6px; font-size:10.5px; height:auto;" onclick="navigator.clipboard.writeText(window.location.origin + '/#thread?id=${item.id}'); showToast('Reader link copied!');">
+                      📋 Copy Link
+                    </button>
+                  </div>
+                </td>
+                <td style="padding:14px 18px; font-size:13px;">
+                  <span style="background:#EDE9FE; color:#5B21B6; padding:3px 8px; border-radius:6px; font-weight:600; font-size:12px;">
+                    ${escapeHtml(item.categoryTitle || 'General')}
+                  </span>
+                  ${item.subcategoryTitle ? `
+                    <div style="font-size:11.5px; color:#64748B; margin-top:4px;">
+                      ${escapeHtml(item.subcategoryTitle)}
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="padding:14px 18px; font-size:13px; color:#334155; font-weight:600;">
+                  ${escapeHtml(item.authorName)}
+                </td>
+                <td style="padding:14px 18px; text-align:center; font-size:12.5px;">
+                  <span style="font-weight:700; color:#0B1F33;">${item.viewsCount}</span> <span style="color:#94A3B8;">views</span>
+                  <div style="font-size:11.5px; color:#64748B;">${item.commentsCount} comments</div>
+                </td>
+                <td style="padding:14px 18px; font-size:12.5px; color:#64748B;">
+                  ${item.publishedAt ? new Date(item.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                </td>
+                <td style="padding:14px 18px; text-align:right;">
+                  <div style="display:inline-flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="editPublishedNovelAdmin(${item.id})" style="display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Edit Title and Content in Editor">
+                      ✏️ Edit
+                    </button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="deletePublishedNovelAdmin(${item.id}, '${escapeQuote(item.title)}')" style="color:#DC2626; border-color:#FCA5A5; display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Delete Published Novel">
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Error loading published novels: ${err.message}</div>`;
+  }
+}
+
+window.editPublishedNovelAdmin = async (publishedId) => {
+  try {
+    const res = await apiFetch(`/api/published-novels/${publishedId}`);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to load published novel for editing.');
+      return;
+    }
+    const item = data.item;
+    adminState.editingPublishedId = item.id;
+    adminState.editingEpisode = {
+      id: item.chapterId || null,
+      publishedArticleId: item.id,
+      novelId: item.novelId,
+      title: item.title,
+      content: item.content,
+      status: 'published'
+    };
+    adminState.editorStep = 1;
+    adminState.editorDirty = false;
+    switchAdminTab('editor');
+
+    setTimeout(() => {
+      const titleInput = document.getElementById('editor-title-input');
+      const surface = document.getElementById('editor-surface');
+      if (titleInput) titleInput.value = item.title || '';
+      if (surface) surface.innerHTML = item.content || '';
+      if (typeof updateWordCounters === 'function') updateWordCounters();
+      showToast(`Editing published novel "${item.title}". Update title & content, then click Save.`);
+    }, 150);
+  } catch (err) {
+    showToast('Error opening published novel: ' + err.message);
+  }
+};
+
+window.cancelEditingPublishedNovelAdmin = () => {
+  adminState.editingPublishedId = null;
+  adminState.editingEpisode = null;
+  switchAdminTab('published-novels');
+};
+
+window.deletePublishedNovelAdmin = async (id, title) => {
+  const confirmed = confirm(`Are you sure you want to delete the published novel "${title}"?\n\nThis will permanently remove it from the reader page and delete associated comments.`);
+  if (!confirmed) return;
+
+  try {
+    const res = await apiFetch(`/api/published-novels/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to delete published novel.');
+      return;
+    }
+    showToast(`Published novel "${title}" was successfully deleted.`);
+    loadPublishedNovelsAdmin();
+  } catch (err) {
+    showToast('Error deleting published novel: ' + err.message);
+  }
+};
 
 /* ========================================================
    7. PUBLISHING SCHEDULER VIEW
@@ -6117,7 +6700,7 @@ function renderSchedulerCard(s) {
 
       <div style="display:flex; align-items:center; gap:8px;">
         <button class="btn btn-gold btn-sm" onclick="publishScheduledNowAction(${s.id})" title="Publish live immediately">
-          🚀 Publish Now
+          💾 Save Episode
         </button>
         <button class="btn btn-outline btn-sm" onclick="openAdminRescheduleModal(${s.id}, '${escapeQuote(s.title)}', '${s.scheduledAt}')" title="Change publication time">
           ✏️ Edit Schedule
@@ -6157,7 +6740,7 @@ window.openAdminRescheduleModal = (episodeId, title, currentSched) => {
 
   const minsOptions = Array.from({ length: 60 }, (_, i) => {
     const val = String(i).padStart(2, '0');
-    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>:${val}</option>`;
+    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>${val}</option>`;
   }).join('');
 
   const modalHtml = `
@@ -6189,13 +6772,10 @@ window.openAdminRescheduleModal = (episodeId, title, currentSched) => {
                 <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
               </div>
               <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                  <input type="number" id="resched-minute" class="form-input" min="0" max="59" step="1" value="${curMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onAdminReschedMinuteType(this, 'resched-minute-select')" onblur="normalizeAdminReschedMinuteOnBlur(this, 'resched-minute-select')" title="Type any minute 00-59">
-                  <select id="resched-minute-select" class="form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onAdminReschedMinuteSelect(this, 'resched-minute')" title="Or choose minute 00-59">
-                    ${minsOptions}
-                  </select>
-                </div>
-                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+                <select id="resched-minute" class="form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateAdminReschedPreview()">
+                  ${minsOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59)</div>
               </div>
               <div>
                 <select id="resched-ampm" class="form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateAdminReschedPreview()">
@@ -7781,7 +8361,7 @@ function renderAuditWritersList(writers) {
     const isSelected = Number(w.id) === Number(auditSelectedWriterId);
     const name = escapeHtml(w.display_name || w.username);
     const avatar = w.avatar || '/profile.png';
-    const convCount = w.conversation_count || 0;
+    const convCount = w.conversation_count || w.totalConversations || w.total_conversations || 0;
 
     return `
       <div onclick="selectAuditWriter(${w.id})" 
@@ -7916,7 +8496,8 @@ function renderAuditMessageHistory(data) {
   if (!panel) return;
 
   const conv = data.conversation || {};
-  const participants = conv.participants || [];
+  const convId = conv.id || data.conversationId || conv.conversationId || 'N/A';
+  const participants = conv.participants || data.participants || [];
   const messages = data.messages || [];
 
   panel.innerHTML = `
@@ -7933,7 +8514,7 @@ function renderAuditMessageHistory(data) {
             `).join(' ↔ ')}
           </div>
           <div style="font-size:11.5px; color:#64748B; margin-top:3px;">
-            Conversation ID #${conv.id} • ${messages.length} total messages
+            Conversation ID #${convId} • ${messages.length} total messages
           </div>
         </div>
 
@@ -10455,7 +11036,6 @@ window.renderFormsHierarchyTree = () => {
                 <span class="forms-tree-pill ${!isDis ? 'pill-published' : 'pill-disabled'}">
                   ${!isDis ? 'Published' : 'Disabled'}
                 </span>
-                ${mainCat.description ? `<span style="color:#64748B;">${escapeHtml(mainCat.description)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -10606,11 +11186,6 @@ window.openCreateMainModal = (editId = null) => {
                  placeholder="e.g. general, readers-lounge">
         </div>
 
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Description</label>
-          <textarea id="main-form-desc" class="form-input" rows="2" placeholder="Brief subtitle for the forms directory..." style="width:100%; box-sizing:border-box;">${existing ? escapeQuotes(existing.description || '') : ''}</textarea>
-        </div>
-
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:18px;">
           <div>
             <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Display Order</label>
@@ -10642,7 +11217,6 @@ window.openCreateMainModal = (editId = null) => {
 window.submitMainForm = async (editId = null) => {
   const title = document.getElementById('main-form-title')?.value?.trim();
   const id = document.getElementById('main-form-id')?.value?.trim();
-  const description = document.getElementById('main-form-desc')?.value?.trim();
   const icon = document.getElementById('main-form-icon')?.value?.trim() || '💬';
   const color = document.getElementById('main-form-color')?.value || '#2E1065';
   const orderVal = document.getElementById('main-form-order')?.value;
@@ -10663,7 +11237,7 @@ window.submitMainForm = async (editId = null) => {
     const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId || id, title, description, icon, color, sort_order, sortOrder: sort_order })
+      body: JSON.stringify({ id: editId || id, title, icon, color, sort_order, sortOrder: sort_order })
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -10857,10 +11431,10 @@ window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
         </div>
 
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-title Name *</label>
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Category Title / Sub-title Name *</label>
           <input type="text" id="sub-form-title" class="form-input" 
                  value="${existing ? escapeQuotes(existing.title) : ''}" 
-                 placeholder="e.g. Welcome Notes, Announcements, Tea Time" 
+                 placeholder="e.g. Welcome to Rudhra Novels, Announcements, Tea Time" 
                  style="width:100%; box-sizing:border-box;">
         </div>
 
@@ -11053,7 +11627,13 @@ window.openCreateArticleModal = async (preselectedMainId = null, preselectedSubI
               <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('> ', '', 'Quote text')" title="Quote">Quote</button>
               <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('- ', '', 'List item')" title="Bullet list">• List</button>
               <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('---', '', '')" title="Divider">Divider</button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorImagePrompt()" title="Insert image URL">🖼️ Image</button>
+              <input type="file" id="art-form-image-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" onchange="window.handleArticleDirectImageUpload(event)">
+              <button type="button" class="btn btn-gold btn-xs" onclick="document.getElementById('art-form-image-file-input').click()" title="Upload image from computer/device" style="display:inline-flex; align-items:center; gap:4px; font-weight:700;">
+                📷 Upload Image
+              </button>
+              <button type="button" class="btn btn-outline btn-xs" onclick="window.openArticleImageModal()" title="Insert image by URL or browse upload" style="display:inline-flex; align-items:center; gap:4px;">
+                🔗 Image URL
+              </button>
             </div>
           </div>
           <textarea id="art-form-content" class="form-input" rows="10" 
@@ -11178,11 +11758,133 @@ window.insertEditorFormat = (prefix, suffix, placeholder) => {
   textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
 };
 
-window.insertEditorImagePrompt = () => {
-  const url = prompt('Enter image URL to insert into article content:');
-  if (url && /^https?:\/\//i.test(url)) {
-    window.insertEditorFormat(`\n<img src="${url}" alt="Article image" style="max-width:100%; border-radius:8px; margin:16px 0;" />\n`, '', '');
+/**
+ * Direct Image Upload Handler for Article Content Editor
+ */
+window.handleArticleDirectImageUpload = async (event) => {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    showToast('Please select a valid image file (JPEG, PNG, WebP, GIF).');
+    event.target.value = '';
+    return;
   }
+
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Image file size must be under 10MB.');
+    event.target.value = '';
+    return;
+  }
+
+  showToast('Uploading image to server...');
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    try {
+      const res = await apiFetch('/api/upload/image', {
+        method: 'POST',
+        body: JSON.stringify({
+          data: dataUrl,
+          folder: 'media',
+          filename: file.name
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Failed to upload image.');
+      }
+
+      const cleanAlt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+      const imgTag = `\n<img src="${data.url}" alt="${escapeHtml(cleanAlt)}" style="max-width:100%; border-radius:8px; margin:16px 0; display:block;" />\n`;
+      window.insertEditorFormat(imgTag, '', '');
+      showToast('Image uploaded and inserted into content! ✓');
+    } catch (err) {
+      showToast('Error uploading image: ' + err.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+/**
+ * Interactive Image Modal for Article Content Editor (Upload or URL)
+ */
+window.openArticleImageModal = () => {
+  let modal = document.getElementById('art-image-insert-modal');
+  if (modal) modal.remove();
+
+  modal = document.createElement('div');
+  modal.id = 'art-image-insert-modal';
+  modal.className = 'admin-modal-backdrop';
+  modal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:100000; display:flex; align-items:center; justify-content:center; padding:16px;';
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:480px; width:100%; background:#FFFFFF; border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.25); overflow:hidden;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#FAF5EC; border-bottom:1px solid rgba(200,155,60,0.2);">
+        <h3 style="font-family:'Playfair Display',serif; margin:0; font-size:1.15rem; color:#0B1F33; display:flex; align-items:center; gap:8px;">
+          <span>🖼️</span> Insert Image into Content
+        </h3>
+        <button type="button" class="modal-close-btn" onclick="document.getElementById('art-image-insert-modal')?.remove()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#64748B;">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding:20px;">
+        <!-- Option 1: Direct File Upload -->
+        <div style="margin-bottom:20px; padding:20px 16px; border:2px dashed #CBD5E1; border-radius:8px; text-align:center; background:#F8FAFC; cursor:pointer; transition:all 0.15s ease;"
+             onmouseover="this.style.borderColor='var(--color-gold-warm)'; this.style.background='#FFFDF8';"
+             onmouseout="this.style.borderColor='#CBD5E1'; this.style.background='#F8FAFC';"
+             onclick="document.getElementById('art-form-image-file-input').click(); document.getElementById('art-image-insert-modal')?.remove();">
+          <div style="font-size:32px; margin-bottom:6px;">📁</div>
+          <div style="font-weight:700; font-size:14px; color:#0B1F33; margin-bottom:4px;">Upload Image from Device</div>
+          <div style="font-size:12px; color:#64748B;">Click here to choose JPG, PNG, WebP, or GIF (up to 10MB)</div>
+        </div>
+
+        <div style="display:flex; align-items:center; margin:18px 0; gap:10px;">
+          <hr style="flex:1; border:none; border-top:1px solid #E2E8F0;" />
+          <span style="font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase;">or enter image url</span>
+          <hr style="flex:1; border:none; border-top:1px solid #E2E8F0;" />
+        </div>
+
+        <!-- Option 2: Image URL -->
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Web Image URL</label>
+          <input type="url" id="art-modal-image-url" class="form-input" placeholder="https://example.com/photo.jpg" style="width:100%; box-sizing:border-box;">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('art-image-insert-modal')?.remove()">Cancel</button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="window.confirmInsertImageUrl()">Insert URL</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.getElementById('art-modal-image-url')?.focus();
+};
+
+window.confirmInsertImageUrl = () => {
+  const input = document.getElementById('art-modal-image-url');
+  const url = input?.value?.trim();
+  if (!url) {
+    showToast('Please enter an image URL.');
+    return;
+  }
+  if (!/^https?:\/\//i.test(url) && !url.startsWith('/uploads/')) {
+    showToast('Please enter a valid URL starting with http://, https://, or /uploads/');
+    return;
+  }
+  window.insertEditorFormat(`\n<img src="${url}" alt="Article image" style="max-width:100%; border-radius:8px; margin:16px 0; display:block;" />\n`, '', '');
+  showToast('Image inserted into content! ✓');
+  document.getElementById('art-image-insert-modal')?.remove();
+};
+
+window.insertEditorImagePrompt = () => {
+  window.openArticleImageModal();
 };
 
 /**
@@ -13551,3 +14253,43 @@ window.deleteAudioEpisodePrompt = async (id) => {
   }
 };
 
+
+window.handleStoryCoverSelected = async (file) => {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Please select a valid image file.');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Cover image must be under 10MB.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    const coverInput = document.getElementById('story-field-cover');
+    const previewImg = document.getElementById('story-cover-preview');
+    if (previewImg) previewImg.src = dataUrl;
+    try {
+      showToast('Uploading story cover...');
+      const res = await apiFetch('/api/upload/image', {
+        method: 'POST',
+        body: JSON.stringify({
+          data: dataUrl,
+          folder: 'covers',
+          filename: file.name,
+          replaceUrl: coverInput?.value || null
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        if (coverInput) coverInput.value = data.url;
+        if (previewImg) previewImg.src = data.url;
+        showToast('Story cover uploaded successfully! ✨');
+      }
+    } catch (err) {
+      showToast('Error uploading story cover: ' + err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+};

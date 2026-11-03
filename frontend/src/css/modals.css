@@ -264,10 +264,7 @@
     padding: 12px 14px;
   }
 
-  .notifications-dropdown {
-    width: min(320px, calc(100vw - 32px)) !important;
-    right: 0 !important;
-  }
+
 }
 
 .search-input-wrap {
@@ -399,6 +396,27 @@
   color: var(--color-navy-deep);
   cursor: pointer;
   transition: all var(--transition-fast);
+}
+
+
+.notif-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.notif-close-btn:hover {
+  color: var(--color-navy-deep);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .notif-header-btn:hover {
@@ -582,11 +600,85 @@
 }
 
 
-/* Mobile Notifications Dropdown Bound */
-@media (max-width: 480px) {
+/* Modern Mobile & Phone Realignment for Notifications Dropdown */
+@media (max-width: 640px) {
   .notifications-dropdown {
-    right: -8px !important;
-    width: min(360px, calc(100vw - 16px)) !important;
-    max-width: calc(100vw - 16px) !important;
+    position: fixed !important;
+    top: calc(var(--header-height, 60px) + 8px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 0 !important;
+    max-height: calc(85vh - 65px) !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(200, 155, 60, 0.3) !important;
+    box-shadow: 0 16px 48px rgba(11, 31, 51, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+    z-index: 99999 !important;
+    overflow: hidden !important;
+    animation: mobileDropFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .notifications-dropdown.open {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .notif-header {
+    padding: 14px 16px !important;
+    background: #FAF8F5 !important;
+    border-bottom: 1px solid #EFE8DC !important;
+  }
+
+  .notif-header span {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: var(--color-navy-deep) !important;
+  }
+
+  .notif-tabs-bar {
+    padding: 6px 10px !important;
+    gap: 8px !important;
+    background: #F8FAFC !important;
+  }
+
+  .notif-tab {
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+
+  .notif-list {
+    max-height: calc(85vh - 180px) !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .notif-empty-state {
+    padding: 38px 20px !important;
+  }
+
+  .notif-item {
+    padding: 13px 14px !important;
+    gap: 12px !important;
+  }
+
+  .notif-title {
+    font-size: 13px !important;
+  }
+
+  .notif-text {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+}
+
+@keyframes mobileDropFade {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }

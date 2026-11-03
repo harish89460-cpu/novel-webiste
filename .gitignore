@@ -11,6 +11,7 @@ frontend/.env
 backend/.env
 .last_otp.txt
 backend/.last_otp.txt
+ADMIN_CREDENTIALS.md
 
 # Production Build
 dist/
@@ -21,6 +22,9 @@ frontend/dist/
 *.sqlite-journal
 *.db
 database.sqlite
+
+# Backups & Snapshots
+backups/
 
 # Build caches & Temporary test directories
 .chrome_temp/

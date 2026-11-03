@@ -6,6 +6,44 @@ import { query, queryOne } from './db.js';
 import { generateNovelSlug } from './novels.js';
 import { createNotification } from './notifications.js';
 
+function resolveNotificationLinkAndContext(novelId, chapterNum, novelTitle = null) {
+  const strId = String(novelId || '');
+  const chStr = chapterNum !== undefined && chapterNum !== null ? String(chapterNum).trim() : '0';
+
+  if (strId.startsWith('review_sub_')) {
+    const subId = strId.replace(/^review_sub_/, '');
+    return {
+      link: `#forms?sub=${encodeURIComponent(subId)}`,
+      contextTitle: 'Review Forms Discussion',
+      entityType: 'review_sub',
+      entityId: subId
+    };
+  }
+  if (strId.startsWith('content_')) {
+    const artId = strId.replace(/^content_/, '');
+    return {
+      link: `#thread?id=${encodeURIComponent(artId)}`,
+      contextTitle: 'Discussion Thread',
+      entityType: 'content_article',
+      entityId: artId
+    };
+  }
+  if (chStr && chStr !== '0') {
+    return {
+      link: `#reader?novel=${encodeURIComponent(strId)}&ch=${encodeURIComponent(chStr)}`,
+      contextTitle: novelTitle || 'Novel',
+      entityType: 'chapter',
+      entityId: `${strId}:${chStr}`
+    };
+  }
+  return {
+    link: `#novel?id=${encodeURIComponent(strId)}`,
+    contextTitle: novelTitle || 'Novel',
+    entityType: 'novel',
+    entityId: strId
+  };
+}
+
 // The allowed episode & forum reactions: ❤️ Love, 👍 Like, 👏 Clap, 😂 Laugh, 😮 Surprise, 😍 Adore, 😢 Sad, and 😭 Cry
 export const ALLOWED_EMOJIS = ['❤️', '👍', '👏', '😂', '😮', '😍', '😢', '😭'];
 
@@ -352,41 +390,37 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
       `, [resolvedParentId]);
 
       if (parentRow && parentRow.user_id && Number(parentRow.user_id) !== Number(userId)) {
+        const resolved = resolveNotificationLinkAndContext(parentRow.novel_id, parentRow.chapter_num, parentRow.novel_title);
         await createNotification({
           userId: parentRow.user_id,
           actorId: userId,
           type: 'comment_reply',
           title: 'New Reply to your Comment',
-          message: `${user.display_name || user.username} replied on ${parentRow.novel_title || 'Novel'}${chLabel}: "${cleanSnippet}"`,
-          link: chStr && chStr !== '0' ? `#reader?novel=${targetNovelId}&ch=${chStr}` : `#novel-detail?id=${targetNovelId}`,
+          message: `${user.display_name || user.username} replied on ${resolved.contextTitle}${chLabel}: "${cleanSnippet}"`,
+          link: resolved.link,
           entityType: 'comment',
           entityId: resolvedParentId
         });
       }
     } else {
-      // 2. Top-level Novel/Chapter Comment Event: Notify Novel Author
-      const novelInfo = await queryOne('SELECT id, title, author FROM novels WHERE id = ?;', [targetNovelId]);
-      if (novelInfo) {
-        let authorUser = await queryOne(`
-          SELECT u.id FROM users u
-          JOIN profiles p ON u.id = p.user_id
-          WHERE p.display_name = ? OR p.display_name_ta = ? OR u.username = ?
-          LIMIT 1;
-        `, [novelInfo.author, novelInfo.author, novelInfo.author]);
+      // 2. Top-level Novel / Review Forms / Content Article Comment Event
+      if (String(targetNovelId).startsWith('review_sub_')) {
+        const subId = String(targetNovelId).replace(/^review_sub_/, '');
+        const subRow = await queryOne('SELECT id, title, main_category_id FROM content_subcategories WHERE id = ?;', [subId]);
+        const subTitle = subRow?.title || 'Review Forms';
+        const targetLink = `#forms?sub=${encodeURIComponent(subId)}`;
 
-        // Default author is user ID 2 (rudhra_author)
-        const recipientAuthorId = authorUser ? authorUser.id : 2;
-
-        if (recipientAuthorId && Number(recipientAuthorId) !== Number(userId)) {
+        // Notify Admin / Category author (User ID 2)
+        if (Number(userId) !== 2) {
           await createNotification({
-            userId: recipientAuthorId,
+            userId: 2,
             actorId: userId,
-            type: 'novel_comment',
-            title: `New Comment on ${novelInfo.title}`,
-            message: `${user.display_name || user.username} commented on ${novelInfo.title}${chLabel}: "${cleanSnippet}"`,
-            link: chStr && chStr !== '0' ? `#reader?novel=${targetNovelId}&ch=${chStr}` : `#novel-detail?id=${targetNovelId}`,
-            entityType: 'novel',
-            entityId: targetNovelId
+            type: 'review_discussion',
+            title: `New Discussion in ${subTitle}`,
+            message: `${user.display_name || user.username} participated in ${subTitle}: "${cleanSnippet}"`,
+            link: targetLink,
+            entityType: 'review_sub',
+            entityId: subId
           });
         }
       } else if (String(targetNovelId).startsWith('content_')) {
@@ -400,12 +434,40 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
             await createNotification({
               userId: artInfo.author_id,
               actorId: userId,
-              type: 'comment',
+              type: 'novel_comment',
               title: `New Comment on ${artInfo.title}`,
               message: `${user.display_name || user.username} commented on "${artInfo.title}": "${cleanSnippet}"`,
-              link: `#content?slug=${encodeURIComponent(artInfo.unique_slug)}`,
+              link: `#thread?id=${encodeURIComponent(artInfo.unique_slug || artInfo.id)}`,
               entityType: 'content_article',
               entityId: artInfo.id
+            });
+          }
+        }
+      } else {
+        const novelInfo = await queryOne('SELECT id, title, author, author_id FROM novels WHERE id = ?;', [targetNovelId]);
+        if (novelInfo) {
+          let recipientAuthorId = novelInfo.author_id;
+          if (!recipientAuthorId) {
+            let authorUser = await queryOne(`
+              SELECT u.id FROM users u
+              JOIN profiles p ON u.id = p.user_id
+              WHERE p.display_name = ? OR p.display_name_ta = ? OR u.username = ?
+              LIMIT 1;
+            `, [novelInfo.author, novelInfo.author, novelInfo.author]);
+            recipientAuthorId = authorUser ? authorUser.id : 2;
+          }
+
+          if (recipientAuthorId && Number(recipientAuthorId) !== Number(userId)) {
+            const resolved = resolveNotificationLinkAndContext(targetNovelId, chStr, novelInfo.title);
+            await createNotification({
+              userId: recipientAuthorId,
+              actorId: userId,
+              type: 'novel_comment',
+              title: `New Comment on ${novelInfo.title}`,
+              message: `${user.display_name || user.username} commented on ${novelInfo.title}${chLabel}: "${cleanSnippet}"`,
+              link: resolved.link,
+              entityType: 'novel',
+              entityId: targetNovelId
             });
           }
         }
@@ -541,6 +603,38 @@ export async function toggleCommentLike({ commentId, userId }) {
       [targetId, userId]
     );
     liked = true;
+
+    // Genuine Notification for comment like
+    try {
+      const commentRow = await queryOne(`
+        SELECT c.id, c.user_id, c.novel_id, c.chapter_num, c.content, n.title AS novel_title
+        FROM comments c
+        LEFT JOIN novels n ON c.novel_id = n.id
+        WHERE c.id = ?;
+      `, [commentId]);
+
+      if (commentRow && commentRow.user_id && Number(commentRow.user_id) !== Number(userId)) {
+        const actorProfile = await queryOne(`
+          SELECT COALESCE(p.display_name, u.username) AS name
+          FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;
+        `, [userId]);
+
+        const resolved = resolveNotificationLinkAndContext(commentRow.novel_id, commentRow.chapter_num, commentRow.novel_title);
+
+        await createNotification({
+          userId: commentRow.user_id,
+          actorId: userId,
+          type: 'comment_like',
+          title: 'Someone liked your comment',
+          message: `${actorProfile?.name || 'A reader'} liked your comment on ${resolved.contextTitle}.`,
+          link: resolved.link,
+          entityType: 'comment',
+          entityId: commentId
+        });
+      }
+    } catch (err) {
+      console.warn('[Like Notification Error]:', err.message);
+    }
   }
 
   const countRow = await queryOne(
@@ -658,19 +752,55 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
             FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;
           `, [userId]);
 
+          const resolved = resolveNotificationLinkAndContext(commentRow.novel_id, commentRow.chapter_num, commentRow.novel_title);
+
           await createNotification({
             userId: commentRow.user_id,
             actorId: userId,
             type: 'comment_reaction',
             title: 'Reaction on your Comment',
-            message: `${actorProfile?.name || 'A reader'} reacted ${resolvedEmoji} to your comment on ${commentRow.novel_title || 'Novel'}.`,
-            link: commentRow.chapter_num && commentRow.chapter_num !== '0' ? `#reader?novel=${commentRow.novel_id}&ch=${commentRow.chapter_num}` : `#novel-detail?id=${commentRow.novel_id}`,
+            message: `${actorProfile?.name || 'A reader'} reacted ${resolvedEmoji} to your comment on ${resolved.contextTitle}.`,
+            link: resolved.link,
             entityType: 'comment',
             entityId: targetId
           });
         }
       } catch (err) {
         console.warn('[Reaction Notification Error]:', err.message);
+      }
+    } else if (targetType === 'chapter') {
+      try {
+        const parts = String(targetId).split(':');
+        const novelIdParam = parts[0];
+        const chNumParam = parts[1] || '1';
+
+        const chRow = await queryOne(`
+          SELECT c.id, c.novel_id, c.chapter_num, c.title AS chapter_title, n.title AS novel_title, n.author_id
+          FROM chapters c
+          JOIN novels n ON c.novel_id = n.id
+          WHERE c.id = ? OR (c.novel_id = ? AND (c.chapter_num = ? OR c.episode_number = ?));
+        `, [targetId, novelIdParam, chNumParam, chNumParam]);
+
+        const recipientAuthorId = chRow?.author_id || 2;
+        if (chRow && Number(recipientAuthorId) !== Number(userId)) {
+          const actorProfile = await queryOne(`
+            SELECT COALESCE(p.display_name, u.username) AS name
+            FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;
+          `, [userId]);
+
+          await createNotification({
+            userId: recipientAuthorId,
+            actorId: userId,
+            type: 'comment_reaction',
+            title: `Reaction on Chapter ${chRow.chapter_num}`,
+            message: `${actorProfile?.name || 'A reader'} reacted ${resolvedEmoji} to Chapter ${chRow.chapter_num} of ${chRow.novel_title}.`,
+            link: `#reader?novel=${encodeURIComponent(chRow.novel_id)}&ch=${encodeURIComponent(chRow.chapter_num)}`,
+            entityType: 'chapter',
+            entityId: targetId
+          });
+        }
+      } catch (err) {
+        console.warn('[Chapter Reaction Notification Error]:', err.message);
       }
     }
   }

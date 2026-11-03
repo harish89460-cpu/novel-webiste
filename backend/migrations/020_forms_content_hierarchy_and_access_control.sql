@@ -4,9 +4,9 @@
 
 -- 1. Extend forum_categories (Main Titles)
 ALTER TABLE `forum_categories` 
-  ADD COLUMN IF NOT EXISTS `status` VARCHAR(50) NOT NULL DEFAULT 'published',
-  ADD COLUMN IF NOT EXISTS `is_disabled` TINYINT(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS `visibility` VARCHAR(50) NOT NULL DEFAULT 'public';
+  ADD COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'published',
+  ADD COLUMN `is_disabled` TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `visibility` VARCHAR(50) NOT NULL DEFAULT 'public';
 
 -- 2. Sub Titles Table
 CREATE TABLE IF NOT EXISTS `content_subcategories` (

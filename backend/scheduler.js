@@ -124,9 +124,9 @@ export async function checkAndPublishDueShortStories() {
 export async function checkAndPublishDueNovels() {
   try {
     const dueNovels = await query(`
-      SELECT id, title, scheduled_at
+      SELECT id, title, scheduled_at, category, content_type
       FROM novels
-      WHERE status = 'Scheduled'
+      WHERE LOWER(status) = 'scheduled'
         AND scheduled_at IS NOT NULL
         AND scheduled_at <= NOW();
     `);
@@ -141,14 +141,16 @@ export async function checkAndPublishDueNovels() {
         UPDATE novels
         SET status = 'Ongoing',
             is_published = 1,
-            visibility = 'public'
-        WHERE id = ? AND status = 'Scheduled';
+            visibility = 'public',
+            updated_date = DATE_FORMAT(NOW(), '%b %e, %Y'),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND LOWER(status) = 'scheduled';
       `, [n.id]);
       publishedIds.push(n.id);
     }
 
-    console.log(`[Scheduler] Automatically published ${publishedIds.length} due novel(s).`);
-    return { publishedCount: publishedIds.length, publishedIds };
+    console.log(`[Scheduler] Automatically published ${publishedIds.length} due novel(s): ${publishedIds.join(', ')}`);
+    return { publishedCount: publishedIds.length, publishedIds, publishedNovels: dueNovels };
   } catch (err) {
     console.error('[Scheduler Error] checkAndPublishDueNovels:', err.message);
     return { publishedCount: 0, error: err.message };

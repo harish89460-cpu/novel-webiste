@@ -3,7 +3,10 @@
 
 import { query, queryOne } from './db.js';
 import { checkAndPublishDueEpisodes, compareHierarchicalNumbers } from './episodes.js';
-import { saveBase64Image } from './auth.js';
+import { checkAndPublishDueNovels } from './scheduler.js';
+import { parseISTDateTime, isPastIST } from './timezone.js';
+import { saveBase64Image, deleteLocalUploadFile } from './auth.js';
+import { createNotification } from './notifications.js';
 
 function compareHierarchicalRows(a, b) {
   const numA = a.chapter_num || a.episode_number || a.num || '';
@@ -91,6 +94,7 @@ export function formatNovel(row, chapters = [], extra = {}) {
  * Check if a user can view a novel (enforces visibility on the backend)
  */
 export async function checkNovelViewAccess(novelId, currentUser = null) {
+  await checkAndPublishDueNovels().catch(() => {});
   if (!novelId) return { allowed: false, status: 400, error: 'Novel ID is required' };
 
   let cleanId = String(novelId).trim();
@@ -115,18 +119,17 @@ export async function checkNovelViewAccess(novelId, currentUser = null) {
     return { allowed: true, novel: row };
   }
 
+  // Scheduled check
+  if (String(row.status).toLowerCase() === 'scheduled') {
+    if (row.scheduled_at && !isPastIST(row.scheduled_at)) {
+      return { allowed: false, status: 403, error: 'This content is scheduled for future release.' };
+    }
+  }
+
   // Publication status / draft
   const isDraft = !row.is_published || row.status === 'Draft' || row.visibility === 'draft';
   if (isDraft) {
     return { allowed: false, status: 403, error: 'This novel is currently in draft mode.' };
-  }
-
-  // Scheduled check
-  if (row.status === 'Scheduled' && row.scheduled_at) {
-    const pubDate = new Date(row.scheduled_at);
-    if (!isNaN(pubDate.getTime()) && pubDate > new Date()) {
-      return { allowed: false, status: 403, error: 'This content is scheduled for future release.' };
-    }
   }
 
   const vis = (row.visibility || 'public').toLowerCase();
@@ -177,6 +180,7 @@ export async function checkNovelViewAccess(novelId, currentUser = null) {
  * Get all novels with optional filtering and visibility checks
  */
 export async function getAllNovels({ status, category, publishedOnly = false, currentUser = null } = {}) {
+  await checkAndPublishDueNovels().catch(() => {});
   await checkAndPublishDueEpisodes();
 
   const isAdmin = currentUser && (currentUser.isAdmin || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase()));
@@ -186,7 +190,7 @@ export async function getAllNovels({ status, category, publishedOnly = false, cu
   const params = [];
 
   if (publishedOnly && !isAdmin) {
-    sql += " AND is_published = 1 AND status != 'Draft'";
+    sql += " AND is_published = 1 AND status != 'Draft' AND (LOWER(status) != 'scheduled' OR scheduled_at IS NULL OR scheduled_at <= NOW())";
   }
   if (status) {
     sql += ' AND LOWER(status) = LOWER(?)';
@@ -221,6 +225,9 @@ export async function getAllNovels({ status, category, publishedOnly = false, cu
     if (isAdmin) return true;
     if (userId && Number(r.author_id) === Number(userId)) return true;
     if (!r.is_published || r.status === 'Draft' || r.visibility === 'draft') return false;
+    if (String(r.status).toLowerCase() === 'scheduled') {
+      if (!r.scheduled_at || !isPastIST(r.scheduled_at)) return false;
+    }
 
     const vis = (r.visibility || 'public').toLowerCase();
     if (vis === 'public') return true;
@@ -237,6 +244,7 @@ export async function getAllNovels({ status, category, publishedOnly = false, cu
  * Get single novel by ID including chapters from the SQL database
  */
 export async function getNovelById(id, { includeAll = false, currentUser = null } = {}) {
+  await checkAndPublishDueNovels().catch(() => {});
   await checkAndPublishDueEpisodes();
 
   if (!id) return null;
@@ -479,9 +487,19 @@ export async function updateNovel(id, data) {
   let cover = existing.cover;
   if (data.cover !== undefined) {
     const rawCover = String(data.cover || '').trim();
-    cover = rawCover.startsWith('data:image/')
-      ? saveBase64Image(rawCover, 'covers', `cover-${id}`)
-      : rawCover;
+    if (!rawCover || rawCover === '/default-cover.jpg') {
+      if (existing.cover && existing.cover !== '/default-cover.jpg') {
+        deleteLocalUploadFile(existing.cover);
+      }
+      cover = '/default-cover.jpg';
+    } else if (rawCover.startsWith('data:image/') || rawCover.startsWith('data:;base64,') || /^[A-Za-z0-9+/=]{100,}$/.test(rawCover)) {
+      cover = saveBase64Image(rawCover, 'covers', `cover-${id}`, existing.cover);
+    } else {
+      if (existing.cover && existing.cover !== rawCover) {
+        deleteLocalUploadFile(existing.cover);
+      }
+      cover = rawCover;
+    }
   }
 
   const chaptersCount = data.chaptersCount !== undefined ? parseInt(data.chaptersCount, 10) : existing.chapters_count;
@@ -492,7 +510,10 @@ export async function updateNovel(id, data) {
   const continueReading = data.continueReading !== undefined ? (data.continueReading ? 1 : 0) : existing.continue_reading;
   const trendingRank = data.trendingRank !== undefined ? parseInt(data.trendingRank, 10) : existing.trending_rank;
   const sortOrder = data.sortOrder !== undefined ? parseInt(data.sortOrder, 10) : existing.sort_order;
-  const isPublished = data.isPublished !== undefined ? (data.isPublished ? 1 : 0) : existing.is_published;
+  let isPublished = data.isPublished !== undefined ? (data.isPublished ? 1 : 0) : existing.is_published;
+  if (status === 'Scheduled') {
+    isPublished = 0;
+  }
   const visibility = data.visibility !== undefined ? String(data.visibility).trim() : existing.visibility;
   const badge = data.badge !== undefined ? String(data.badge).trim() : (existing.badge || status);
   const description = data.description !== undefined ? String(data.description).trim() : (existing.description || '');
@@ -691,19 +712,28 @@ export async function createNovel(data) {
     cleanId = `${baseSlug}-${counter}`;
   }
 
-  const isPublished = data.isPublished !== undefined 
-    ? (data.isPublished ? 1 : 0) 
-    : (data.status === 'Draft' || data.visibility === 'draft' ? 0 : 1);
-  const status = data.status || (isPublished ? 'Ongoing' : 'Draft');
-  const visibility = data.visibility || (isPublished ? 'public' : 'draft');
+  const status = data.status || 'Draft';
+  let isPublished = 0;
+  if (status === 'Scheduled') {
+    isPublished = 0;
+  } else if (data.isPublished !== undefined) {
+    isPublished = data.isPublished ? 1 : 0;
+  } else if (status === 'Draft' || data.visibility === 'draft') {
+    isPublished = 0;
+  } else {
+    isPublished = 1;
+  }
+  const visibility = data.visibility || (isPublished ? 'public' : (status === 'Scheduled' ? 'public' : 'draft'));
   const authorId = data.authorId || data.author_id || 2;
   const author = (data.author || 'Rudhra Prarthana').trim();
   const contentType = (data.contentType || data.content_type || 'written_novel').trim();
   const accessPermission = (data.accessPermission || data.access_permission || 'admin_only').trim();
   const language = (data.language || 'Tamil').trim();
 
-  let scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null;
-  if (scheduledAt && isNaN(scheduledAt.getTime())) scheduledAt = null;
+  let scheduledAt = null;
+  if (status === 'Scheduled' || data.scheduledAt || data.scheduled_at) {
+    scheduledAt = parseISTDateTime(data.scheduledAt || data.scheduled_at);
+  }
 
   // Process genre and save into novel_genres if new
   let genre = (data.genre || 'Novel').trim();
@@ -750,9 +780,9 @@ export async function createNovel(data) {
     try {
       const cSlug = customCatName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       await query(`
-        INSERT IGNORE INTO forum_categories (id, title, description, icon, sort_order, is_active, status, visibility, is_disabled)
-        VALUES (?, ?, ?, '📖', 99, 1, 'published', 'public', 0);
-      `, [cSlug, customCatName, `Collection of ${customCatName}`]);
+        INSERT IGNORE INTO forum_categories (id, title, icon, sort_order, is_active, status, visibility, is_disabled)
+        VALUES (?, ?, '📖', 99, 1, 'published', 'public', 0);
+      `, [cSlug, customCatName]);
     } catch {}
   }
 
@@ -877,14 +907,45 @@ export async function createNovel(data) {
     }
   }
 
-  return { success: true, novel: await getNovelById(cleanId, { includeAll: true }) };
+  const createdNovel = await getNovelById(cleanId, { includeAll: true });
+  const contentLink = `#novel?id=${encodeURIComponent(cleanId)}`;
+
+  // Notify followers of author upon novel publication
+  if (isPublished && status !== 'Draft' && status !== 'draft') {
+    try {
+      const followers = await query(`
+        SELECT follower_id AS user_id FROM follows WHERE following_id = ?;
+      `, [authorId || 2]);
+      for (const f of followers) {
+        if (Number(f.user_id) !== Number(authorId || 2)) {
+          await createNotification({
+            userId: f.user_id,
+            actorId: authorId || 2,
+            type: 'novel_created',
+            title: 'New Novel Released!',
+            message: `${author} has released a new novel: "${cleanTitle}".`,
+            link: contentLink,
+            entityType: 'novel',
+            entityId: cleanId
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('[Novel Created Notification Error]:', err.message);
+    }
+  }
+
+  return { success: true, novel: createdNovel, contentLink, id: cleanId };
 }
 
 /**
  * Delete novel by ID
  */
 export async function deleteNovel(id) {
-  const existing = await queryOne('SELECT id FROM novels WHERE id = ?', [id]);
+  const existing = await queryOne('SELECT id, cover FROM novels WHERE id = ?', [id]);
+  if (existing?.cover) {
+    deleteLocalUploadFile(existing.cover);
+  }
   if (!existing) {
     return { success: false, error: 'Novel not found' };
   }

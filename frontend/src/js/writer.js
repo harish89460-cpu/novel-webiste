@@ -1,12 +1,78 @@
 
+if (typeof window !== 'undefined' && !window.showSavedContentLinkModal) {
+  window.showSavedContentLinkModal = ({ title, type, contentLink }) => {
+    const existing = document.getElementById('saved-content-link-modal');
+    if (existing) existing.remove();
+
+    const fullLink = (contentLink && contentLink.startsWith('http')) 
+      ? contentLink 
+      : `${window.location.origin}/${(contentLink || '').startsWith('#') ? contentLink : '#' + (contentLink || '')}`;
+
+    const modal = document.createElement('div');
+    modal.id = 'saved-content-link-modal';
+    modal.className = 'admin-modal-backdrop';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(3px);';
+    modal.innerHTML = `
+      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#FFFFFF; border-radius:16px; width:100%; max-width:540px; padding:28px; box-shadow:0 24px 48px rgba(0,0,0,0.25); text-align:center; border:1px solid #E8DCCB;">
+        <div style="font-size:46px; line-height:1; margin-bottom:12px;">✅</div>
+        <h3 style="font-family:'Playfair Display',serif; font-size:1.5rem; color:#0B1F33; margin:0 0 8px;">
+          ${title || 'Content'} Saved Successfully!
+        </h3>
+        <p style="color:#64748B; font-size:13.5px; margin:0 0 20px; line-height:1.6;">
+          Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>+ Add Thread</strong> on the frontend category page.
+        </p>
+
+        <div style="background:#FAF8F5; border:1px solid #E8DCCB; border-radius:10px; padding:14px; margin-bottom:20px; text-align:left;">
+          <label style="font-size:11px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:6px;">
+            Generated Unique Content Link
+          </label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="generated-content-link-input" readonly value="${fullLink}" class="form-input" style="font-family:monospace; font-size:12.5px; background:#FFFFFF; flex:1; padding:8px 10px; border:1px solid #CBD5E1; border-radius:6px;" onclick="this.select()">
+            <button type="button" class="btn btn-gold btn-sm" id="btn-copy-modal-link" onclick="window.copyGeneratedModalLink('${fullLink}')" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; white-space:nowrap; padding:8px 14px;">
+              📋 Copy Link
+            </button>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:center; gap:12px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="padding:8px 18px;">
+            Done
+          </button>
+          <a href="#forms" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
+            Go to Categories ➔
+          </a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  };
+
+  window.copyGeneratedModalLink = (link) => {
+    navigator.clipboard.writeText(link).then(() => {
+      const btn = document.getElementById('btn-copy-modal-link');
+      if (btn) btn.innerHTML = '✓ Copied!';
+      showToast('Unique content link copied to clipboard! 📋');
+    }).catch(() => {
+      const input = document.getElementById('generated-content-link-input');
+      if (input) {
+        input.select();
+        document.execCommand('copy');
+        showToast('Unique content link copied to clipboard! 📋');
+      }
+    });
+  };
+}
+
+
 export function escapeQuote(str) {
   if (!str) return '';
   return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
 }
+export const escapeQuotes = escapeQuote;
 
 if (typeof window !== 'undefined') {
   window.escapeQuote = escapeQuote;
-  window.escapeQuotes = escapeQuotes;
+  window.escapeQuotes = escapeQuote;
   window.onWriterMinuteType = function(inputEl, selectId) {
     let val = inputEl.value;
     if (val === '') {
@@ -189,6 +255,7 @@ export async function renderWriterDashboard(container, requestedTab) {
     write: 'Write Novel',
     episodes: 'Manage Episodes',
     editor: 'Writing Editor',
+    'published-novels': 'Published Novel Management',
     status: 'Publishing Status',
     profile: 'Profile & Password'
   };
@@ -301,6 +368,25 @@ export async function renderWriterDashboard(container, requestedTab) {
                 <span class="writer-nav-pill" id="wnav-audio-count">${writerState.audioNovels?.length || 0}</span>
               </button>
             ` : ''}
+
+            <!-- Novel Content Writing -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'editor' ? 'active' : ''}" 
+                    onclick="switchWriterTab('editor')">
+              <span class="writer-nav-btn-content">
+                ${ADMIN_ICONS.edit}
+                <span>Novel Writing</span>
+              </span>
+            </button>
+
+            <!-- Published Novel Management -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'published-novels' ? 'active' : ''}" 
+                    onclick="switchWriterTab('published-novels')">
+              <span class="writer-nav-btn-content">
+                <span>📚</span>
+                <span>Published Novels</span>
+              </span>
+              <span class="writer-nav-pill" id="wnav-published-count">-</span>
+            </button>
 
             <!-- 6. Manage Episodes (if permitted) -->
             ${(!writerState.permissions || writerState.permissions.canEpisodes) ? `
@@ -483,7 +569,10 @@ function renderActiveWriterTab(params = {}) {
       renderWriterEpisodes(canvas, params.novelId);
       break;
     case 'editor':
-      renderWriterEditor(canvas, params.episodeId, params.novelId);
+      renderWriterEditor(canvas, params.episodeId, params.novelId, params.parentId);
+      break;
+    case 'published-novels':
+      renderWriterPublishedNovels(canvas);
       break;
     case 'status':
       renderWriterStatus(canvas);
@@ -974,18 +1063,34 @@ window.handleWriterCoverUpload = async (fileInput) => {
   const file = fileInput.files?.[0];
   if (!file) return;
 
-  if (file.size > 5 * 1024 * 1024) {
-    showToast('Cover image size must be under 5MB.');
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/jpg'];
+  if (!validTypes.includes(file.type)) {
+    showToast('Please select a valid image file (JPG, PNG, WebP, GIF).');
+    fileInput.value = '';
     return;
   }
+
+  const maxSize = 10 * 1024 * 1024; // 10MB
+  if (file.size > maxSize) {
+    showToast('Cover image size must be under 10MB.');
+    fileInput.value = '';
+    return;
+  }
+
+  const currentCover = document.getElementById('wn-cover')?.value?.trim() || null;
 
   const reader = new FileReader();
   reader.onload = async () => {
     try {
       showToast('Uploading cover image...');
-      const res = await apiFetch('/api/comments/upload-image', {
+      const res = await apiFetch('/api/upload/image', {
         method: 'POST',
-        body: JSON.stringify({ data: reader.result })
+        body: JSON.stringify({
+          data: reader.result,
+          folder: 'covers',
+          filename: file.name,
+          replaceUrl: currentCover
+        })
       });
       const data = await res.json();
       if (res.ok && data.url) {
@@ -995,7 +1100,7 @@ window.handleWriterCoverUpload = async (fileInput) => {
           updateCoverPreview(data.url);
           handleNovelFormChange();
         }
-        showToast('Cover image uploaded successfully! 🖼️');
+        showToast('Cover image uploaded successfully! ✨');
       } else {
         showToast(data.error || 'Failed to upload cover image.');
       }
@@ -1068,6 +1173,9 @@ window.submitWriterNovel = async (publishNow = false, novelId = null) => {
     }
 
     showToast(novelId ? 'Novel updated successfully!' : 'Novel draft created successfully!');
+    const savedId = data.novel?.id || data.id || novelId;
+    const contentLink = data.contentLink || (`#novel?id=${encodeURIComponent(savedId)}`);
+    window.showSavedContentLinkModal({ title, type: 'novel', contentLink });
     switchWriterTab('novels');
   } catch (err) {
     if (errorEl) {
@@ -1114,8 +1222,12 @@ async function renderWriterEpisodes(canvas, preselectedNovelId = null) {
         <h1 class="writer-header-title">Manage Episodes</h1>
         <p class="writer-header-sub">Select a novel to organize chapters and launch the writing editor.</p>
       </div>
-      <div class="writer-header-actions">
-        <button type="button" class="btn btn-gold" onclick="openNewEpisodeForCurrentNovel()" id="btn-add-episode">
+      <div class="writer-header-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" onclick="openWriterAddChapterModal()" id="btn-writer-add-chapter" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+          <span style="font-size:16px; line-height:1;">+</span>
+          <span>Add Chapter</span>
+        </button>
+        <button type="button" class="btn btn-gold" onclick="openNewEpisodeForCurrentNovel()" id="btn-add-episode" style="display:inline-flex; align-items:center; gap:6px; font-weight:700;">
           ${ADMIN_ICONS.edit}
           <span>+ Add Episode</span>
         </button>
@@ -1185,8 +1297,11 @@ async function loadEpisodesForWriterNovel(novelId) {
           <div class="writer-empty-state">
             <div class="writer-empty-icon">📝</div>
             <h3 class="writer-empty-title">No episodes written yet</h3>
-            <p class="writer-empty-desc">Start writing Episode 1 for this novel.</p>
-            <button type="button" class="btn btn-gold" onclick="openNewEpisodeForCurrentNovel()">+ Write Episode 1</button>
+            <p class="writer-empty-desc">Create a chapter first, then add episodes and story content.</p>
+            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+              <button type="button" class="btn btn-gold" onclick="openWriterAddChapterModal()">+ Create Chapter 1</button>
+              <button type="button" class="btn btn-outline" onclick="openNewEpisodeForCurrentNovel()">+ Write Episode</button>
+            </div>
           </div>
         </div>
       `;
@@ -1207,16 +1322,22 @@ async function loadEpisodesForWriterNovel(novelId) {
               </tr>
             </thead>
             <tbody>
-              ${writerState.episodes.map(ep => `
-                <tr>
+              ${writerState.episodes.map(ep => {
+                const isChapter = !ep.parent_id && !ep.parentId;
+                return `
+                <tr style="${isChapter ? 'background:#FAF5FF;' : ''}">
                   <td style="font-weight:700; color:#0B1F33;">
+                    ${isChapter ? `
+                      <span class="chapter-badge" style="background:#EDE9FE; color:#5B21B6; font-size:10.5px; padding:2px 7px; border-radius:4px; font-weight:800; display:inline-block; margin-bottom:2px;">Chapter</span><br>
+                    ` : ''}
                     #${ep.episode_number || ep.chapter_num || '1'}
                   </td>
                   <td>
-                    <div style="font-weight:600; color:#0B1F33;">${escapeHtml(ep.title || `Episode ${ep.episode_number || ep.chapter_num}`)}</div>
+                    <div style="font-weight:600; color:#0B1F33;">${escapeHtml(ep.title || (isChapter ? `Chapter ${ep.episode_number || ep.chapter_num}` : `Episode ${ep.episode_number || ep.chapter_num}`))}</div>
+                    ${isChapter ? `<span style="font-size:11px; color:#7C3AED;">Root Chapter Container</span>` : ''}
                   </td>
                   <td style="text-align:center; color:#64748B;">
-                    ${(ep.word_count || ep.wordCount || 0).toLocaleString()}
+                    ${isChapter ? '—' : (ep.word_count || ep.wordCount || 0).toLocaleString()}
                   </td>
                   <td style="text-align:center;">
                     <span class="writer-badge ${ep.status === 'published' ? 'published' : (ep.status === 'submitted' ? 'review' : 'draft')}">
@@ -1225,24 +1346,39 @@ async function loadEpisodesForWriterNovel(novelId) {
                   </td>
                   <td style="text-align:right;">
                     <div style="display:inline-flex; gap:8px;">
-                      <button type="button" class="btn btn-gold" style="font-size:12.5px; padding:5px 12px;" 
-                              onclick="switchWriterTab('editor', { episodeId: '${ep.id}', novelId: '${novelId}' })">
-                        Edit
-                      </button>
-                      <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px;" 
-                              onclick="previewWriterEpisodeFromList('${ep.id}')" title="Preview Episode">
-                        ${ADMIN_ICONS.eye}
-                      </button>
+                      ${isChapter ? `
+                        <button type="button" class="btn btn-gold" style="font-size:12.5px; padding:5px 12px;" 
+                                onclick="openWriterEditChapterModal('${ep.id}')" title="Edit Chapter Title Only">
+                          Edit
+                        </button>
+                        <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 10px; color:#4F46E5; border-color:#C7D2FE;" 
+                                onclick="switchWriterTab('editor', { episodeId: null, novelId: '${novelId}', parentId: '${ep.id}' })" title="Add Episode to this Chapter">
+                          + Episode
+                        </button>
+                      ` : `
+                        <button type="button" class="btn btn-gold" style="font-size:12.5px; padding:5px 12px;" 
+                                onclick="switchWriterTab('editor', { episodeId: '${ep.id}', novelId: '${novelId}' })">
+                          Edit
+                        </button>
+                        <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px;" 
+                                onclick="previewWriterEpisodeFromList('${ep.id}')" title="Preview Episode">
+                          ${ADMIN_ICONS.eye}
+                        </button>
+                        <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px;" 
+                                onclick="window.copyGeneratedModalLink('${window.location.origin}/#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(ep.episodeNumber || ep.chapterNum || ep.num || '1')}')" title="Copy Content Link">
+                          📋
+                        </button>
+                      `}
                       ${ep.status !== 'published' ? `
                         <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px; color:#DC2626; border-color:#FCA5A5;" 
-                                onclick="deleteWriterEpisode('${ep.id}')" title="Delete Draft Episode">
+                                onclick="deleteWriterEpisode('${ep.id}')" title="Delete Draft">
                           ${ADMIN_ICONS.trash}
                         </button>
                       ` : ''}
                     </div>
                   </td>
                 </tr>
-              `).join('')}
+              `; }).join('')}
             </tbody>
           </table>
         </div>
@@ -1253,6 +1389,152 @@ async function loadEpisodesForWriterNovel(novelId) {
   }
 }
 
+
+/* ========================================================
+   WRITER CHAPTER CREATION WORKFLOW
+   Requires ONLY chapter title & basic details (no content required).
+   After creation, automatically navigates to Episode Creation for that chapter.
+   ======================================================== */
+window.openWriterAddChapterModal = (novelId) => {
+  const existingModal = document.getElementById('modal-writer-add-chapter');
+  if (existingModal) existingModal.remove();
+
+  const currentNovelId = novelId || writerState.selectedNovelId || writerState.novels[0]?.id;
+  const novel = writerState.novels.find(n => n.id === currentNovelId);
+  const novelTitle = novel?.title || 'Novel';
+
+  // Compute next chapter number from root chapters (parent_id IS NULL)
+  const rootChapters = (writerState.episodes || []).filter(e => !e.parent_id && !e.parentId);
+  let maxChapterNum = 0;
+  for (const ch of rootChapters) {
+    const n = parseInt(String(ch.chapter_num || ch.episode_number || ch.chapterNum || ch.episodeNumber || '0'), 10);
+    if (!isNaN(n) && n > maxChapterNum) maxChapterNum = n;
+  }
+  const nextChapterNum = maxChapterNum + 1;
+  const defaultTitle = `${novelTitle} (Chapter ${nextChapterNum})`;
+  const canPublish = writerState.permissions?.accessLevel === 'independent_publish';
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-writer-add-chapter" style="position:fixed; inset:0; background:rgba(11,31,51,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:520px; border-radius:12px; box-shadow:0 12px 36px rgba(0,0,0,0.2); overflow:hidden;">
+        <div style="background:#1A0B2E; color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">➕ Add New Chapter</h3>
+          <button type="button" onclick="document.getElementById('modal-writer-add-chapter').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <form id="form-writer-add-chapter" onsubmit="event.preventDefault(); submitWriterAddChapter('${currentNovelId}');" style="padding:20px;">
+          <div style="display:flex; gap:12px; margin-bottom:14px; background:#F8FAFC; padding:10px 14px; border-radius:8px; border:1px solid #E2E8F0; align-items:center;">
+            <div>
+              <div style="font-size:11px; text-transform:uppercase; color:#64748B; font-weight:700;">Novel</div>
+              <div style="font-weight:700; color:#0B1F33; font-size:14px;">${escapeHtml(novelTitle)}</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+              <div style="font-size:11px; text-transform:uppercase; color:#64748B; font-weight:700;">Auto Number</div>
+              <span class="chapter-number-badge" style="background:#B88635; color:#FFF; font-weight:800; font-size:12px; padding:3px 8px; border-radius:4px;">
+                Chapter ${nextChapterNum}
+              </span>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="writer-form-label" style="font-weight:700; color:#0B1F33; font-size:13px; margin-bottom:4px; display:block;">
+              Chapter Title <span style="color:#EF4444;">*</span>
+            </label>
+            <input type="text" id="w-add-chapter-title-input" class="writer-form-input" 
+                   value="${escapeQuotes(defaultTitle)}" 
+                   placeholder="e.g. ${escapeQuotes(defaultTitle)}" required
+                   style="width:100%; font-size:14px; font-weight:700; padding:10px 12px;">
+            <div style="font-size:11.5px; color:#64748B; margin-top:3px;">
+              Format: <code>${escapeHtml(novelTitle)} (${nextChapterNum})</code> — editable anytime.
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; color:#0B1F33; font-size:13px; margin-bottom:4px; display:block;">
+              Status
+            </label>
+            <select id="w-add-chapter-status-select" class="writer-form-select" style="width:100%;">
+              ${canPublish ? `
+                <option value="published" selected>🚀 Published (Live Now)</option>
+                <option value="draft">📝 Draft (Private)</option>
+              ` : `
+                <option value="draft" selected>📝 Draft (Private)</option>
+                <option value="submitted">⏳ Submit for Admin Review</option>
+              `}
+            </select>
+          </div>
+
+          <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:12px 14px; margin-bottom:18px; display:flex; align-items:flex-start; gap:10px;">
+            <span style="font-size:18px; line-height:1;">✨</span>
+            <div style="font-size:12px; color:#166534; line-height:1.45;">
+              <strong>Streamlined Chapter Workflow:</strong> Only chapter title and basic settings are required. Once created, you will automatically navigate to <strong>Episode Creation</strong> to write episodes and story content.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; border-top:1px solid #F1F5F9; padding-top:14px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-writer-add-chapter').remove()">Cancel</button>
+            <div style="display:flex; gap:8px;">
+              <button type="submit" id="btn-submit-writer-add-chapter" class="btn btn-gold btn-sm" style="padding:8px 20px; font-weight:700;">
+                Create Chapter & Add Episode →
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  document.getElementById('w-add-chapter-title-input')?.focus();
+};
+
+window.submitWriterAddChapter = async (novelId) => {
+  const title = document.getElementById('w-add-chapter-title-input')?.value?.trim();
+  const status = document.getElementById('w-add-chapter-status-select')?.value || 'draft';
+  const submitBtn = document.getElementById('btn-submit-writer-add-chapter');
+
+  if (!title) {
+    showToast('Please enter a chapter title.');
+    return;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating Chapter...';
+  }
+
+  try {
+    const res = await apiFetch('/api/writer/episodes', {
+      method: 'POST',
+      body: JSON.stringify({
+        novelId,
+        parentId: null,
+        title,
+        status,
+        content: ''
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to create chapter.');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter & Add Episode →'; }
+      return;
+    }
+
+    const createdChapter = data.episode;
+    document.getElementById('modal-writer-add-chapter')?.remove();
+    showToast(`Chapter "${title}" created successfully! Opening Episode Creation...`);
+
+    // Reload episodes list in background
+    if (typeof loadEpisodesForWriterNovel === 'function') {
+      loadEpisodesForWriterNovel(novelId).catch(() => {});
+    }
+
+    // Automatically navigate to the Episode Creation page for that chapter
+    switchWriterTab('editor', { episodeId: null, novelId, parentId: createdChapter?.id });
+  } catch (err) {
+    showToast('Error creating chapter: ' + err.message);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Chapter & Add Episode →'; }
+  }
+};
+
 window.openNewEpisodeForCurrentNovel = () => {
   const novelId = writerState.selectedNovelId;
   if (!novelId) {
@@ -1260,6 +1542,136 @@ window.openNewEpisodeForCurrentNovel = () => {
     return;
   }
   switchWriterTab('editor', { episodeId: null, novelId });
+};
+
+
+/* ========================================================
+   WRITER CHAPTER EDIT WORKFLOW
+   Allows editing ONLY the chapter title.
+   Does NOT redirect to episode edit page or modify episode content.
+   Preserves all associated episodes, content, and database records.
+   ======================================================== */
+window.openWriterEditChapterModal = async (chapterId) => {
+  const existingModal = document.getElementById('modal-writer-edit-chapter');
+  if (existingModal) existingModal.remove();
+
+  let chapter = (writerState.episodes || []).find(e => String(e.id) === String(chapterId));
+
+  if (!chapter) {
+    try {
+      const res = await apiFetch(`/api/writer/episodes/${chapterId}`);
+      const data = await res.json();
+      if (data.success && data.episode) {
+        chapter = data.episode;
+      }
+    } catch (e) {
+      console.warn('Error fetching chapter:', e);
+    }
+  }
+
+  if (!chapter) {
+    showToast('Chapter details could not be loaded.');
+    return;
+  }
+
+  const currentNovelId = chapter.novel_id || chapter.novelId || writerState.selectedNovelId;
+  const novel = (writerState.novels || []).find(n => n.id === currentNovelId);
+  const novelTitle = novel?.title || 'Novel';
+  const chapterNum = chapter.chapter_num || chapter.episode_number || chapter.chapterNum || chapter.episodeNumber || '1';
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-writer-edit-chapter" style="position:fixed; inset:0; background:rgba(11,31,51,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px;">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:520px; border-radius:12px; box-shadow:0 12px 36px rgba(0,0,0,0.2); overflow:hidden;">
+        <div style="background:#1A0B2E; color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">✏️ Edit Chapter Title</h3>
+          <button type="button" onclick="document.getElementById('modal-writer-edit-chapter').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <form id="form-writer-edit-chapter" onsubmit="event.preventDefault(); submitWriterEditChapter('${chapter.id}');" style="padding:20px;">
+          <!-- Novel & Chapter Info Card -->
+          <div style="display:flex; gap:12px; margin-bottom:16px; background:#F8FAFC; padding:10px 14px; border-radius:8px; border:1px solid #E2E8F0; align-items:center;">
+            <div>
+              <div style="font-size:11px; text-transform:uppercase; color:#64748B; font-weight:700;">Novel</div>
+              <div style="font-weight:700; color:#0B1F33; font-size:14px;">${escapeHtml(novelTitle)}</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+              <span class="chapter-number-badge" style="background:#B88635; color:#FFF; font-weight:800; font-size:12px; padding:3px 8px; border-radius:4px;">
+                Chapter ${escapeHtml(chapterNum)}
+              </span>
+            </div>
+          </div>
+
+          <!-- Chapter Title Input (ONLY field editable) -->
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="writer-form-label" style="font-weight:700; color:#0B1F33; font-size:13px; margin-bottom:6px; display:block;">
+              Chapter Title <span style="color:#EF4444;">*</span>
+            </label>
+            <input type="text" id="w-edit-chapter-title-input" class="writer-form-input" 
+                   value="${escapeQuotes(chapter.title || '')}" 
+                   placeholder="Enter chapter title" required
+                   style="width:100%; font-size:14px; font-weight:700; padding:10px 12px;">
+            <div style="font-size:11.5px; color:#64748B; margin-top:5px; line-height:1.4;">
+              Edit the chapter title only. All episodes and story content remain intact.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid #F1F5F9; padding-top:14px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-writer-edit-chapter').remove()">Cancel</button>
+            <div style="display:flex; gap:8px;">
+              <button type="submit" id="btn-submit-writer-edit-chapter" class="btn btn-gold btn-sm" style="padding:8px 22px; font-weight:700;">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const inputEl = document.getElementById('w-edit-chapter-title-input');
+  if (inputEl) {
+    inputEl.focus();
+    inputEl.select();
+  }
+};
+
+window.submitWriterEditChapter = async (chapterId) => {
+  const title = document.getElementById('w-edit-chapter-title-input')?.value?.trim();
+  const submitBtn = document.getElementById('btn-submit-writer-edit-chapter');
+
+  if (!title) {
+    showToast('Please enter a chapter title.');
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+  }
+
+  try {
+    const res = await apiFetch(`/api/writer/episodes/${chapterId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to update chapter title.');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Changes'; }
+      return;
+    }
+
+    document.getElementById('modal-writer-edit-chapter')?.remove();
+    showToast('Chapter title updated successfully! 🎉');
+
+    // Refresh episodes table
+    if (typeof loadEpisodesForWriterNovel === 'function' && writerState.selectedNovelId) {
+      loadEpisodesForWriterNovel(writerState.selectedNovelId).catch(() => {});
+    }
+  } catch (err) {
+    showToast('Error updating chapter: ' + err.message);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Changes'; }
+  }
 };
 
 window.deleteWriterEpisode = async (episodeId) => {
@@ -1298,7 +1710,7 @@ window.previewWriterEpisodeFromList = (episodeId) => {
 /* ========================================================
    6. PROFESSIONAL NOVEL WRITING PAGE / RICH-TEXT EDITOR
    ======================================================== */
-async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
+async function renderWriterEditor(canvas, episodeId = null, novelId = null, parentId = null) {
   const currentNovelId = novelId || writerState.selectedNovelId;
   const currentNovel = writerState.novels.find(n => n.id === currentNovelId) || writerState.novels[0];
 
@@ -1308,83 +1720,132 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
       const res = await apiFetch(`/api/writer/episodes/${episodeId}`);
       const data = await res.json();
       ep = data.episode;
+      // Guard: If this is a root chapter container (not an episode), route to chapter title edit modal
+      if (ep && !ep.parent_id && !ep.parentId) {
+        openWriterEditChapterModal(ep.id);
+        switchWriterTab('episodes', { novelId: currentNovelId });
+        return;
+      }
     } catch (e) {
       console.warn('Episode fetch error:', e);
     }
   }
 
   const isEditing = Boolean(ep);
-  const nextNum = ep ? (ep.episode_number || ep.chapter_num || '1') : String((writerState.episodes?.length || 0) + 1);
+  const activeParentId = (parentId !== undefined && parentId !== null) ? parentId : (ep ? (ep.parent_id || ep.parentId) : null);
+  writerState.currentParentId = activeParentId;
+
+  // Find parent chapter info if available
+  let parentChapter = null;
+  if (activeParentId) {
+    parentChapter = (writerState.episodes || []).find(e => Number(e.id) === Number(activeParentId));
+    if (!parentChapter) {
+      try {
+        const res = await apiFetch(`/api/writer/episodes?novelId=${encodeURIComponent(currentNovelId)}`);
+        const data = await res.json();
+        writerState.episodes = data.episodes || [];
+        parentChapter = (writerState.episodes || []).find(e => Number(e.id) === Number(activeParentId));
+      } catch (e) {}
+    }
+  }
+
+  let nextNum = '1';
+  if (ep) {
+    nextNum = ep.episode_number || ep.chapter_num || '1';
+  } else if (parentChapter) {
+    const parentNum = String(parentChapter.chapter_num || parentChapter.episode_number || '1');
+    const existingSubs = (writerState.episodes || []).filter(e => Number(e.parent_id || e.parentId) === Number(parentChapter.id));
+    let maxSuffix = 0;
+    for (const sub of existingSubs) {
+      const subNumStr = String(sub.episode_number || sub.chapter_num || '');
+      if (subNumStr.startsWith(parentNum + '.')) {
+        const rest = subNumStr.slice(parentNum.length + 1);
+        const firstPart = parseInt(rest.split('.')[0], 10);
+        if (!isNaN(firstPart) && firstPart > maxSuffix) maxSuffix = firstPart;
+      }
+    }
+    const nextIdx = Math.max(maxSuffix + 1, existingSubs.length + 1);
+    nextNum = `${parentNum}.${nextIdx}`;
+  } else {
+    nextNum = String((writerState.episodes?.length || 0) + 1);
+  }
+
   writerState.currentEpisode = ep;
   writerState.editorDirty = false;
 
   canvas.innerHTML = `
-    <!-- Distraction-free Writing Workspace Header -->
-    <div class="writer-header-bar">
+    <!-- Dedicated Novel Content Writing Page Header -->
+    <div class="writer-header-bar" style="margin-bottom:16px;">
       <div>
         <a href="#writer?tab=episodes" onclick="switchWriterTab('episodes', { novelId: '${currentNovelId}' })" 
            class="btn btn-outline" style="padding:4px 10px; font-size:12px; margin-bottom:8px; display:inline-flex; align-items:center; gap:6px;">
           ${ADMIN_ICONS.backArrow}
           <span>Back to Episodes</span>
         </a>
-        <h1 class="writer-header-title" id="we-page-title">
-          ${isEditing ? `Episode #${nextNum} — ${escapeHtml(ep?.title || '')}` : `New Episode — ${escapeHtml(currentNovel?.title || 'Story')}`}
+        <h1 class="writer-header-title" id="we-page-title" style="margin:0 0 4px;">
+          ${isEditing ? `Edit Novel Content: ${escapeHtml(ep?.title || '')}` : 'Novel Content Writing'}
         </h1>
+        <p style="font-size:13px; color:#64748B; margin:0;">
+          Write, format, preview reader experience, and generate shareable publish links for frontend threads.
+        </p>
       </div>
 
-      <div class="writer-header-actions">
+      <div class="writer-header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <!-- Live Save Status Indicator -->
         <div id="we-save-status" class="writer-save-status saved">
           <span class="writer-save-dot"></span>
           <span>${isEditing ? 'Saved' : 'Draft'}</span>
         </div>
 
-        <button type="button" class="btn btn-outline" onclick="previewWriterEditorContent()">
+        <button type="button" class="btn btn-outline btn-sm" onclick="previewWriterEditorContent()">
           ${ADMIN_ICONS.eye}
-          <span>Preview</span>
+          <span>Preview Option</span>
         </button>
 
-        <button type="button" class="btn btn-outline" id="we-schedule-btn" style="border-color:#4F46E5; color:#4F46E5; font-weight:600;" 
-                onclick="openWriterScheduleModal('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'})">
-          ⏰ Schedule Release
-        </button>
-        <button type="button" class="btn btn-outline" id="we-save-draft-btn" 
-                onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'draft')">
-          Save Draft
+        <button type="button" class="btn btn-outline btn-sm" id="we-save-draft-btn" 
+                onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'draft', null, false)">
+          💾 Save Draft
         </button>
 
-        ${(writerState.permissions?.accessLevel === 'independent_publish') ? `
-          <button type="button" class="btn btn-gold" id="we-publish-btn" 
-                  onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'published')">
-            Publish Now
-          </button>
-        ` : `
-          <button type="button" class="btn btn-gold" id="we-submit-review-btn" 
-                  onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'submitted')">
-            Submit for Review
-          </button>
-        `}
+        <button type="button" class="btn btn-gold btn-sm" id="we-generate-link-btn" 
+                onclick="generateWriterPublishLink('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'})"
+                style="font-weight:700; padding:8px 18px; box-shadow:0 2px 8px rgba(200,155,60,0.3);">
+          🔗 Generate Publish Link
+        </button>
       </div>
     </div>
 
-    <!-- Episode Details Row -->
+    <!-- Title Field (Freely enter own title without selecting predefined options) -->
     <div class="writer-card" style="padding:18px 24px; margin-bottom:16px;">
       <div id="we-editor-error" style="display:none; color:#DC2626; background:#FEF2F2; border:1px solid #FCA5A5; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px; font-weight:600;"></div>
 
-      <div style="display:grid; grid-template-columns: 140px 1fr; gap:16px; align-items:center;">
-        <div>
-          <label class="writer-form-label" for="we-number">Episode #</label>
-          <input type="text" id="we-number" class="writer-form-input" value="${escapeHtml(nextNum)}" 
-                 placeholder="e.g. 1 or 1.1" required style="font-weight:700; text-align:center;"
-                 oninput="handleEditorInputChange()">
+      ${writerState.editingPublishedId ? `
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">✏️</span>
+            <div>
+              <strong style="color:#1E40AF; font-size:13.5px;">Editing Published Novel</strong>
+              <div style="font-size:12px; color:#3B82F6;">Saving will update the live reader page immediately while preserving the original link and all comments.</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="cancelEditingPublishedNovelWriter()" style="font-size:12px;">Cancel Edit</button>
         </div>
+      ` : ''}
 
-        <div>
-          <label class="writer-form-label" for="we-title">Episode Title</label>
-          <input type="text" id="we-title" class="writer-form-input" 
-                 value="${escapeHtml(ep?.title || '')}" 
-                 placeholder="e.g. Episode ${nextNum}: The Awakening"
-                 oninput="handleEditorInputChange()">
+      <input type="hidden" id="we-novel-id" value="${escapeHtml(currentNovelId || '')}">
+      <input type="hidden" id="we-number" value="${escapeHtml(nextNum || '')}">
+
+      <div>
+        <label class="writer-form-label" for="we-title" style="font-weight:700; color:#0B1F33; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">📝</span> Title <span style="color:#EF4444;">*</span>
+        </label>
+        <input type="text" id="we-title" class="writer-form-input" 
+               value="${escapeHtml(ep?.title || '')}" 
+               placeholder="Enter title..."
+               oninput="handleEditorInputChange()"
+               style="font-size:16px; font-weight:700; height:46px; width:100%; border-radius:8px;">
+        <div style="font-size:12px; color:#64748B; margin-top:6px;">
+          Freely enter your title and content below without selecting predefined options.
         </div>
       </div>
     </div>
@@ -1471,10 +1932,26 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null) {
            oninput="handleStoryInput()"
            placeholder="">${ep?.content || ''}</div>
 
-      <!-- Live Counters & Status Bar -->
-      <div class="writer-editor-footer">
-        <div id="we-word-counter">Words: 0 | Characters: 0</div>
-        <div style="font-size:12px; color:#64748B;">Autosave enabled</div>
+      <!-- Live Counters & Status Bar with Action Buttons -->
+      <div class="writer-editor-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 16px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div id="we-word-counter" style="font-weight:600; color:#0B1F33;">Words: 0 | Characters: 0</div>
+          <span style="color:#CBD5E1;">|</span>
+          <div style="font-size:12px; color:#64748B;">Autosave enabled</div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="previewWriterEditorContent()">
+            ${ADMIN_ICONS.eye}
+            <span>Preview Option</span>
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="saveWriterEpisode('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'}, 'draft', null, false)">
+            💾 Save Draft
+          </button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="generateWriterPublishLink('${currentNovelId}', ${ep ? `'${ep.id}'` : 'null'})" style="font-weight:700;">
+            🔗 Generate Publish Link
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -1561,6 +2038,7 @@ async function autosaveDraftSilently() {
       method,
       body: JSON.stringify({
         novelId: currentNovelId,
+        parentId: writerState.currentParentId ? Number(writerState.currentParentId) : null,
         episodeNumber: num,
         title: title || `Episode ${num}`,
         content: canvas.innerHTML,
@@ -1583,11 +2061,18 @@ async function autosaveDraftSilently() {
   }
 }
 
-window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', scheduledAt = null) => {
+window.generateWriterPublishLink = async (novelId, episodeId) => {
+  const currentEpId = episodeId || writerState.currentEpisode?.id || null;
+  await saveWriterEpisode(novelId, currentEpId, 'draft', null, true);
+};
+
+window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', scheduledAt = null, generateLinkOnly = false) => {
+  const effectiveNovelId = document.getElementById('we-novel-id')?.value || novelId || writerState.selectedNovelId || writerState.novels[0]?.id;
   const num = document.getElementById('we-number')?.value?.trim();
-  const title = document.getElementById('we-title')?.value?.trim() || `Episode ${num}`;
+  const title = document.getElementById('we-title')?.value?.trim();
   const canvas = document.getElementById('we-canvas');
   const content = canvas ? canvas.innerHTML : '';
+  const plainText = (canvas ? canvas.innerText : '').trim();
   const errorEl = document.getElementById('we-editor-error');
   const draftBtn = document.getElementById('we-save-draft-btn');
   const reviewBtn = document.getElementById('we-submit-review-btn');
@@ -1595,12 +2080,52 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', sc
 
   if (errorEl) errorEl.style.display = 'none';
 
-  if (!num) {
+  if (!title) {
     if (errorEl) {
-      errorEl.textContent = 'Episode number is required.';
+      errorEl.textContent = 'Please enter a title.';
       errorEl.style.display = 'block';
     }
+    document.getElementById('we-title')?.focus();
     return;
+  }
+
+  if (!plainText) {
+    if (errorEl) {
+      errorEl.textContent = 'Content cannot be empty.';
+      errorEl.style.display = 'block';
+    }
+    canvas?.focus();
+    return;
+  }
+
+  // If editing an existing published novel, update in-place immediately without generating duplicate records
+  const publishedId = writerState.editingPublishedId || (writerState.currentEpisode && writerState.currentEpisode.publishedArticleId);
+  if (publishedId) {
+    try {
+      const res = await apiFetch(`/api/published-novels/${publishedId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ title, content })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (errorEl) {
+          errorEl.textContent = data.error || 'Failed to update published novel.';
+          errorEl.style.display = 'block';
+        }
+        return;
+      }
+      showToast(`Published novel "${title}" updated successfully! Changes are live on reader page.`);
+      writerState.editorDirty = false;
+      writerState.editingPublishedId = null;
+      switchWriterTab('published-novels');
+      return;
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = 'Error updating published novel: ' + err.message;
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
   }
 
   if (draftBtn) draftBtn.disabled = true;
@@ -1617,8 +2142,8 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', sc
     const res = await apiFetch(url, {
       method,
       body: JSON.stringify({
-        novelId,
-        episodeNumber: num,
+        novelId: effectiveNovelId,
+        episodeNumber: num || undefined,
         title,
         content,
         status: targetStatus,
@@ -1645,6 +2170,14 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', sc
       statusEl.innerHTML = `<span class="writer-save-dot"></span><span>Saved</span>`;
     }
 
+    const epNum = data.episode?.episodeNumber || num || '1';
+    const contentLink = data.contentLink || (`#reader?novel=${encodeURIComponent(novelId)}&ch=${encodeURIComponent(epNum)}`);
+    window.showSavedContentLinkModal({ title, type: 'episode', contentLink });
+
+    if (data.episode) {
+      writerState.currentEpisode = data.episode;
+    }
+
     if (targetStatus === 'submitted') {
       try {
         await apiFetch('/api/writer/submissions', {
@@ -1664,10 +2197,12 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', sc
     } else if (targetStatus === 'published') {
       showToast('✓ Episode published successfully to website! 📖');
     } else {
-      showToast('Episode draft saved successfully! 💾');
+      showToast('Novel content draft saved successfully! 💾');
     }
 
-    switchWriterTab('episodes', { novelId });
+    if (!generateLinkOnly) {
+      // Stay on page if user is actively writing
+    }
   } catch (err) {
     if (errorEl) {
       errorEl.textContent = err.message || 'Error communicating with server.';
@@ -1680,19 +2215,17 @@ window.saveWriterEpisode = async (novelId, episodeId, targetStatus = 'draft', sc
 };
 
 window.previewWriterEditorContent = () => {
-  const currentNovel = writerState.novels.find(n => n.id === writerState.selectedNovelId);
-  const num = document.getElementById('we-number')?.value || '1';
-  const title = document.getElementById('we-title')?.value || `Episode ${num}`;
+  const title = document.getElementById('we-title')?.value?.trim() || 'Untitled Content';
   const canvas = document.getElementById('we-canvas');
   const content = canvas ? canvas.innerHTML : '<p>No content written yet.</p>';
   const authorName = writerState.user?.name || writerState.user?.username || 'Writer';
 
   openReaderPreviewModal({
-    novelTitle: currentNovel?.title || 'Novel Story',
+    novelTitle: 'Rudhra Novels',
     episodeTitle: title,
     authorName,
-    cover: currentNovel?.cover || '/default-cover.jpg',
-    genre: currentNovel?.genre || 'Novel',
+    cover: '/default-cover.jpg',
+    genre: 'Reader View',
     content,
     isDraft: writerState.editorDirty || true
   });
@@ -1701,48 +2234,81 @@ window.previewWriterEditorContent = () => {
 /* ========================================================
    7. READER PREVIEW MODAL
    ======================================================== */
+window.setWriterPreviewTheme = (theme) => {
+  const body = document.querySelector('.writer-preview-body');
+  if (!body) return;
+  body.classList.remove('mode-light', 'mode-sepia', 'mode-dark');
+  body.classList.add(`mode-${theme}`);
+  document.querySelectorAll('.writer-theme-pill').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector(`.writer-theme-${theme}`);
+  if (activeBtn) activeBtn.classList.add('active');
+};
+
 function openReaderPreviewModal({ novelTitle, episodeTitle, authorName, cover, genre, content, isDraft }) {
   // Remove existing modal if open
   const existing = document.getElementById('writer-reader-preview-overlay');
   if (existing) existing.remove();
 
+  const plainText = (content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const wordCount = plainText ? plainText.split(/\s+/).length : 0;
+  const readTimeMins = Math.max(1, Math.ceil(wordCount / 200));
+
   const overlay = document.createElement('div');
   overlay.id = 'writer-reader-preview-overlay';
   overlay.className = 'writer-preview-overlay';
   overlay.innerHTML = `
-    <div class="writer-preview-modal" role="dialog" aria-modal="true" aria-labelledby="wpreview-title">
-      <!-- Preview Notice Bar -->
-      <div class="writer-preview-header">
+    <div class="writer-preview-modal" role="dialog" aria-modal="true" aria-labelledby="wpreview-title" style="max-width:860px; border-radius:14px; overflow:hidden;">
+      <!-- Preview Header with Themes and Generate Link -->
+      <div class="writer-preview-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#0B1F33; padding:12px 20px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:16px;">📖</span>
-          <span style="font-weight:600; font-size:13.5px;">Reader Preview Mode ${isDraft ? '— (Draft Content)' : ''}</span>
+          <span style="font-weight:600; font-size:13.5px; color:#FFFFFF;">Live Reader Preview ${isDraft ? '— (Draft Content)' : ''}</span>
         </div>
-        <button type="button" class="btn btn-outline" style="color:#FFFFFF; border-color:rgba(255,255,255,0.25); padding:3px 10px; font-size:12px;" onclick="closeReaderPreviewModal()">
-          ✕ Close Preview
-        </button>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; gap:4px;">
+            <button type="button" class="writer-theme-pill writer-theme-light active" style="font-size:11px; padding:3px 8px; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer;" onclick="setWriterPreviewTheme('light')">Light</button>
+            <button type="button" class="writer-theme-pill writer-theme-sepia" style="font-size:11px; padding:3px 8px; border-radius:4px; border:1px solid #CBD5E1; background:#FBF0D9; color:#5F4B32; cursor:pointer;" onclick="setWriterPreviewTheme('sepia')">Sepia</button>
+            <button type="button" class="writer-theme-pill writer-theme-dark" style="font-size:11px; padding:3px 8px; border-radius:4px; border:1px solid #475569; background:#181A1B; color:#E8E6E3; cursor:pointer;" onclick="setWriterPreviewTheme('dark')">Dark</button>
+          </div>
+          <button type="button" class="btn btn-gold btn-sm" onclick="closeReaderPreviewModal(); generateWriterPublishLink('${writerState.selectedNovelId}', ${writerState.currentEpisode ? `'${writerState.currentEpisode.id}'` : 'null'})" style="font-weight:700;">
+            🔗 Generate Publish Link
+          </button>
+          <button type="button" class="btn btn-outline" style="color:#FFFFFF; border-color:rgba(255,255,255,0.25); padding:4px 10px; font-size:12px;" onclick="closeReaderPreviewModal()">
+            ✕ Close Preview
+          </button>
+        </div>
       </div>
 
       <!-- Reader Simulation Canvas -->
-      <div class="writer-preview-body">
-        <div style="text-align:center; margin-bottom:32px; border-bottom:1px solid #E2E8F0; padding-bottom:24px;">
-          <div style="font-size:13px; font-weight:700; color:#B88635; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">
-            ${escapeHtml(genre || 'Novel')}
+      <div class="writer-preview-body mode-light" style="padding:28px 24px; max-height:78vh; overflow-y:auto; transition:background 0.2s, color 0.2s;">
+        <div style="text-align:center; margin-bottom:28px; border-bottom:1px solid rgba(200,155,60,0.3); padding-bottom:20px;">
+          <div style="font-size:12px; font-weight:700; color:#B88635; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">
+            Rudhra Prarthana Novels • ${escapeHtml(genre || 'Novel')}
           </div>
-          <h2 id="wpreview-title" style="font-family:'Playfair Display',Georgia,serif; font-size:26px; color:#0B1F33; margin:0 0 6px;">
-            ${escapeHtml(novelTitle)}
-          </h2>
-          <h3 style="font-size:16px; font-weight:600; color:#64748B; margin:0 0 10px;">
+          <h2 id="wpreview-title" style="font-family:'Playfair Display',Georgia,serif; font-size:26px; color:inherit; margin:0 0 6px; font-weight:700;">
             ${escapeHtml(episodeTitle)}
-          </h3>
-          <div style="font-size:12.5px; color:#94A3B8;">
-            By ${escapeHtml(authorName)}
+          </h2>
+          <div style="font-size:12.5px; opacity:0.8; margin-top:4px;">
+            ✍️ By ${escapeHtml(authorName)} • ⏱ ${readTimeMins} min read • ${wordCount.toLocaleString()} words
           </div>
         </div>
 
         <!-- Rendered Story Content -->
-        <article class="reader-formatted-content" style="max-width:680px; margin:0 auto; font-family:'Lora','Georgia','Noto Sans Tamil',serif; font-size:17.5px; line-height:1.9; color:#1E293B;">
+        <article class="reader-formatted-content" style="max-width:700px; margin:0 auto; font-family:'Lora','Georgia',serif; font-size:1.15rem; line-height:1.9;">
           ${content}
         </article>
+
+        <div style="text-align:center; margin-top:36px; font-size:1.6rem; color:#C89B3C;">❦</div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #E2E8F0; padding-top:16px; margin-top:24px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeReaderPreviewModal()">
+            ← Back to Edit
+          </button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="closeReaderPreviewModal(); generateWriterPublishLink('${writerState.selectedNovelId}', ${writerState.currentEpisode ? `'${writerState.currentEpisode.id}'` : 'null'})" style="font-weight:700;">
+            🔗 Generate Publish Link
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -1793,6 +2359,213 @@ async function renderWriterStatus(canvas) {
     </div>
   `;
 }
+
+/* ========================================================
+   PUBLISHED NOVEL MANAGEMENT TAB (Writer)
+   ======================================================== */
+async function renderWriterPublishedNovels(canvas) {
+  canvas.innerHTML = `
+    <div class="writer-header-bar" style="margin-bottom:16px;">
+      <div>
+        <h1 class="writer-header-title" style="display:flex; align-items:center; gap:8px;">
+          <span>📚</span> Published Novel Management
+        </h1>
+        <p class="writer-header-sub">Manage, edit, and review all novels and stories you have published for readers.</p>
+      </div>
+      <div class="writer-header-actions">
+        <button type="button" class="btn btn-gold btn-sm" onclick="writerState.editingPublishedId = null; writerState.currentEpisode = null; switchWriterTab('editor');">
+          ✍️ + Write Novel Content
+        </button>
+      </div>
+    </div>
+
+    <!-- Summary Stats Strip -->
+    <div id="writer-published-summary-mount" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+      <div class="writer-card" style="padding:16px 20px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">My Published Novels</div>
+        <div id="wpub-stat-total" style="font-size:24px; font-weight:800; color:#0B1F33; margin-top:4px;">Loading…</div>
+      </div>
+      <div class="writer-card" style="padding:16px 20px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Total Reader Views</div>
+        <div id="wpub-stat-views" style="font-size:24px; font-weight:800; color:#2563EB; margin-top:4px;">-</div>
+      </div>
+      <div class="writer-card" style="padding:16px 20px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Reader Reviews / Comments</div>
+        <div id="wpub-stat-comments" style="font-size:24px; font-weight:800; color:#10B981; margin-top:4px;">-</div>
+      </div>
+    </div>
+
+    <div id="writer-published-table-mount">
+      <div style="text-align:center; padding:40px; color:#64748B;">Loading published novels…</div>
+    </div>
+  `;
+
+  await loadPublishedNovelsWriter();
+}
+
+async function loadPublishedNovelsWriter() {
+  const mount = document.getElementById('writer-published-table-mount');
+  if (!mount) return;
+
+  try {
+    const res = await apiFetch('/api/published-novels');
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Failed to load published novels: ${data.error || 'Server error'}</div>`;
+      return;
+    }
+
+    const items = data.items || [];
+    const navCount = document.getElementById('wnav-published-count');
+    if (navCount) navCount.textContent = items.length;
+
+    const totalViews = items.reduce((acc, i) => acc + (i.viewsCount || 0), 0);
+    const totalComments = items.reduce((acc, i) => acc + (i.commentsCount || 0), 0);
+
+    const totalEl = document.getElementById('wpub-stat-total');
+    const viewsEl = document.getElementById('wpub-stat-views');
+    const commentsEl = document.getElementById('wpub-stat-comments');
+    if (totalEl) totalEl.textContent = items.length;
+    if (viewsEl) viewsEl.textContent = totalViews.toLocaleString();
+    if (commentsEl) commentsEl.textContent = totalComments.toLocaleString();
+
+    if (items.length === 0) {
+      mount.innerHTML = `
+        <div class="writer-card" style="padding:48px 24px; text-align:center;">
+          <div style="font-size:40px; margin-bottom:12px;">📚</div>
+          <h3 style="font-size:18px; font-weight:700; color:#0B1F33; margin:0 0 6px;">No Published Novels Yet</h3>
+          <p style="color:#64748B; font-size:14px; margin:0 0 20px;">You haven't published any novel content to frontend categories yet.</p>
+          <button type="button" class="btn btn-gold btn-sm" onclick="switchWriterTab('editor')">
+            ✍️ + Write Your First Novel Content
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    mount.innerHTML = `
+      <div class="writer-table-wrap" style="box-shadow:0 1px 3px rgba(0,0,0,0.05); border-radius:12px; overflow-x:auto;">
+        <table class="admin-table" style="width:100%; border-collapse:collapse; min-width:850px;">
+          <thead>
+            <tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0;">
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Title & Reader Link</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Category / Section</th>
+              <th style="padding:14px 18px; text-align:center; font-size:12.5px; font-weight:700; color:#475569;">Views / Comments</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Published Date</th>
+              <th style="padding:14px 18px; text-align:right; font-size:12.5px; font-weight:700; color:#475569;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => `
+              <tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'">
+                <td style="padding:14px 18px;">
+                  <div style="font-weight:700; font-size:14.5px; color:#0B1F33; margin-bottom:4px;">
+                    <a href="#thread?id=${item.id}" target="_blank" style="color:#0B1F33; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                      <span>${escapeHtml(item.title)}</span>
+                      <span style="font-size:11px; color:#3B82F6;">↗</span>
+                    </a>
+                  </div>
+                  <div style="font-size:12px; color:#64748B; display:flex; align-items:center; gap:8px;">
+                    <span style="background:#F1F5F9; padding:2px 6px; border-radius:4px; font-family:monospace; font-size:11px;">#thread?id=${item.id}</span>
+                    <button type="button" class="btn btn-outline" style="padding:1px 6px; font-size:10.5px; height:auto;" onclick="navigator.clipboard.writeText(window.location.origin + '/#thread?id=${item.id}'); showToast('Reader link copied!');">
+                      📋 Copy Link
+                    </button>
+                  </div>
+                </td>
+                <td style="padding:14px 18px; font-size:13px;">
+                  <span style="background:#EDE9FE; color:#5B21B6; padding:3px 8px; border-radius:6px; font-weight:600; font-size:12px;">
+                    ${escapeHtml(item.categoryTitle || 'General')}
+                  </span>
+                  ${item.subcategoryTitle ? `
+                    <div style="font-size:11.5px; color:#64748B; margin-top:4px;">
+                      ${escapeHtml(item.subcategoryTitle)}
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="padding:14px 18px; text-align:center; font-size:12.5px;">
+                  <span style="font-weight:700; color:#0B1F33;">${item.viewsCount}</span> <span style="color:#94A3B8;">views</span>
+                  <div style="font-size:11.5px; color:#64748B;">${item.commentsCount} comments</div>
+                </td>
+                <td style="padding:14px 18px; font-size:12.5px; color:#64748B;">
+                  ${item.publishedAt ? new Date(item.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                </td>
+                <td style="padding:14px 18px; text-align:right;">
+                  <div style="display:inline-flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="editPublishedNovelWriter(${item.id})" style="display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Edit Title and Content in Editor">
+                      ✏️ Edit
+                    </button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="deletePublishedNovelWriter(${item.id}, '${escapeQuote(item.title)}')" style="color:#DC2626; border-color:#FCA5A5; display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Delete Published Novel">
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Error loading published novels: ${err.message}</div>`;
+  }
+}
+
+window.editPublishedNovelWriter = async (publishedId) => {
+  try {
+    const res = await apiFetch(`/api/published-novels/${publishedId}`);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to load published novel for editing.');
+      return;
+    }
+    const item = data.item;
+    writerState.editingPublishedId = item.id;
+    writerState.currentEpisode = {
+      id: item.chapterId || null,
+      publishedArticleId: item.id,
+      novelId: item.novelId,
+      title: item.title,
+      content: item.content,
+      status: 'published'
+    };
+    switchWriterTab('editor');
+
+    setTimeout(() => {
+      const titleInput = document.getElementById('we-title');
+      const canvas = document.getElementById('we-canvas');
+      if (titleInput) titleInput.value = item.title || '';
+      if (canvas) canvas.innerHTML = item.content || '';
+      if (typeof handleStoryInput === 'function') handleStoryInput(false);
+      showToast(`Editing published novel "${item.title}". Update title & content, then click Save.`);
+    }, 150);
+  } catch (err) {
+    showToast('Error opening published novel: ' + err.message);
+  }
+};
+
+window.cancelEditingPublishedNovelWriter = () => {
+  writerState.editingPublishedId = null;
+  writerState.currentEpisode = null;
+  switchWriterTab('published-novels');
+};
+
+window.deletePublishedNovelWriter = async (id, title) => {
+  const confirmed = confirm(`Are you sure you want to delete the published novel "${title}"?\n\nThis will permanently remove it from the reader page and delete associated comments.`);
+  if (!confirmed) return;
+
+  try {
+    const res = await apiFetch(`/api/published-novels/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to delete published novel.');
+      return;
+    }
+    showToast(`Published novel "${title}" was successfully deleted.`);
+    loadPublishedNovelsWriter();
+  } catch (err) {
+    showToast('Error deleting published novel: ' + err.message);
+  }
+};
 
 /* ========================================================
    9. WRITER PROFILE & PASSWORD TAB
@@ -2489,11 +3262,9 @@ async function renderWriterSchedule(canvas) {
                     </td>
                     <td style="text-align:right;">
                       <div style="display:inline-flex; align-items:center; gap:6px;">
-                        ${e.canPublishIndependently && !isUnderReview ? `
-                          <button type="button" class="btn btn-gold btn-xs" onclick="writerPublishNowAction(${e.id})" title="Publish live immediately">
-                            🚀 Publish Now
+                        <button type="button" class="btn btn-outline btn-xs" onclick="window.copyGeneratedModalLink('${window.location.origin}/#reader?novel=${encodeURIComponent(e.novel_id || currentNovelId)}&ch=${encodeURIComponent(e.episode_number || e.chapter_num || '1')}')" title="Copy Content Link">
+                            📋 Copy Link
                           </button>
-                        ` : ''}
                         <button type="button" class="btn btn-outline btn-xs" onclick="openWriterRescheduleModal(${e.id}, '${escapeQuote(e.title)}', '${e.scheduledAt}')" title="Change date/time">
                           ✏️ Reschedule
                         </button>
@@ -2546,7 +3317,7 @@ window.openWriterScheduleModal = (novelId, episodeId) => {
 
   const minsOptions = Array.from({ length: 60 }, (_, i) => {
     const val = String(i).padStart(2, '0');
-    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>:${val}</option>`;
+    return `<option value="${val}" ${val === defMin ? 'selected' : ''}>${val}</option>`;
   }).join('');
 
   const modalHtml = `
@@ -2578,13 +3349,10 @@ window.openWriterScheduleModal = (novelId, episodeId) => {
                 <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
               </div>
               <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                  <input type="number" id="wsched-minute" class="writer-form-input" min="0" max="59" step="1" value="${defMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onWriterMinuteType(this, 'wsched-minute-select')" onblur="normalizeWriterMinuteOnBlur(this, 'wsched-minute-select')" title="Type any minute 00-59">
-                  <select id="wsched-minute-select" class="writer-form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onWriterMinuteSelect(this, 'wsched-minute')" title="Or choose minute 00-59">
-                    ${minsOptions}
-                  </select>
-                </div>
-                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+                <select id="wsched-minute" class="writer-form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateWriterSchedPreview()">
+                  ${minsOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59)</div>
               </div>
               <div>
                 <select id="wsched-ampm" class="writer-form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateWriterSchedPreview()">
@@ -2742,7 +3510,7 @@ window.openWriterRescheduleModal = (episodeId, title, currentSched) => {
 
   const minsOptions = Array.from({ length: 60 }, (_, i) => {
     const val = String(i).padStart(2, '0');
-    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>:${val}</option>`;
+    return `<option value="${val}" ${val === curMin ? 'selected' : ''}>${val}</option>`;
   }).join('');
 
   const modalHtml = `
@@ -2774,13 +3542,10 @@ window.openWriterRescheduleModal = (episodeId, title, currentSched) => {
                 <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Hour</div>
               </div>
               <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                  <input type="number" id="wresched-minute" class="writer-form-input" min="0" max="59" step="1" value="${curMin}" placeholder="00-59" style="width:52%; padding:9px 4px; font-weight:700; text-align:center;" oninput="onWriterReschedMinuteType(this, 'wresched-minute-select')" onblur="normalizeWriterReschedMinuteOnBlur(this, 'wresched-minute-select')" title="Type any minute 00-59">
-                  <select id="wresched-minute-select" class="writer-form-input" style="width:48%; padding:9px 2px; font-weight:600; text-align:center;" onchange="onWriterReschedMinuteSelect(this, 'wresched-minute')" title="Or choose minute 00-59">
-                    ${minsOptions}
-                  </select>
-                </div>
-                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59, type or select)</div>
+                <select id="wresched-minute" class="writer-form-input" style="width:100%; text-align:center; font-weight:600;" onchange="updateWriterReschedPreview()">
+                  ${minsOptions}
+                </select>
+                <div style="font-size:11px; color:#64748B; text-align:center; margin-top:3px;">Minute (00-59)</div>
               </div>
               <div>
                 <select id="wresched-ampm" class="writer-form-input" style="width:100%; text-align:center; font-weight:700;" onchange="updateWriterReschedPreview()">

@@ -3,15 +3,15 @@
 
 -- 1. Extend forum_categories
 ALTER TABLE forum_categories
-  ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS color VARCHAR(50) NOT NULL DEFAULT '#2E1065';
+  ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1,
+  ADD COLUMN color VARCHAR(50) NOT NULL DEFAULT '#2E1065';
 
 -- 2. Extend forum_topics
 ALTER TABLE forum_topics
-  ADD COLUMN IF NOT EXISTS content TEXT NULL,
-  ADD COLUMN IF NOT EXISTS image VARCHAR(255) NULL,
-  ADD COLUMN IF NOT EXISTS is_pinned TINYINT(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;
+  ADD COLUMN content TEXT NULL,
+  ADD COLUMN image VARCHAR(255) NULL,
+  ADD COLUMN is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN sort_order INT NOT NULL DEFAULT 0;
 
 -- 3. Ensure the 5 primary requested categories exist and are ordered cleanly
 -- Update existing General, Ongoing Novels, Short Stories
@@ -23,8 +23,8 @@ UPDATE forum_categories
 SET title = 'Ongoing Novels', icon = '📖', sort_order = 2, color = '#3B0764', is_active = 1 
 WHERE id = 'ongoing-novels';
 
-INSERT INTO forum_categories (id, title, description, icon, sort_order, is_active, color)
-VALUES ('completed-novels', 'Completed Novels', 'Discussions, reviews, and reading experiences on completed novels and series.', '📚', 3, 1, '#4C1D95')
+INSERT INTO forum_categories (id, title, icon, sort_order, is_active, color)
+VALUES ('completed-novels', 'Completed Novels', '📚', 3, 1, '#4C1D95')
 ON DUPLICATE KEY UPDATE 
   title = VALUES(title), 
   icon = VALUES(icon),

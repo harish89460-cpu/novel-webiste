@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query, queryOne } from './db.js';
-import { saveBase64Image } from './auth.js';
+import { saveBase64Image, deleteLocalUploadFile } from './auth.js';
 import { checkNovelViewAccess } from './novels.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -197,7 +197,9 @@ export async function getAllAudioNovelsHierarchy({ forAdmin = false, search = ''
 /**
  * Retrieve Audio Novel details with complete hierarchical tree of Chapters, Episodes, and Sub-Episodes
  */
-export async function getAudioNovelHierarchy(novelIdOrSlug, { forAdmin = false, currentUser = null } = {}) {
+const recentAudioViews = new Map();
+
+export async function getAudioNovelHierarchy(novelIdOrSlug, { forAdmin = false, currentUser = null, incrementView = true } = {}) {
   if (!novelIdOrSlug) return null;
 
   const novel = await queryOne(`
@@ -213,13 +215,20 @@ export async function getAudioNovelHierarchy(novelIdOrSlug, { forAdmin = false, 
     }
   }
 
-  // Atomically increment views for public playback
-  if (!forAdmin) {
-    try {
-      const curViews = parseInt(String(novel.views || '0').replace(/,/g, ''), 10) || 0;
-      await query('UPDATE novels SET views = ? WHERE id = ?;', [String(curViews + 1), novel.id]);
-      novel.views = String(curViews + 1);
-    } catch {}
+  // Atomically increment views for public playback (with debounce)
+  if (!forAdmin && incrementView) {
+    const debounceKey = `${currentUser?.id || 'guest'}_${novel.id}`;
+    const lastTime = recentAudioViews.get(debounceKey) || 0;
+    const now = Date.now();
+    if (now - lastTime > 5000) {
+      recentAudioViews.set(debounceKey, now);
+      try {
+        const curViews = parseInt(String(novel.views || '0').replace(/,/g, ''), 10) || 0;
+        await query('UPDATE novels SET views = ? WHERE id = ?;', [String(curViews + 1), novel.id]);
+        novel.views = String(curViews + 1);
+      } catch {}
+    }
+    if (recentAudioViews.size > 20000) recentAudioViews.clear();
   }
 
   // Fetch all chapters & episodes belonging to this audio novel
@@ -435,10 +444,19 @@ export async function updateAudioNovel(id, data) {
 
   let cover = existing.cover;
   if (data.cover !== undefined) {
-    if (data.cover && typeof data.cover === 'string' && data.cover.startsWith('data:image/')) {
-      cover = saveBase64Image(data.cover, 'covers', 'audio-novel');
+    const rawCover = String(data.cover || '').trim();
+    if (!rawCover || rawCover === '/default-cover.jpg') {
+      if (existing.cover && existing.cover !== '/default-cover.jpg') {
+        deleteLocalUploadFile(existing.cover);
+      }
+      cover = '/default-cover.jpg';
+    } else if (rawCover.startsWith('data:image/') || rawCover.startsWith('data:;base64,') || /^[A-Za-z0-9+/=]{100,}$/.test(rawCover)) {
+      cover = saveBase64Image(rawCover, 'covers', 'audio-novel', existing.cover);
     } else {
-      cover = data.cover;
+      if (existing.cover && existing.cover !== rawCover) {
+        deleteLocalUploadFile(existing.cover);
+      }
+      cover = rawCover;
     }
   }
 
@@ -511,7 +529,7 @@ export async function deleteAudioNovel(id) {
  * Fetch hierarchical chapters and episodes tree for a specific audio novel
  */
 export async function getAudioEpisodesTree(novelId, { forAdmin = false } = {}) {
-  const hierarchy = await getAudioNovelHierarchy(novelId, { forAdmin });
+  const hierarchy = await getAudioNovelHierarchy(novelId, { forAdmin, incrementView: false });
   if (!hierarchy) return [];
   return hierarchy.chapters;
 }

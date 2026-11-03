@@ -1,6 +1,6 @@
 -- Migration 018: Add novel_id and chapter_num to forum_topics and link topics to novels
-ALTER TABLE forum_topics ADD COLUMN IF NOT EXISTS novel_id VARCHAR(100) NULL AFTER category_title;
-ALTER TABLE forum_topics ADD COLUMN IF NOT EXISTS chapter_num VARCHAR(50) NULL AFTER novel_id;
+ALTER TABLE forum_topics ADD COLUMN novel_id VARCHAR(100) NULL AFTER category_title;
+ALTER TABLE forum_topics ADD COLUMN chapter_num VARCHAR(50) NULL AFTER novel_id;
 
 UPDATE forum_topics SET novel_id = 'kaadhal-konden-kanave', chapter_num = '18' WHERE id = 'topic-kaadhal-kanave-18';
 UPDATE forum_topics SET novel_id = 'nenjam-marappadhillai', chapter_num = '24' WHERE id = 'topic-nenjam-24';

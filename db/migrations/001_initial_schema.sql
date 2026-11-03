@@ -1,12 +1,6 @@
 -- Rudhra Prarthana Novels — Database Migration 001
 -- Initial Relational SQL Schema for MySQL 8.0+
 
-CREATE DATABASE IF NOT EXISTS rp_novels_db 
-  CHARACTER SET utf8mb4 
-  COLLATE utf8mb4_unicode_ci;
-
-USE rp_novels_db;
-
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
