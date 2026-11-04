@@ -152,7 +152,7 @@ export async function getContentHierarchy(currentUser = null) {
     const subCommentCounts = await query(`
       SELECT novel_id, COUNT(*) AS count 
       FROM comments 
-      WHERE novel_id LIKE 'review_sub_%' AND status = 'approved'
+      WHERE novel_id LIKE 'review_sub_%'
       GROUP BY novel_id;
     `);
     for (const row of subCommentCounts) {
