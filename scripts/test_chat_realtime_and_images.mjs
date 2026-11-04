@@ -6,7 +6,7 @@ import path from 'node:path';
 import { query, queryOne } from '../backend/db.js';
 
 const LOCAL_API = 'http://localhost:3000';
-const TUNNEL_API = 'https://moss-textile-butterfly-ten.trycloudflare.com';
+const TUNNEL_API = 'https://association-consecutive-rip-incident.trycloudflare.com';
 
 function httpRequest(urlStr, options = {}) {
   return new Promise((resolve, reject) => {
