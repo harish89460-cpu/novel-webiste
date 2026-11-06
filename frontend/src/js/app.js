@@ -1198,6 +1198,7 @@ async function renderForumView(container, hash = '') {
 
   const hierarchy = Array.isArray(hierarchyData?.hierarchy) ? hierarchyData.hierarchy : [];
   const currentCategory = currentCategoryId ? hierarchy.find(c => String(c.id) === String(currentCategoryId)) : null;
+  const isCurrentCategoryLeaf = currentCategory ? (!currentCategory.subcategories || currentCategory.subcategories.length === 0) : false;
 
   // Check if current user is an authorized administrator or writer
   const isAdmin = Boolean(
@@ -1245,8 +1246,9 @@ async function renderForumView(container, hash = '') {
     }
 
     if (currentSub) {
-      const subArticles = currentSub.articles || [];
-      const hasChildren = Boolean(currentSub.children && currentSub.children.length > 0);
+      const hasChildren = Boolean((currentSub.children && currentSub.children.length > 0) || (currentSub.subcategories && currentSub.subcategories.length > 0));
+      const isLeaf = !hasChildren;
+      const subArticles = isLeaf ? (currentSub.articles || []) : [];
 
       container.innerHTML = `
         <div class="container forum-page">
@@ -1302,7 +1304,7 @@ async function renderForumView(container, hash = '') {
                   <span>•</span>
                   <span class="forum-summary-stat-item"><strong>${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</strong> Views</span>
                 </div>
-                ${(!hasChildren && subArticles.length > 0 && (currentSub.stats?.latestTitle || subArticles[0]?.title)) ? `
+                ${(isLeaf && subArticles.length > 0 && (currentSub.stats?.latestTitle || subArticles[0]?.title)) ? `
                   <div class="forum-summary-latest">
                     <span>Latest:</span>
                     <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
@@ -1613,7 +1615,7 @@ async function renderForumView(container, hash = '') {
       `;
 
       loadForumMembersOnline();
-      if (!hasChildren) {
+      if (isLeaf) {
         initInlineThreadComposer(currentSub.id, parentMain?.id || currentSub.mainCategoryId || currentSub.main_category_id || '');
       }
       // Discussions mounted on dedicated thread pages
@@ -1737,8 +1739,9 @@ async function renderForumView(container, hash = '') {
                 ? (cat.stats?.totalViews ?? subs.reduce((s, sub) => s + (sub.stats?.totalViews || 0), 0))
                 : (cat.stats?.totalViews ?? novels.reduce((s, n) => s + Number(n.viewsCount || 0), 0));
 
-              const directCatArt = (cat.articles && cat.articles.length > 0) ? cat.articles[0] : null;
-              const latestTitle = directCatArt ? directCatArt.title : (cat.stats?.latestTitle || (novels[0]?.title ? `${novels[0].title} — ${novels[0].latestEpisodeTitle || 'Latest Release'}` : null));
+              const isCatLeaf = (!subs || subs.length === 0);
+              const directCatArt = (isCatLeaf && cat.articles && cat.articles.length > 0) ? cat.articles[0] : null;
+              const latestTitle = isCatLeaf ? (directCatArt ? directCatArt.title : (cat.stats?.latestTitle || null)) : (novels[0]?.title ? `${novels[0].title} — ${novels[0].latestEpisodeTitle || 'Latest Release'}` : null);
               const latestLink = directCatArt ? `#thread?id=${encodeURIComponent(directCatArt.uniqueSlug || directCatArt.id)}` : (cat.stats?.latestLink || (novels[0]?.readLink || novels[0]?.link || '#'));
               const latestDate = directCatArt ? (directCatArt.publishedAt || directCatArt.createdAt) : (cat.stats?.latestDate || (novels[0]?.updatedDate || null));
 
@@ -1774,7 +1777,7 @@ async function renderForumView(container, hash = '') {
                       <span>•</span>
                       <span class="forum-summary-stat-item"><strong>${Number(totalCatViews).toLocaleString()}</strong> Views</span>
                     </div>
-                    ${latestTitle ? `
+                    ${(isCatLeaf && latestTitle) ? `
                       <div class="forum-summary-latest">
                         <span>Latest:</span>
                         <a href="${latestLink}">${escapeHtml(latestTitle)}</a>
@@ -1783,8 +1786,8 @@ async function renderForumView(container, hash = '') {
                     ` : ''}
                   </div>
 
-                  <!-- Dedicated Category Threads & Composer (When viewing Category Dedicated Page) -->
-                  ${currentCategoryId ? `
+                  <!-- Dedicated Category Threads & Composer (ONLY when viewing Leaf Category Dedicated Page) -->
+                  ${(currentCategoryId && isCatLeaf) ? `
                     <div style="padding:0 16px;">
                       <!-- Inline Thread Creator for Category -->
                       <div class="thread-create-wrapper" id="thread-composer-box" style="margin-bottom:16px;">
@@ -2093,8 +2096,8 @@ async function renderForumView(container, hash = '') {
 
   loadForumMembersOnline();
 
-  // Initialize composer on category dedicated page if viewing single category
-  if (currentCategoryId) {
+  // Initialize composer on category dedicated page ONLY if it is a leaf category
+  if (currentCategoryId && isCurrentCategoryLeaf) {
     initInlineThreadComposer('', currentCategoryId);
   }
 

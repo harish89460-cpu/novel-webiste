@@ -323,9 +323,11 @@ export async function getContentHierarchy(currentUser = null) {
 
       return directSubs.map(sub => {
         const childSubs = buildSubcategoryTree(sub.id);
+        const hasChildren = childSubs.length > 0;
+        const isLeaf = !hasChildren;
 
         // Filter accessible articles strictly under this exact subcategory level
-        const directArticles = allArticles.filter(a => String(a.sub_category_id) === String(sub.id));
+        const directArticles = isLeaf ? allArticles.filter(a => String(a.sub_category_id) === String(sub.id)) : [];
         const accessibleArticles = directArticles.filter(a => {
           if (isAdmin) return true;
           if (isRestricted('content', a.id)) return false;
@@ -338,7 +340,7 @@ export async function getContentHierarchy(currentUser = null) {
           return true;
         });
 
-        const sortedSubArticles = [...accessibleArticles].sort((a, b) => new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0));
+        const sortedSubArticles = isLeaf ? [...accessibleArticles].sort((a, b) => new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0)) : [];
         const subDiscussionComments = subCommentsMap.get(sub.id) || 0;
 
         const childItems = childSubs.reduce((sum, c) => sum + (c.stats?.totalItems || 0), 0);
@@ -357,29 +359,37 @@ export async function getContentHierarchy(currentUser = null) {
           status: sub.status || 'published',
           isActive: Boolean(sub.is_active),
           isDisabled: Boolean(sub.is_disabled),
+          hasChildren,
+          isLeaf,
           children: childSubs,
           subcategories: childSubs,
-          articles: buildContentTree(accessibleArticles, null),
+          articles: isLeaf ? buildContentTree(accessibleArticles, null) : [],
           discussionComments: subDiscussionComments,
           stats: {
-            totalItems: accessibleArticles.length,
-            totalComments: accessibleArticles.reduce((sum, a) => sum + Number(a.comments_count || 0), 0) + subDiscussionComments,
-            totalViews: accessibleArticles.reduce((sum, a) => sum + Number(a.views_count || 0), 0),
-            latestTitle: sortedSubArticles[0]?.title || null,
-            latestLink: sortedSubArticles[0]?.unique_slug ? `#thread?id=${encodeURIComponent(sortedSubArticles[0].unique_slug)}` : null,
-            latestDate: sortedSubArticles[0]?.published_at || sortedSubArticles[0]?.created_at || null
+            totalItems: isLeaf ? accessibleArticles.length : childItems,
+            totalComments: isLeaf ? (accessibleArticles.reduce((sum, a) => sum + Number(a.comments_count || 0), 0) + subDiscussionComments) : childComments,
+            totalViews: isLeaf ? accessibleArticles.reduce((sum, a) => sum + Number(a.views_count || 0), 0) : childViews,
+            latestTitle: isLeaf ? (sortedSubArticles[0]?.title || null) : null,
+            latestLink: isLeaf && sortedSubArticles[0]?.unique_slug ? `#thread?id=${encodeURIComponent(sortedSubArticles[0].unique_slug)}` : null,
+            latestDate: isLeaf ? (sortedSubArticles[0]?.published_at || sortedSubArticles[0]?.created_at || null) : null
           }
         };
       });
     }
 
     mainItem.subcategories = buildSubcategoryTree(null);
+    const hasMainChildren = (mainItem.subcategories && mainItem.subcategories.length > 0);
+    const isMainLeaf = !hasMainChildren;
+    mainItem.hasChildren = hasMainChildren;
+    mainItem.isLeaf = isMainLeaf;
 
-    // Direct articles created under this main category (without subcategory or where sub_category_id is null / mainCat.id)
-    const directCategoryArticles = allArticles.filter(a => 
-      String(a.main_category_id) === String(mainCat.id) && (!a.sub_category_id || a.sub_category_id === '' || String(a.sub_category_id) === String(mainCat.id))
-    );
-    const accessibleCategoryArticles = directCategoryArticles.filter(a => {
+    // Direct articles created under this main category (ONLY when it has NO subcategories - leaf category)
+    const directCategoryArticles = isMainLeaf
+      ? allArticles.filter(a => 
+          String(a.main_category_id) === String(mainCat.id) && (!a.sub_category_id || a.sub_category_id === '' || String(a.sub_category_id) === String(mainCat.id))
+        )
+      : [];
+    const accessibleCategoryArticles = isMainLeaf ? directCategoryArticles.filter(a => {
       if (isAdmin) return true;
       if (isRestricted('content', a.id)) return false;
       if (!a.is_published || a.status === 'Draft' || a.status === 'draft') return false;
@@ -389,8 +399,8 @@ export async function getContentHierarchy(currentUser = null) {
       if (vis === 'private' || vis === 'admin_only') return false;
       if (vis === 'members' || vis === 'all_members') return Boolean(userId);
       return true;
-    });
-    mainItem.articles = buildContentTree(accessibleCategoryArticles, null);
+    }) : [];
+    mainItem.articles = isMainLeaf ? buildContentTree(accessibleCategoryArticles, null) : [];
 
     // Special category novel integration:
     // Ongoing Novels
@@ -536,16 +546,27 @@ export async function getContentHierarchy(currentUser = null) {
         latestLink: mainItem.novels[0]?.readLink || mainItem.novels[0]?.link || null,
         latestDate: mainItem.novels[0]?.latestPublishedAt || mainItem.novels[0]?.updatedDate || null
       };
-    } else if (mainItem.subcategories.length > 0 || (mainItem.articles && mainItem.articles.length > 0)) {
-      const directArticles = mainItem.articles || [];
-      const totalDiscComments = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalComments || 0), 0) + directArticles.reduce((sum, a) => sum + Number(a.commentsCount || 0), 0);
-      const totalCatViews = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalViews || 0), 0) + directArticles.reduce((sum, a) => sum + Number(a.viewsCount || 0), 0);
-      const directLatest = directArticles[0] || null;
+    } else if (hasMainChildren) {
+      const totalCatItems = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalItems || 0), 0);
+      const totalDiscComments = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalComments || 0), 0);
+      const totalCatViews = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalViews || 0), 0);
       mainItem.stats = {
         totalSubcategories: mainItem.subcategories.length,
-        totalItems: directArticles.length,
+        totalItems: totalCatItems,
         totalComments: totalDiscComments,
         totalViews: totalCatViews,
+        latestTitle: null,
+        latestLink: null,
+        latestDate: null
+      };
+    } else if (isMainLeaf) {
+      const directArticles = mainItem.articles || [];
+      const directLatest = directArticles[0] || null;
+      mainItem.stats = {
+        totalSubcategories: 0,
+        totalItems: directArticles.length,
+        totalComments: directArticles.reduce((sum, a) => sum + Number(a.commentsCount || 0), 0),
+        totalViews: directArticles.reduce((sum, a) => sum + Number(a.viewsCount || 0), 0),
         latestTitle: directLatest?.title || null,
         latestLink: directLatest ? `#thread?id=${encodeURIComponent(directLatest.uniqueSlug || directLatest.id)}` : null,
         latestDate: directLatest ? (directLatest.publishedAt || directLatest.updatedAt) : null
@@ -1568,6 +1589,19 @@ export async function createContentArticle({
 
   if (!mId || !title || !title.trim()) {
     return { success: false, error: 'Main category and thread title are required.' };
+  }
+
+  // CRITICAL RULE: Threads can ONLY be created in leaf categories (categories with NO child subcategories)
+  if (cleanSubId) {
+    const hasChildSubs = await queryOne('SELECT id FROM content_subcategories WHERE parent_id = ? AND is_active = 1 AND is_disabled = 0 LIMIT 1;', [cleanSubId]);
+    if (hasChildSubs) {
+      return { success: false, error: 'Threads can only be created in leaf categories (categories without subcategories).' };
+    }
+  } else {
+    const hasMainSubs = await queryOne('SELECT id FROM content_subcategories WHERE main_category_id = ? AND is_active = 1 AND is_disabled = 0 LIMIT 1;', [mId]);
+    if (hasMainSubs) {
+      return { success: false, error: 'Threads can only be created in leaf categories (categories without subcategories).' };
+    }
   }
 
   const cleanTitle = title.trim();
