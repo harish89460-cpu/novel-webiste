@@ -1,3 +1,4 @@
+import { moveToTrash } from './trash.js';
 import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 // Episode Management & Publishing Scheduler Layer for Rudhra Prarthana Novels
 // Full support for Unlimited Episodes, Nested Sub-Episodes (e.g. 1, 1.1, 1.2),
@@ -725,19 +726,33 @@ export async function duplicateEpisode(id) {
  * Delete an Episode
  * Safely unlinks any child sub-episodes by setting their parent_id = NULL
  */
-export async function deleteEpisode(id) {
-  const existing = await queryOne('SELECT id, novel_id FROM chapters WHERE id = ?;', [id]);
+export async function deleteEpisode(id, deletedBy = 2, deletedByName = 'Admin') {
+  const existing = await queryOne('SELECT * FROM chapters WHERE id = ?;', [id]);
   if (!existing) {
     return { success: false, error: 'Episode not found.' };
   }
 
+  const novel = await queryOne('SELECT title, author_id FROM novels WHERE id = ?;', [existing.novel_id]);
+
+  try {
+    await moveToTrash({
+      itemType: existing.is_audio ? 'audio_episode' : 'chapter',
+      itemId: existing.id,
+      title: existing.title || `Chapter ${existing.chapter_number}`,
+      ownerId: existing.author_id || (novel ? novel.author_id : null),
+      deletedBy,
+      deletedByName,
+      originalLocation: novel ? `Novel: ${novel.title}` : `Novel: ${existing.novel_id}`,
+      itemData: {
+        chapter: existing
+      }
+    });
+  } catch (err) {
+    console.warn('Could not move chapter to trash:', err.message);
+  }
+
   // Unlink children
   await query('UPDATE chapters SET parent_id = NULL WHERE parent_id = ?;', [id]);
-
-  // Delete comments and reading progress
-  try {
-    await query('DELETE FROM comments WHERE novel_id = ? AND chapter_num = (SELECT chapter_num FROM chapters WHERE id = ?);', [existing.novel_id, id]);
-  } catch {}
 
   // Delete episode
   await query('DELETE FROM chapters WHERE id = ?;', [id]);
@@ -745,7 +760,7 @@ export async function deleteEpisode(id) {
   // Refresh novel stats
   await refreshNovelStats(existing.novel_id);
 
-  return { success: true, id };
+  return { success: true, id, message: 'Episode moved to trash.' };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { getTrashItems, restoreFromTrash, permanentlyDeleteTrash, emptyTrash, moveToTrash } from './trash.js';
 import { saveUploadedImageFile, deleteLocalUploadFile, parseBase64Image } from './image-upload.js';
 import { formatISTDisplay, parseISTDateTime } from './timezone.js';
 function escapeHtml(str) { return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
@@ -211,6 +212,7 @@ import {
   deleteMainCategory,
   createSubCategory,
   updateSubCategory,
+  reorderSubCategories,
   toggleSubCategoryStatus,
   deleteSubCategory,
   createContentArticle,
@@ -794,8 +796,8 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // 11c. Get Single Content Article for Dedicated Reading Page
-  if (pathname.startsWith('/content/articles/') && !pathname.includes('/comments') && method === 'GET') {
-    const slugOrId = pathname.replace('/content/articles/', '').trim();
+  if ((pathname.startsWith('/content/articles/') || pathname.startsWith('/content/threads/')) && !pathname.includes('/comments') && method === 'GET') {
+    const slugOrId = pathname.replace('/content/articles/', '').replace('/content/threads/', '').trim();
     const result = await getContentArticle(slugOrId, currentUser, { incrementView: true });
     if (!result.success) {
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 403;
@@ -832,7 +834,7 @@ export async function apiMiddleware(req, res, next) {
       contentId: artRes.article.id,
       userId: currentUser.id,
       parentId: body.parentId || body.parent_id || null,
-      content: body.content
+      content: body.content || body.comment || ''
     });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 201);
@@ -1328,7 +1330,7 @@ export async function apiMiddleware(req, res, next) {
     const novelId = pathname.startsWith('/novels/') && method === 'DELETE'
       ? pathname.replace('/novels/', '').trim()
       : (await readJsonBody(req)).id;
-    const result = await deleteNovel(novelId);
+    const result = await deleteNovel(novelId, currentUser.id, currentUser.username);
     return sendJson(res, result, 200);
   }
 
@@ -1446,7 +1448,7 @@ export async function apiMiddleware(req, res, next) {
     const episodeId = pathname.startsWith('/admin/episodes/')
       ? parseInt(pathname.replace('/admin/episodes/', '').split('/')[0], 10)
       : (pathname.startsWith('/episodes/') ? parseInt(pathname.replace('/episodes/', '').split('/')[0], 10) : (await readJsonBody(req)).id);
-    const result = await deleteEpisode(episodeId);
+    const result = await deleteEpisode(episodeId, currentUser.id, currentUser.username);
     if (!result.success) {
       return sendJson(res, result, 400);
     }
@@ -1715,7 +1717,7 @@ export async function apiMiddleware(req, res, next) {
   if ((pathname.startsWith('/admin/audio-novels/') && method === 'DELETE') || (pathname.startsWith('/admin/audio-novels/') && pathname.endsWith('/delete') && method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
     const id = pathname.replace('/admin/audio-novels/', '').replace('/delete', '').trim();
-    const result = await deleteAudioNovel(id);
+    const result = await deleteAudioNovel(id, currentUser.id, currentUser.username);
     if (!result.success) {
       return sendJson(res, result, 400);
     }
@@ -2381,6 +2383,24 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
+  // Writer Delete Novel (ownership verified)
+  if (pathname.startsWith('/writer/novels/') && method === 'DELETE') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const novelId = pathname.replace('/writer/novels/', '').trim();
+    const existing = await queryOne('SELECT id, author_id, status FROM novels WHERE id = ?;', [novelId]);
+    if (!existing) {
+      return sendJson(res, { success: false, error: 'Novel not found.' }, 404);
+    }
+    if (!currentUser.isAdmin && Number(existing.author_id) !== Number(currentUser.id)) {
+      return sendJson(res, { success: false, error: 'Access denied: You can only delete your own novels.' }, 403);
+    }
+    const result = await deleteNovel(novelId, currentUser.id, currentUser.username);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
   // ==========================================
   // SHORT STORIES API (Public & Reader Views)
   // ==========================================
@@ -2481,7 +2501,7 @@ export async function apiMiddleware(req, res, next) {
   if ((pathname.startsWith('/admin/short-stories/') && method === 'DELETE') || (pathname.startsWith('/admin/short-stories/') && pathname.endsWith('/delete') && method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
     const id = pathname.replace('/admin/short-stories/', '').replace('/delete', '').trim();
-    const result = await deleteShortStory(id);
+    const result = await deleteShortStory(id, currentUser.id, currentUser.username);
     if (!result.success) {
       return sendJson(res, result, 400);
     }
@@ -2551,6 +2571,48 @@ export async function apiMiddleware(req, res, next) {
   }
 
   // =========================================================================
+  // TRASH / RECYCLE BIN REST API ENDPOINTS (ADMIN & WRITER DASHBOARDS)
+  // =========================================================================
+
+  // 1. Get Trash Items (Admin views all; Writer views own)
+  if ((pathname === '/api/trash' || pathname === '/admin/trash' || pathname === '/writer/trash') && method === 'GET') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const filterType = parsed.query.type || parsed.query.filterType || 'all';
+    const search = parsed.query.search || parsed.query.q || '';
+    const limit = parseInt(parsed.query.limit, 10) || 100;
+    const offset = parseInt(parsed.query.offset, 10) || 0;
+    const result = await getTrashItems({ user: currentUser, filterType, search, limit, offset });
+    return sendJson(res, result, 200);
+  }
+
+  // 2. Empty Trash
+  if ((pathname === '/api/trash/empty' || pathname === '/admin/trash/empty' || pathname === '/writer/trash/empty') && (method === 'POST' || method === 'DELETE')) {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const result = await emptyTrash({ user: currentUser });
+    return sendJson(res, result, 200);
+  }
+
+  // 3. Restore Item from Trash
+  if (pathname.includes('/trash/') && pathname.endsWith('/restore') && method === 'POST') {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const idStr = pathname.replace(/^.*\/trash\//, '').replace(/\/restore.*$/, '').trim();
+    const trashId = parseInt(idStr, 10);
+    const result = await restoreFromTrash({ trashId, user: currentUser });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // 4. Permanently Delete Item from Trash
+  if (pathname.includes('/trash/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+    if (requireWriterOrAdmin(currentUser, res)) return;
+    const idStr = pathname.replace(/^.*\/trash\//, '').replace(/\/delete.*$/, '').trim();
+    const trashId = parseInt(idStr, 10);
+    const result = await permanentlyDeleteTrash({ trashId, user: currentUser });
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
+  // =========================================================================
   // ADMIN FORMS & CONTENT MANAGEMENT API (3-LEVEL HIERARCHY & ACCESS CONTROL)
   // =========================================================================
 
@@ -2581,7 +2643,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/main-categories/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const catId = pathname.replace('/admin/content/main-categories/', '').replace('/status', '').replace('/toggle', '').trim();
+    const catId = decodeURIComponent(pathname.replace('/admin/content/main-categories/', '').replace('/status', '').replace('/toggle', '').trim());
     const body = await readJsonBody(req);
     const result = await toggleMainCategoryStatus({ id: catId, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2590,7 +2652,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/main-categories/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const catId = pathname.replace('/admin/content/main-categories/', '').trim();
+    const catId = decodeURIComponent(pathname.replace('/admin/content/main-categories/', '').trim());
     const body = await readJsonBody(req);
     const result = await updateMainCategory({ id: catId, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2599,7 +2661,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/main-categories/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const catId = pathname.replace('/admin/content/main-categories/', '').replace('/delete', '').trim();
+    const catId = decodeURIComponent(pathname.replace('/admin/content/main-categories/', '').replace('/delete', '').trim());
     const body = await readJsonBody(req);
     const result = await deleteMainCategory({ id: catId, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2621,6 +2683,16 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, { success: true, subcategories }, 200);
   }
 
+  // Reorder Sub Categories
+  if ((pathname === '/admin/content/subcategories/reorder' || pathname === '/admin/content/sub-categories/reorder') && method === 'POST') {
+    if (requireAdminOrEditor(currentUser, res)) return;
+    const body = await readJsonBody(req);
+    const orderList = body.order || body.subcategories || body.items || body.orderList || body;
+    const result = await reorderSubCategories(orderList, currentUser.id);
+    if (!result.success) return sendJson(res, result, 400);
+    return sendJson(res, result, 200);
+  }
+
   if (pathname === '/admin/content/subcategories' && method === 'POST') {
     if (requireAdminOrEditor(currentUser, res)) return;
     const body = await readJsonBody(req);
@@ -2631,7 +2703,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/subcategories/') && (pathname.endsWith('/status') || pathname.endsWith('/toggle')) && (method === 'PATCH' || method === 'POST')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const subId = pathname.replace('/admin/content/subcategories/', '').replace('/status', '').replace('/toggle', '').trim();
+    const subId = decodeURIComponent(pathname.replace('/admin/content/subcategories/', '').replace('/status', '').replace('/toggle', '').trim());
     const body = await readJsonBody(req);
     const result = await toggleSubCategoryStatus({ id: subId, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2640,7 +2712,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/subcategories/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const subId = pathname.replace('/admin/content/subcategories/', '').trim();
+    const subId = decodeURIComponent(pathname.replace('/admin/content/subcategories/', '').trim());
     const body = await readJsonBody(req);
     const result = await updateSubCategory({ id: subId, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2649,7 +2721,7 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/subcategories/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const subId = pathname.replace('/admin/content/subcategories/', '').replace('/delete', '').trim();
+    const subId = decodeURIComponent(pathname.replace('/admin/content/subcategories/', '').replace('/delete', '').trim());
     const body = await readJsonBody(req);
     const result = await deleteSubCategory({ id: subId, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
@@ -2882,10 +2954,13 @@ export async function apiMiddleware(req, res, next) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
     const isWriter = currentUser.isWriter === true || ['writer', 'author'].includes((currentUser.role || '').toLowerCase());
-    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
+    // Only /admin/content/articles requires Admin or Writer role; /content/threads is open to all authenticated users (including Members)
+    if (pathname === '/admin/content/articles' && !isAdmin && !isWriter) {
+      return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
+    }
     const body = await readJsonBody(req);
     body.authorId = currentUser.id;
-    body.authorName = currentUser.displayName || currentUser.username || (isAdmin ? 'Rudhra Prarthana' : 'Writer');
+    body.authorName = currentUser.displayName || currentUser.username || (isAdmin ? 'Rudhra Prarthana' : (isWriter ? 'Writer' : 'Member'));
     body.status = 'published';
     body.isPublished = 1;
     const result = await createContentArticle({ ...body, adminId: currentUser.id });
@@ -2909,34 +2984,50 @@ export async function apiMiddleware(req, res, next) {
     return sendJson(res, result, 200);
   }
 
-  if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
+  if ((pathname.startsWith('/admin/content/articles/') || pathname.startsWith('/content/threads/')) && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
-    const id = parseInt(pathname.replace('/admin/content/articles/', ''), 10);
-    const isAdmin = currentUser.isAdmin === true;
+    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/content/threads/', ''), 10);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
     const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
-    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
-    const body = await readJsonBody(req);
-    if (!isAdmin && isWriter) {
+    
+    // Check ownership for community thread editing
+    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    if (!existing) return sendJson(res, { success: false, error: 'Thread or article not found.' }, 404);
+
+    const isOwner = Number(existing.author_id) === Number(currentUser.id);
+    if (!isAdmin && !isOwner) {
+      if (!isWriter) {
+        return sendJson(res, { success: false, error: 'Access denied: You can only edit your own threads.' }, 403);
+      }
       const access = await canWriterAccessContent(currentUser.id, 'content', id, 'write');
       if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
     }
+    const body = await readJsonBody(req);
     const result = await updateContentArticle({ id, ...body, adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
   }
 
-  if (pathname.startsWith('/admin/content/articles/') && (method === 'DELETE' || pathname.endsWith('/delete'))) {
+  if ((pathname.startsWith('/admin/content/articles/') || pathname.startsWith('/content/threads/')) && (method === 'DELETE' || pathname.endsWith('/delete'))) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
-    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/delete', ''), 10);
-    const isAdmin = currentUser.isAdmin === true;
+    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/content/threads/', '').replace('/delete', ''), 10);
+    const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
     const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
-    if (!isAdmin && !isWriter) return sendJson(res, { success: false, error: 'Access denied: Admin or Writer permissions required.' }, 403);
-    const body = await readJsonBody(req);
-    if (!isAdmin && isWriter) {
+
+    // Check ownership for thread deletion
+    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    if (!existing) return sendJson(res, { success: false, error: 'Thread or article not found.' }, 404);
+
+    const isOwner = Number(existing.author_id) === Number(currentUser.id);
+    if (!isAdmin && !isOwner) {
+      if (!isWriter) {
+        return sendJson(res, { success: false, error: 'Access denied: You can only delete your own threads.' }, 403);
+      }
       const access = await canWriterAccessContent(currentUser.id, 'content', id, 'delete');
       if (!access.allowed) return sendJson(res, { success: false, error: access.reason }, 403);
     }
-    const result = await deleteContentArticle({ id, confirmTitle: body.confirmTitle || body.confirm || '', adminId: currentUser.id });
+    const body = await readJsonBody(req);
+    const result = await deleteContentArticle({ id, confirmTitle: body.confirmTitle || body.confirm || 'yes', adminId: currentUser.id });
     if (!result.success) return sendJson(res, result, 400);
     return sendJson(res, result, 200);
   }

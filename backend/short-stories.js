@@ -1,3 +1,4 @@
+import { moveToTrash } from './trash.js';
 const recentStoryViews = new Map();
 import { saveBase64Image, deleteLocalUploadFile } from './image-upload.js';
 import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
@@ -702,13 +703,27 @@ export async function toggleShortStoryDisabled(id, forcedDisabled = null) {
 /**
  * Admin: Delete a Short Story and its comments
  */
-export async function deleteShortStory(id) {
-  const existing = await queryOne('SELECT id, title, cover_image FROM short_stories WHERE id = ?;', [parseInt(id, 10)]);
-  if (existing?.cover_image) {
-    deleteLocalUploadFile(existing.cover_image);
-  }
+export async function deleteShortStory(id, deletedBy = 2, deletedByName = 'Admin') {
+  const existing = await queryOne('SELECT * FROM short_stories WHERE id = ?;', [parseInt(id, 10)]);
   if (!existing) {
     return { success: false, error: 'Short story not found.' };
+  }
+
+  try {
+    await moveToTrash({
+      itemType: 'short_story',
+      itemId: existing.id,
+      title: existing.title,
+      ownerId: existing.author_id,
+      deletedBy,
+      deletedByName,
+      originalLocation: 'Short Stories',
+      itemData: {
+        story: existing
+      }
+    });
+  } catch (err) {
+    console.warn('Could not move story to trash:', err.message);
   }
 
   await query('DELETE FROM short_story_comments WHERE story_id = ?;', [existing.id]);
@@ -717,7 +732,8 @@ export async function deleteShortStory(id) {
   return {
     success: true,
     id: existing.id,
-    title: existing.title
+    title: existing.title,
+    message: 'Short story moved to trash.'
   };
 }
 

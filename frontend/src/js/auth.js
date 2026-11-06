@@ -29,12 +29,12 @@ export function initAuth() {
     if (!input) return;
     if (input.type === 'password') {
       input.type = 'text';
-      btn.innerHTML = '🙈';
+      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`;
       btn.setAttribute('title', 'Hide Password');
       btn.setAttribute('aria-label', 'Hide Password');
     } else {
       input.type = 'password';
-      btn.innerHTML = '👁️';
+      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
       btn.setAttribute('title', 'Show Password');
       btn.setAttribute('aria-label', 'Show Password');
     }
@@ -42,212 +42,323 @@ export function initAuth() {
 
   window.switchAuthView = (view) => {
     const container = document.getElementById('auth-form-container');
-    const title = document.getElementById('auth-modal-title');
     if (!container) return;
 
     if (view === 'login') {
-      if (title) title.innerText = t('auth_login_title');
       container.innerHTML = `
-        <form onsubmit="event.preventDefault(); handleLoginSubmit();">
-          <div id="auth-error-msg" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px;"></div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_username_label')}</label>
-            <input type="text" id="login-username" class="form-input" placeholder="${t('auth_username_label')}" required autocomplete="username">
-          </div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_password_label')}</label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="login-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required autocomplete="current-password">
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('login-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
-                👁️
-              </button>
-            </div>
-          </div>
-          <div class="form-checkbox-row">
-            <label class="checkbox-label">
-              <input type="checkbox" checked> ${t('auth_remember_me')}
-            </label>
-            <a onclick="switchAuthView('forgot')" style="color:var(--color-gold-warm); cursor:pointer;">${t('auth_forgot_link')}</a>
-          </div>
-          <button type="submit" id="login-submit-btn" class="btn btn-gold" style="width:100%;">${t('btn_login')}</button>
-          
-          <div class="auth-security-note">
-            <span>🔒 SSL Encrypted & Protected Session</span>
+        <div class="auth-card-body">
+          <!-- 1. RP Novels Logo -->
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
           </div>
 
-          <div class="auth-switch-links">
-            ${t('auth_no_account')} <a onclick="switchAuthView('register')">${t('auth_create_link')}</a>
+          <!-- 2. Member Login Heading -->
+          <h2 class="auth-center-title" id="auth-modal-title">Member Login</h2>
+
+          <!-- Minimal Subtitle -->
+          <p class="auth-center-subtitle">Welcome back! Please enter your details.</p>
+
+          <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+          <form onsubmit="event.preventDefault(); handleLoginSubmit();" class="auth-modal-form">
+            <!-- 3. Email Address -->
+            <div class="auth-form-group">
+              <label class="auth-field-label" for="login-username">Email Address</label>
+              <div class="auth-input-wrapper">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
+                <input type="text" id="login-username" class="auth-input" placeholder="name@example.com or username" required autocomplete="username">
+              </div>
+            </div>
+
+            <!-- 4. Password -->
+            <div class="auth-form-group">
+              <label class="auth-field-label" for="login-password">Password</label>
+              <div class="auth-input-wrapper has-toggle">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <input type="password" id="login-password" class="auth-input" placeholder="••••••••" required autocomplete="current-password">
+                <button type="button" class="auth-password-toggle" onclick="togglePasswordVisibility('login-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 5. Remember Me and Forgot Password (aligned horizontally) -->
+            <div class="auth-options-row">
+              <label class="auth-remember-row">
+                <input type="checkbox" id="auth-remember-check" checked>
+                <span>Remember Me</span>
+              </label>
+              <a href="javascript:void(0)" onclick="switchAuthView('forgot')" class="auth-forgot-link">Forgot Password?</a>
+            </div>
+
+            <!-- 6. Gold Log In button -->
+            <button type="submit" id="login-submit-btn" class="btn btn-gold auth-btn-gold auth-submit-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              <span>Log In</span>
+            </button>
+          </form>
+
+          <!-- 7. Divider -->
+          <div class="auth-thin-divider"></div>
+
+          <!-- 8. “New here? Register Now” -->
+          <div class="auth-register-text">
+            New here? <a href="javascript:void(0)" onclick="switchAuthView('register')" class="auth-gold-link">Register Now</a>
           </div>
-        </form>
+
+          <!-- 9. Small clickable “Admin / Writer Login” redirect text -->
+          <div class="auth-admin-redirect-wrap">
+            <a href="#admin-login" onclick="closeAuthModal()" class="auth-admin-redirect-link">Admin / Writer Login &rarr;</a>
+          </div>
+        </div>
       `;
     } else if (view === 'register') {
-      if (title) title.innerText = t('auth_register_title');
       container.innerHTML = `
-        <form onsubmit="event.preventDefault(); handleRegisterSubmit();">
-          <div id="auth-error-msg" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px;"></div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_username_label')} <span style="color:#EF4444;">*</span></label>
-            <input type="text" id="reg-username" class="form-input" placeholder="e.g. priya_reader" required autocomplete="username">
+        <div class="auth-card-body">
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
           </div>
-          <div class="form-group">
-            <label class="form-label">Display Name</label>
-            <input type="text" id="reg-displayname" class="form-input" placeholder="Your display name (Optional)">
-          </div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_email_label')} <span style="color:#EF4444;">*</span></label>
-            <input type="email" id="reg-email" class="form-input" placeholder="name@example.com" required autocomplete="email">
-          </div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_password_label')} <span style="color:#EF4444;">*</span></label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="reg-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required minlength="6" autocomplete="new-password">
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reg-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
-                👁️
-              </button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Confirm Password <span style="color:#EF4444;">*</span></label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="reg-confirm-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required minlength="6" autocomplete="new-password">
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reg-confirm-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
-                👁️
-              </button>
-            </div>
-          </div>
-          <div class="form-checkbox-row">
-            <label class="checkbox-label">
-              <input type="checkbox" checked required> ${t('footer_terms')}
-            </label>
-          </div>
-          <button type="submit" id="register-submit-btn" class="btn btn-gold" style="width:100%;">${t('btn_register')}</button>
+          <h2 class="auth-center-title" id="auth-modal-title">Create Account</h2>
+          <p class="auth-center-subtitle">Join the Rudhra Prarthana novel community</p>
 
-          <div class="auth-switch-links">
-            ${t('auth_have_account')} <a onclick="switchAuthView('login')">${t('auth_login_link')}</a>
+          <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+          <form onsubmit="event.preventDefault(); handleRegisterSubmit();" class="auth-modal-form">
+            <div class="auth-form-group">
+              <label class="auth-field-label">Username <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+                <input type="text" id="reg-username" class="auth-input" placeholder="e.g. priya_reader" required autocomplete="username">
+              </div>
+            </div>
+
+            <div class="auth-form-group">
+              <label class="auth-field-label">Display Name</label>
+              <div class="auth-input-wrapper">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+                <input type="text" id="reg-displayname" class="auth-input" placeholder="Your display name (Optional)">
+              </div>
+            </div>
+
+            <div class="auth-form-group">
+              <label class="auth-field-label">Email Address <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
+                <input type="email" id="reg-email" class="auth-input" placeholder="name@example.com" required autocomplete="email">
+              </div>
+            </div>
+
+            <div class="auth-form-group">
+              <label class="auth-field-label">Password <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper has-toggle">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <input type="password" id="reg-password" class="auth-input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+                <button type="button" class="auth-password-toggle" onclick="togglePasswordVisibility('reg-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="auth-form-group">
+              <label class="auth-field-label">Confirm Password <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper has-toggle">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <input type="password" id="reg-confirm-password" class="auth-input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+                <button type="button" class="auth-password-toggle" onclick="togglePasswordVisibility('reg-confirm-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="register-submit-btn" class="auth-btn-gold">
+              <span>Register</span>
+            </button>
+          </form>
+
+          <div class="auth-thin-divider"></div>
+
+          <div class="auth-register-text">
+            Already have an account? <a href="javascript:void(0)" onclick="switchAuthView('login')" class="auth-gold-link">Log In</a>
           </div>
-        </form>
+        </div>
       `;
     } else if (view === 'forgot' || view === 'forgot-email') {
-      if (title) title.innerText = t('auth_forgot_title');
       const currentEmail = window.FORGOT_STATE?.email || '';
       container.innerHTML = `
-        <form onsubmit="event.preventDefault(); handleForgotRequestOtpSubmit();">
-          <div id="auth-error-msg" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px;"></div>
-          <div class="form-group">
-            <label class="form-label">${t('auth_email_label')} <span style="color:#EF4444;">*</span></label>
-            <input type="email" id="forgot-email" class="form-input" placeholder="name@example.com" value="${currentEmail}" required autocomplete="email" autofocus>
+        <div class="auth-card-body">
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
           </div>
-          <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:18px; line-height:1.5;">
-            ${t('auth_reset_instructions')}
-          </p>
-          <button type="submit" id="forgot-send-btn" class="btn btn-gold" style="width:100%;">${t('auth_send_reset_btn')}</button>
+          <h2 class="auth-center-title" id="auth-modal-title">Reset Password</h2>
+          <p class="auth-center-subtitle">Enter your email to receive a verification OTP</p>
 
-          <div class="auth-switch-links">
-            <a onclick="switchAuthView('login')">${t('auth_back_to_login')}</a>
+          <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+          <form onsubmit="event.preventDefault(); handleForgotRequestOtpSubmit();" class="auth-modal-form">
+            <div class="auth-form-group">
+              <label class="auth-field-label">Registered Email <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
+                <input type="email" id="forgot-email" class="auth-input" placeholder="name@example.com" value="${currentEmail}" required autocomplete="email" autofocus>
+              </div>
+            </div>
+
+            <button type="submit" id="forgot-send-btn" class="auth-btn-gold">
+              <span>Send Verification Code</span>
+            </button>
+          </form>
+
+          <div class="auth-thin-divider"></div>
+
+          <div class="auth-admin-redirect-wrap">
+            <a href="javascript:void(0)" onclick="switchAuthView('login')" class="auth-admin-redirect-link">&larr; Back to Member Login</a>
           </div>
-        </form>
+        </div>
       `;
     } else if (view === 'forgot-otp') {
-      if (title) title.innerText = t('auth_forgot_otp_title');
       const email = window.FORGOT_STATE?.email || '';
       container.innerHTML = `
-        <form onsubmit="event.preventDefault(); handleForgotVerifyOtpSubmit();">
-          <div id="auth-error-msg" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px;"></div>
-          <div style="font-size:13px; color:var(--color-navy-deep); margin-bottom:12px;">
-            ${t('auth_forgot_instructions_otp')} <strong style="color:var(--color-gold-warm);">${email}</strong>
-            <a onclick="switchAuthView('forgot-email')" style="margin-left:6px; font-size:12px; color:var(--color-text-muted); text-decoration:underline; cursor:pointer;">(${t('auth_change_email')})</a>
+        <div class="auth-card-body">
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
           </div>
+          <h2 class="auth-center-title" id="auth-modal-title">Verify OTP</h2>
+          <p class="auth-center-subtitle">Enter the 6-digit code sent to ${email}</p>
 
-          <div class="otp-inputs-row" id="otp-inputs-container">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-1" inputmode="numeric" pattern="[0-9]*" autofocus autocomplete="off">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-2" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-3" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-5" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-            <input type="text" maxlength="1" class="otp-digit" id="otp-6" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+          <form onsubmit="event.preventDefault(); handleForgotVerifyOtpSubmit();" class="auth-modal-form">
+            <div class="otp-inputs-row" id="otp-inputs-container" style="display:flex; justify-content:center; gap:8px; margin-bottom:16px;">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-1" inputmode="numeric" pattern="[0-9]*" autofocus autocomplete="off">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-2" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-3" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-5" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+              <input type="text" maxlength="1" class="otp-digit" id="otp-6" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+            </div>
+
+            <div class="otp-timer-box" style="text-align:center; margin:10px 0 16px;">
+              <span>Expires in: </span>
+              <span id="otp-timer-countdown" class="otp-countdown" style="font-weight:700; color:#B88635;">⏱ 05:00</span>
+            </div>
+
+            <button type="submit" id="verify-otp-btn" class="auth-btn-gold" style="margin-bottom:10px;">
+              <span>Verify OTP &amp; Proceed</span>
+            </button>
+
+            <button type="button" id="resend-otp-btn" class="btn btn-outline" style="width:100%; border-radius:12px; height:44px;" onclick="handleForgotResendOtp();">
+              <span>Resend Code</span>
+            </button>
+          </form>
+
+          <div class="auth-thin-divider"></div>
+
+          <div class="auth-admin-redirect-wrap">
+            <a href="javascript:void(0)" onclick="switchAuthView('login')" class="auth-admin-redirect-link">&larr; Back to Member Login</a>
           </div>
-
-          <div class="otp-timer-box">
-            <span>${t('auth_otp_expires_in')}</span>
-            <span id="otp-timer-countdown" class="otp-countdown">⏱ 05:00</span>
-          </div>
-
-          <button type="submit" id="verify-otp-btn" class="btn btn-gold" style="width:100%; margin-bottom:10px;">
-            ${t('auth_verify_otp_btn')}
-          </button>
-
-          <button type="button" id="resend-otp-btn" class="btn btn-outline" style="width:100%; font-size:13px;" onclick="handleForgotResendOtp();">
-            ${t('auth_resend_otp_btn')}
-          </button>
-
-          <div class="auth-switch-links">
-            <a onclick="switchAuthView('login')">${t('auth_back_to_login')}</a>
-          </div>
-        </form>
+        </div>
       `;
       setupOtpInputListeners();
       startOtpExpiryTimer();
       startOtpCooldownTimer();
     } else if (view === 'forgot-new-password') {
-      if (title) title.innerText = t('auth_forgot_new_title');
       container.innerHTML = `
-        <form onsubmit="event.preventDefault(); handleForgotResetPasswordSubmit();">
-          <div id="auth-error-msg" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px;"></div>
-          
-          <div class="form-group">
-            <label class="form-label">${t('auth_new_password_label')} <span style="color:#EF4444;">*</span></label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="reset-new-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required minlength="6" autocomplete="new-password" autofocus>
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reset-new-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
-                👁️
-              </button>
+        <div class="auth-card-body">
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
+          </div>
+          <h2 class="auth-center-title" id="auth-modal-title">New Password</h2>
+          <p class="auth-center-subtitle">Create a new secure password</p>
+
+          <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+          <form onsubmit="event.preventDefault(); handleForgotResetPasswordSubmit();" class="auth-modal-form">
+            <div class="auth-form-group">
+              <label class="auth-field-label">New Password <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper has-toggle">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <input type="password" id="reset-new-password" class="auth-input" placeholder="••••••••" required minlength="6" autocomplete="new-password" autofocus>
+                <button type="button" class="auth-password-toggle" onclick="togglePasswordVisibility('reset-new-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <small style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">
-              Must be at least 6 characters long.
-            </small>
-          </div>
 
-          <div class="form-group">
-            <label class="form-label">${t('auth_confirm_new_password_label')} <span style="color:#EF4444;">*</span></label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="reset-confirm-password" class="form-input" placeholder="••••••••" style="padding-right:44px;" required minlength="6" autocomplete="new-password">
-              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reset-confirm-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px; line-height:1; display:flex; align-items:center; justify-content:center;">
-                👁️
-              </button>
+            <div class="auth-form-group">
+              <label class="auth-field-label">Confirm Password <span class="required-star">*</span></label>
+              <div class="auth-input-wrapper has-toggle">
+                <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <input type="password" id="reset-confirm-password" class="auth-input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+                <button type="button" class="auth-password-toggle" onclick="togglePasswordVisibility('reset-confirm-password', this)" title="Show/Hide Password" aria-label="Toggle password visibility">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
 
-          <button type="submit" id="reset-password-submit-btn" class="btn btn-gold" style="width:100%; margin-top:8px;">
-            ${t('auth_reset_password_btn')}
-          </button>
+            <button type="submit" id="reset-password-submit-btn" class="auth-btn-gold">
+              <span>Save New Password</span>
+            </button>
+          </form>
 
-          <div class="auth-switch-links">
-            <a onclick="switchAuthView('login')">${t('auth_back_to_login')}</a>
+          <div class="auth-thin-divider"></div>
+
+          <div class="auth-admin-redirect-wrap">
+            <a href="javascript:void(0)" onclick="switchAuthView('login')" class="auth-admin-redirect-link">&larr; Back to Member Login</a>
           </div>
-        </form>
+        </div>
       `;
     } else if (view === 'forgot-success') {
-      if (title) title.innerText = 'Success!';
       const email = window.FORGOT_STATE?.email || '';
       container.innerHTML = `
-        <div style="text-align:center; padding:16px 8px;">
-          <div style="font-size:52px; margin-bottom:12px; line-height:1;">🎉</div>
-          <h3 style="color:var(--color-navy-deep); font-size:1.3rem; margin-bottom:8px; font-family:var(--font-serif);">
-            Password Reset Complete!
-          </h3>
-          <p style="color:var(--color-text-muted); font-size:14px; line-height:1.6; margin-bottom:24px;">
-            Your account password has been updated. You can now log in using your new password.
-          </p>
+        <div class="auth-card-body" style="text-align:center;">
+          <div class="auth-center-logo">
+            <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
+          </div>
+          <div style="font-size:36px; margin-bottom:8px;">✨</div>
+          <h3 class="auth-center-title">Password Reset Complete!</h3>
+          <p class="auth-center-subtitle">Your account password has been updated. You can now log in using your new credentials.</p>
 
-          <button class="btn btn-gold" style="width:100%;" onclick="switchAuthView('login'); const el = document.getElementById('login-username'); if(el) el.value = '${email}';">
-            Proceed to Login ➔
+          <button class="auth-btn-gold" onclick="switchAuthView('login'); const el = document.getElementById('login-username'); if(el) el.value = '${email}';">
+            <span>Proceed to Login &rarr;</span>
           </button>
         </div>
       `;
     }
   };
 
-  window.handleLoginSubmit = async () => {
+window.handleLoginSubmit = async () => {
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
     const submitBtn = document.getElementById('login-submit-btn');
@@ -256,7 +367,13 @@ export function initAuth() {
 
     const username = usernameInput?.value?.trim();
     const password = passwordInput?.value;
-    if (!username || !password) return;
+    if (!username || !password) {
+      if (errorEl) {
+        errorEl.textContent = 'Please enter both email/username and password.';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
 
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -269,9 +386,15 @@ export function initAuth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        data = { error: 'Invalid response from server. Please try again.' };
+      }
+
       if (!res.ok || !data.success) {
-        const errorText = data.error || 'Login failed.';
+        const errorText = data.error || (res.status === 401 ? 'Invalid email or password.' : 'Login failed. Please try again.');
         if (errorEl) {
           errorEl.textContent = errorText;
           errorEl.style.display = 'block';
@@ -302,7 +425,7 @@ export function initAuth() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      const errMsg = 'Network error during login.';
+      const errMsg = err?.message || 'Unable to connect to the server. Please check your internet connection.';
       if (errorEl) {
         errorEl.textContent = errMsg;
         errorEl.style.display = 'block';
@@ -312,6 +435,12 @@ export function initAuth() {
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.classList.remove('btn-loading');
+        submitBtn.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line>
+          </svg>
+          <span>Log In</span>
+        `;
       }
     }
   };
@@ -1015,4 +1144,28 @@ export function updateHeaderUserArea() {
       `;
     }
   }
+}
+
+
+/**
+ * Dedicated Full-Page Member Login View (matches reference image)
+ */
+export async function renderMemberLoginView(container) {
+  if (window.IS_LOGGED_IN) {
+    window.location.hash = '#member?id=me';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="auth-page-wrapper">
+      <div class="auth-page-container">
+        <div class="rp-auth-card">
+          <div class="auth-card-accent-bar"></div>
+          <div id="auth-form-container"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  window.switchAuthView('login');
 }

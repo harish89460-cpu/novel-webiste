@@ -2887,3 +2887,364 @@ html[lang="ta"] .topic-stats-bubble {
     font-size: 2.4rem;
   }
 }
+
+
+/* ========================================================
+   NESTED HIERARCHY SUB-TITLES (MEMBER DASHBOARD / FORUMS)
+   ======================================================== */
+.forum-table-row-nested {
+  background-color: #FAF8F5 !important;
+  border-left: 3px solid #C89B3C !important;
+  transition: background-color 0.15s ease;
+}
+
+.forum-table-row-nested:hover {
+  background-color: #F5EFE6 !important;
+}
+
+.forum-table-row-nested .forum-table-icon {
+  font-size: 14px;
+}
+
+.forum-table-row-nested .forms-sub-title-link {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1E293B;
+}
+
+@media (max-width: 768px) {
+  .forum-table-row-nested {
+    padding-left: 14px !important;
+    border-left-width: 3px !important;
+  }
+}
+
+/* ========================================================
+   THREAD CREATION COMPOSER (Collapsed & Expanded States)
+   ======================================================== */
+.thread-create-wrapper {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+/* State 1: Clean, simple full-width input matching Reference 1 */
+.thread-composer-collapsed-box {
+  background: #FFFFFF;
+  border: 1px solid #D8D2C4;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  padding: 2px 4px;
+}
+
+.thread-composer-collapsed-box:hover,
+.thread-composer-collapsed-box:focus-within {
+  border-color: #C89B3C;
+  box-shadow: 0 2px 6px rgba(200, 155, 60, 0.15);
+}
+
+.thread-quick-title-input {
+  width: 100%;
+  height: 44px;
+  padding: 10px 16px;
+  font-size: 14.5px;
+  font-family: inherit;
+  color: #1E293B;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.thread-quick-title-input::placeholder {
+  color: #94A3B8;
+  font-weight: 400;
+}
+
+/* State 2: Full Rich-Text Editor matching Reference 2 */
+.thread-composer-expanded-box {
+  width: 100%;
+  animation: threadComposerFadeIn 0.2s ease-out;
+}
+
+@keyframes threadComposerFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.thread-composer-card {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(11, 31, 51, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-composer-title-row {
+  border-bottom: 1px solid #E2E8F0;
+  background: #FFFFFF;
+}
+
+.thread-composer-title-input {
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 15.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #0F172A;
+  border: none;
+  outline: none;
+  box-sizing: border-box;
+  background: #FFFFFF;
+}
+
+.thread-composer-title-input::placeholder {
+  color: #94A3B8;
+  font-weight: 400;
+}
+
+.thread-composer-toolbar {
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.tc-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tc-tool-btn:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
+.tc-tool-btn:active {
+  background: #CBD5E1;
+}
+
+.tc-tool-btn.active {
+  background: #EDE9FE;
+  color: #5B21B6;
+  border-color: #DDD6FE;
+}
+
+.tc-select {
+  height: 28px;
+  font-size: 12.5px;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  padding: 0 6px;
+  background: #FFFFFF;
+  color: #334155;
+  cursor: pointer;
+  outline: none;
+  margin-right: 2px;
+}
+
+.tc-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: #CBD5E1;
+  margin: 0 4px;
+}
+
+.tc-preview-btn {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+}
+
+.thread-composer-content-area {
+  min-height: 180px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #1E293B;
+  outline: none;
+  background: #FFFFFF;
+}
+
+.thread-composer-content-area:empty::before {
+  content: attr(data-placeholder);
+  color: #94A3B8;
+  pointer-events: none;
+  font-style: normal;
+}
+
+.thread-composer-content-area img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+
+.thread-composer-preview-box {
+  min-height: 180px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #1E293B;
+  background: #FAFAFA;
+  border-left: 3px solid #C89B3C;
+}
+
+.thread-attachments-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #F8FAFC;
+  border-top: 1px dashed #E2E8F0;
+}
+
+.thread-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.thread-attach-chip-remove {
+  cursor: pointer;
+  color: #DC2626;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.thread-composer-error-banner {
+  background: #FEF2F2;
+  border-top: 1px solid #FCA5A5;
+  color: #991B1B;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.thread-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  gap: 12px;
+}
+
+.btn-tc-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-tc-attach:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+  border-color: #94A3B8;
+}
+
+.thread-composer-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-tc-cancel {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748B;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-tc-cancel:hover {
+  background: #E2E8F0;
+  color: #1E293B;
+}
+
+.btn-tc-submit {
+  background: #C89B3C;
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 8px 22px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(200, 155, 60, 0.25);
+  transition: all 0.15s ease;
+}
+
+.btn-tc-submit:hover {
+  background: #B88635;
+  box-shadow: 0 3px 8px rgba(200, 155, 60, 0.35);
+}
+
+@media (max-width: 768px) {
+  .thread-composer-toolbar {
+    overflow-x: auto;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .tc-preview-btn {
+    margin-left: 0;
+  }
+  .thread-composer-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .thread-composer-footer-right {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .btn-tc-submit {
+    flex: 1;
+    text-align: center;
+  }
+}

@@ -11,7 +11,8 @@
     "server": "node backend/server.js",
     "start": "node backend/server.js",
     "migrate": "node backend/migrate.js",
-    "install:all": "npm install && npm --prefix frontend install && npm --prefix backend install"
+    "install:all": "npm install && npm --prefix frontend install && npm --prefix backend install",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000"
   },
   "devDependencies": {
     "vite": "^6.0.0"

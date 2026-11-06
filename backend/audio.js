@@ -1,3 +1,4 @@
+import { moveToTrash } from './trash.js';
 import { parseISTDateTime, getISTNowString, isPastIST, formatISTDisplay } from './timezone.js';
 // Audio Novels & Hierarchical Episode Data Layer for Rudhra Prarthana Novels
 // Full support for Chapter-Wise & Episode-Wise Audio Novel Management
@@ -493,36 +494,38 @@ export async function updateAudioNovel(id, data) {
 /**
  * Delete Audio Novel from MySQL and remove all child chapters, episodes, and disk audio files
  */
-export async function deleteAudioNovel(id) {
+export async function deleteAudioNovel(id, deletedBy = 2, deletedByName = 'Admin') {
   const existing = await queryOne('SELECT * FROM novels WHERE id = ?;', [id]);
   if (!existing) {
     return { success: false, error: 'Audio novel not found.' };
   }
 
-  // Find all chapters & episodes to remove audio files from disk
-  const chapters = await query('SELECT audio_file_url FROM chapters WHERE novel_id = ? AND is_audio = 1;', [id]);
-  for (const ch of chapters) {
-    if (ch.audio_file_url && ch.audio_file_url.startsWith('/uploads/audio/')) {
-      try {
-        const filename = path.basename(ch.audio_file_url);
-        const filePath = path.resolve(__dirname, 'uploads/audio', filename);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      } catch (e) {
-        console.warn('[Audio Delete File]', e.message);
+  const chapters = await query('SELECT * FROM chapters WHERE novel_id = ?;', [id]);
+
+  try {
+    await moveToTrash({
+      itemType: 'audio_novel',
+      itemId: existing.id,
+      title: existing.title,
+      ownerId: existing.author_id,
+      deletedBy,
+      deletedByName,
+      originalLocation: 'Audio Novels',
+      itemData: {
+        audioNovel: existing,
+        episodes: chapters || []
       }
-    }
+    });
+  } catch (err) {
+    console.warn('Could not move audio novel to trash:', err.message);
   }
 
-  // Delete all chapters & novel records
+  // Delete all chapters & novel records so it is hidden from live site
   await query('DELETE FROM chapters WHERE novel_id = ?;', [id]);
   await query('DELETE FROM novels WHERE id = ?;', [id]);
-
-  // Clean up any legacy audio_novels rows
   await query('DELETE FROM audio_novels WHERE novel_id = ?;', [id]);
 
-  return { success: true };
+  return { success: true, message: 'Audio novel moved to trash.' };
 }
 
 /**

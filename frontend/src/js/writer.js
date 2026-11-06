@@ -19,7 +19,7 @@ if (typeof window !== 'undefined' && !window.showSavedContentLinkModal) {
           ${title || 'Content'} Saved Successfully!
         </h3>
         <p style="color:#64748B; font-size:13.5px; margin:0 0 20px; line-height:1.6;">
-          Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>+ Add Thread</strong> on the frontend category page.
+          Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>Post thread</strong> on the frontend category page.
         </p>
 
         <div style="background:#FAF8F5; border:1px solid #E8DCCB; border-radius:10px; padding:14px; margin-bottom:20px; text-align:left;">
@@ -257,6 +257,7 @@ export async function renderWriterDashboard(container, requestedTab) {
     editor: 'Writing Editor',
     'published-novels': 'Published Novel Management',
     status: 'Publishing Status',
+    trash: 'Recycle Bin',
     profile: 'Profile & Password'
   };
 
@@ -433,6 +434,16 @@ export async function renderWriterDashboard(container, requestedTab) {
               </span>
             </button>
 
+            <!-- Recycle Bin / Trash -->
+            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'trash' ? 'active' : ''}" 
+                    onclick="switchWriterTab('trash')">
+              <span class="writer-nav-btn-content">
+                ${ADMIN_ICONS.trash}
+                <span>Recycle Bin</span>
+              </span>
+              <span class="writer-nav-pill" id="wnav-trash-count" style="background:#FEE2E2; color:#991B1B; ${writerState.trashCount ? '' : 'display:none;'}">${writerState.trashCount || 0}</span>
+            </button>
+
             <!-- 10. Profile & Password -->
             <button type="button" class="writer-nav-btn ${writerState.activeTab === 'profile' ? 'active' : ''}" 
                     onclick="switchWriterTab('profile')">
@@ -546,6 +557,9 @@ export async function renderWriterDashboard(container, requestedTab) {
   };
 
   renderActiveWriterTab();
+  if (typeof window.loadWriterTrashCount === 'function') {
+    window.loadWriterTrashCount();
+  }
 }
 
 /**
@@ -576,6 +590,9 @@ function renderActiveWriterTab(params = {}) {
       break;
     case 'status':
       renderWriterStatus(canvas);
+      break;
+    case 'trash':
+      renderWriterTrashTab(canvas);
       break;
     case 'profile':
       renderWriterProfile(canvas);
@@ -773,6 +790,10 @@ async function renderWriterOverview(canvas) {
                       <button type="button" class="btn btn-gold" style="font-size:12px; padding:5px 10px;" 
                               onclick="switchWriterTab('episodes', { novelId: '${n.id}' })">
                         Episodes
+                      </button>
+                      <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px; color:#DC2626; border-color:#FCA5A5;" 
+                              onclick="deleteWriterNovel('${n.id}', '${escapeHtml(n.title)}')" title="Move to Recycle Bin">
+                        ${ADMIN_ICONS.trash}
                       </button>
                     </div>
                   </td>

@@ -1,3 +1,4 @@
+import { moveToTrash } from './trash.js';
 // Novel Content SQL Layer for Rudhra Prarthana Novels
 // Dynamic MySQL Persistence with Relations to Chapters and Scheduler Integration
 
@@ -913,22 +914,25 @@ export async function createNovel(data) {
   // Notify followers of author upon novel publication
   if (isPublished && status !== 'Draft' && status !== 'draft') {
     try {
-      const followers = await query(`
-        SELECT follower_id AS user_id FROM follows WHERE following_id = ?;
+      const recipients = await query(`
+        SELECT DISTINCT u.id AS user_id
+        FROM users u
+        LEFT JOIN notification_preferences np ON u.id = np.user_id
+        WHERE u.id != ?
+          AND u.status = 'active'
+          AND (np.notify_chapters IS NULL OR np.notify_chapters = 1);
       `, [authorId || 2]);
-      for (const f of followers) {
-        if (Number(f.user_id) !== Number(authorId || 2)) {
-          await createNotification({
-            userId: f.user_id,
-            actorId: authorId || 2,
-            type: 'novel_created',
-            title: 'New Novel Released!',
-            message: `${author} has released a new novel: "${cleanTitle}".`,
-            link: contentLink,
-            entityType: 'novel',
-            entityId: cleanId
-          }).catch(() => {});
-        }
+      for (const r of recipients) {
+        await createNotification({
+          userId: r.user_id,
+          actorId: authorId || 2,
+          type: 'novel_created',
+          title: 'New Novel Released!',
+          message: `${author} has released a new novel: "${cleanTitle}".`,
+          link: contentLink,
+          entityType: 'novel',
+          entityId: cleanId
+        }).catch(() => {});
       }
     } catch (err) {
       console.warn('[Novel Created Notification Error]:', err.message);
@@ -941,21 +945,41 @@ export async function createNovel(data) {
 /**
  * Delete novel by ID
  */
-export async function deleteNovel(id) {
-  const existing = await queryOne('SELECT id, cover FROM novels WHERE id = ?', [id]);
-  if (existing?.cover) {
-    deleteLocalUploadFile(existing.cover);
-  }
+export async function deleteNovel(id, deletedBy = 2, deletedByName = 'Admin') {
+  const existing = await queryOne('SELECT * FROM novels WHERE id = ?', [id]);
   if (!existing) {
     return { success: false, error: 'Novel not found' };
   }
 
-  // Clean up associated rules and assignments
+  const chapters = await query('SELECT * FROM chapters WHERE novel_id = ?;', [id]);
+  const ratings = await query('SELECT * FROM novel_ratings WHERE novel_id = ?;', [id]);
+
+  try {
+    await moveToTrash({
+      itemType: 'novel',
+      itemId: existing.id,
+      title: existing.title,
+      ownerId: existing.author_id,
+      deletedBy,
+      deletedByName,
+      originalLocation: 'Novels',
+      itemData: {
+        novel: existing,
+        chapters: chapters || [],
+        ratings: ratings || []
+      }
+    });
+  } catch (err) {
+    console.warn('Could not move novel to trash:', err.message);
+  }
+
+  // Clean up associated rules and assignments and chapters so it is hidden from live site
   try {
     await query("DELETE FROM content_access_rules WHERE target_type = 'novel' AND target_id = ?;", [id]);
     await query("DELETE FROM writer_assignments WHERE content_type = 'novel' AND content_id = ?;", [id]);
+    await query('DELETE FROM chapters WHERE novel_id = ?;', [id]);
   } catch {}
 
   await query('DELETE FROM novels WHERE id = ?;', [id]);
-  return { success: true };
+  return { success: true, message: 'Novel moved to trash.' };
 }

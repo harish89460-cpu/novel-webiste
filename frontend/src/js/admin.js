@@ -18,7 +18,7 @@ window.showSavedContentLinkModal = ({ title, type, contentLink }) => {
         ${escapeQuotes(title || 'Content')} Saved Successfully!
       </h3>
       <p style="color:#64748B; font-size:13.5px; margin:0 0 20px; line-height:1.6;">
-        Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>+ Add Thread</strong> on the frontend category page.
+        Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>Post thread</strong> on the frontend category page.
       </p>
 
       <div style="background:#FAF8F5; border:1px solid #E8DCCB; border-radius:10px; padding:14px; margin-bottom:20px; text-align:left;">
@@ -332,82 +332,87 @@ export async function renderAdminLoginView(container) {
 
     if (currentView === 'login') {
       cleanupTimers();
-      const isWriter = window.ADMIN_FORGOT_STATE.portalRole === 'writer';
-      if (titleEl) titleEl.textContent = 'Author, Admin & Writer Portal';
-      if (subtitleEl) subtitleEl.textContent = isWriter ? 'Authorized Writer Workspace Access' : 'Rudhra Prarthana Publishing & Administration';
-
-      const roleBadge = isWriter ? '✍️ Authorized Writer Workspace' : '👑 Author & Administrative Portal';
-      const userLabel = isWriter ? 'Writer Username or Email' : 'Admin Username or Email';
-      const userPlaceholder = isWriter ? 'Enter registered writer username or email' : 'Enter admin username or email';
-      const submitText = isWriter ? '✍️ Authenticate & Access Writer Workspace' : '🔒 Authenticate & Access Admin Dashboard';
 
       cardBody.innerHTML = `
-        <div id="admin-login-error" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; font-weight:600;"></div>
-        <div id="admin-login-success" style="display:none; color:#15803D; background:#F0FDF4; border:1px solid #86EFAC; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; font-weight:600;"></div>
-
-        <!-- Role Switcher Tabs (Author/Admin vs Writer) -->
-        <div class="portal-role-tabs" style="display:flex; background:#FAF5EC; padding:4px; border-radius:10px; margin-bottom:18px; border:1px solid rgba(200,155,60,0.25);">
-          <button type="button" 
-                  onclick="switchAdminLoginRole('admin')"
-                  class="portal-role-tab ${!isWriter ? 'active' : ''}"
-                  style="flex:1; padding:8px 12px; font-size:13px; font-weight:700; border:none; border-radius:7px; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; justify-content:center; gap:6px; ${!isWriter ? 'background:#FFFFFF; color:#0B1F33; box-shadow:0 2px 6px rgba(16,42,67,0.08); border:1px solid rgba(200,155,60,0.3);' : 'background:transparent; color:#64748B;'}">
-            <span>👑</span>
-            <span>Author & Admin</span>
-          </button>
-          <button type="button" 
-                  onclick="switchAdminLoginRole('writer')"
-                  class="portal-role-tab ${isWriter ? 'active' : ''}"
-                  style="flex:1; padding:8px 12px; font-size:13px; font-weight:700; border:none; border-radius:7px; cursor:pointer; transition:all 0.2s ease; display:flex; align-items:center; justify-content:center; gap:6px; ${isWriter ? 'background:#FFFFFF; color:#0B1F33; box-shadow:0 2px 6px rgba(16,42,67,0.08); border:1px solid rgba(200,155,60,0.3);' : 'background:transparent; color:#64748B;'}">
-            <span>✍️</span>
-            <span>Writer Workspace</span>
-          </button>
+        <!-- 1. RP Novels Logo -->
+        <div class="auth-center-logo admin-login-seal">
+          <img src="/images/logo.png" alt="Rudhra Prarthana Novels" onerror="this.src='/profile.png'">
         </div>
 
-        <form onsubmit="event.preventDefault(); submitAdminLoginForm();">
-          <div class="form-group" style="margin-bottom:16px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:block;">
-              ${userLabel}
+        <!-- 2. Heading -->
+        <h1 class="auth-center-title" id="admin-login-title-text">Admin / Writer Login</h1>
+
+        <!-- Subtitle -->
+        <p class="auth-center-subtitle" id="admin-login-subtitle-text">Authorized author, admin &amp; writer access.</p>
+
+        <div id="admin-login-error" class="auth-error-alert error" style="display:none;"></div>
+        <div id="admin-login-success" class="admin-login-alert success" style="display:none;"></div>
+
+        <form onsubmit="event.preventDefault(); submitAdminLoginForm();" class="auth-modal-form">
+          <!-- Username / Email -->
+          <div class="auth-form-group">
+            <label class="auth-field-label" for="admin-username-input">
+              Email or Username
             </label>
-            <input type="text" id="admin-username-input" class="form-input" 
-                   value="${window.ADMIN_FORGOT_STATE.email || ''}"
-                   placeholder="${userPlaceholder}" required autocomplete="off"
-                   style="width:100%; padding:10px 14px; border:1px solid var(--color-border); border-radius:8px; font-size:14px;">
+            <div class="auth-input-wrapper">
+              <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+              <input type="text" id="admin-username-input" class="auth-input" 
+                     value="${window.ADMIN_FORGOT_STATE.email || ''}"
+                     placeholder="Enter your email or username" required autocomplete="username">
+            </div>
           </div>
 
-          <div class="form-group" style="margin-bottom:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin:0; display:block;">
-                Password
-              </label>
-              <a href="javascript:void(0)" id="admin-forgot-password-link" onclick="switchAdminLoginView('forgot-request')" 
-                 style="color:var(--color-gold-warm); font-size:12px; font-weight:700; text-decoration:none; cursor:pointer;">
-                Forgot Password?
-              </a>
-            </div>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="password" id="admin-password-input" class="form-input" 
-                     placeholder="••••••••" required autocomplete="current-password"
-                     style="width:100%; padding:10px 44px 10px 14px; border:1px solid var(--color-border); border-radius:8px; font-size:14px;">
-              <button type="button" class="password-toggle-btn" 
-                      onclick="toggleAdminPasswordVis('admin-password-input')" 
-                      title="Show/Hide Password" aria-label="Toggle password visibility" 
-                      style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px;">
-                👁️
+          <!-- Password with show/hide toggle -->
+          <div class="auth-form-group">
+            <label class="auth-field-label" for="admin-password-input">
+              Password
+            </label>
+            <div class="auth-input-wrapper has-toggle">
+              <svg class="auth-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <input type="password" id="admin-password-input" class="auth-input" 
+                     placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="auth-password-toggle" 
+                      onclick="togglePasswordVisibility('admin-password-input', this)" 
+                      title="Show/Hide Password" aria-label="Toggle password visibility">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
               </button>
             </div>
           </div>
 
-          <button type="submit" id="admin-login-submit-btn" class="btn btn-gold" 
-                  style="width:100%; padding:12px; font-size:14.5px; font-weight:700; letter-spacing:0.3px; border-radius:8px;">
-            ${submitText}
+          <!-- Remember Me and Forgot Password (aligned horizontally) -->
+          <div class="auth-options-row">
+            <label class="auth-remember-row">
+              <input type="checkbox" id="admin-remember-check" checked>
+              <span>Remember Me</span>
+            </label>
+            <a href="javascript:void(0)" id="admin-forgot-password-link" onclick="switchAdminLoginView('forgot-request')" class="auth-forgot-link">
+              Forgot Password?
+            </a>
+          </div>
+
+          <!-- Full-width gold gradient login button with white text and login icon -->
+          <button type="submit" id="admin-login-submit-btn" class="btn btn-gold auth-btn-gold auth-submit-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            <span>Log In</span>
           </button>
         </form>
 
-        <div style="text-align:center; margin-top:20px; font-size:12px; color:var(--color-text-muted);">
-          <span>Authorized access only. Session activity is cryptographically logged.</span>
-          <div style="margin-top:10px;">
-            <a href="#forms" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">« Return to Public Website</a>
-          </div>
+        <!-- Thin divider -->
+        <div class="auth-thin-divider"></div>
+
+        <!-- Small clickable Member Login redirect text -->
+        <div class="auth-admin-redirect-wrap">
+          <a href="#login" class="auth-admin-redirect-link">&larr; Member Login</a>
+          <span class="auth-sep" style="margin:0 8px; color:#CBD5E1;">•</span>
+          <a href="#forms" class="auth-admin-redirect-link">Return to Public Website</a>
         </div>
       `;
     } else if (currentView === 'forgot-request') {
@@ -415,34 +420,35 @@ export async function renderAdminLoginView(container) {
       if (subtitleEl) subtitleEl.textContent = 'Enter your registered Author email';
 
       cardBody.innerHTML = `
-        <div id="admin-login-error" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; font-weight:600;"></div>
+        <div id="admin-login-error" class="admin-login-alert error" style="display:none;"></div>
 
-        <p style="font-size:13px; color:var(--color-text-muted); line-height:1.6; margin-bottom:16px;">
-          Enter your registered Author email address. We will send a secure 6-digit OTP code to verify your identity.
-        </p>
+        <div class="forgot-instructions">
+          <p>
+            Enter your registered Author or Staff email address. We will send a secure 6-digit OTP code to verify your identity.
+          </p>
+        </div>
 
-        <form onsubmit="event.preventDefault(); handleAdminForgotRequestOtp();">
-          <div class="form-group" style="margin-bottom:20px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:block;">
+        <form onsubmit="event.preventDefault(); handleAdminForgotRequestOtp();" class="admin-login-form">
+          <div class="form-group">
+            <label class="form-label">
               Registered Admin Email
             </label>
-            <input type="email" id="admin-forgot-email-input" class="form-input" 
-                   value="${window.ADMIN_FORGOT_STATE.email || ''}"
-                   placeholder="Enter registered email"
-                   required autocomplete="email"
-                   style="width:100%; padding:10px 14px; border:1px solid var(--color-border); border-radius:8px; font-size:14px;">
+            <div class="input-wrapper">
+              <input type="email" id="admin-forgot-email-input" class="form-input" 
+                     value="${window.ADMIN_FORGOT_STATE.email || ''}"
+                     placeholder="Enter registered email"
+                     required autocomplete="email" autofocus>
+            </div>
           </div>
 
-          <button type="submit" id="admin-forgot-send-btn" class="btn btn-gold" 
-                  style="width:100%; padding:12px; font-size:15px; font-weight:700; letter-spacing:0.5px; border-radius:8px; margin-bottom:12px;">
+          <button type="submit" id="admin-forgot-send-btn" class="btn btn-gold btn-submit">
             📩 Send Verification Code (OTP)
           </button>
         </form>
 
-        <div style="text-align:center; margin-top:16px;">
-          <a href="javascript:void(0)" onclick="switchAdminLoginView('login')" 
-             style="color:var(--color-navy-deep); font-size:13px; font-weight:600; text-decoration:none;">
-            « Back to Author Login
+        <div class="admin-login-footer">
+          <a href="javascript:void(0)" onclick="switchAdminLoginView('login')" class="return-site-link">
+            &larr; Back to Author Login
           </a>
         </div>
       `;
@@ -451,44 +457,41 @@ export async function renderAdminLoginView(container) {
       if (subtitleEl) subtitleEl.textContent = '6-digit verification code';
 
       cardBody.innerHTML = `
-        <div id="admin-login-error" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; font-weight:600;"></div>
-        <div id="admin-login-info" style="color:#0B1F33; background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; line-height:1.5;">
+        <div id="admin-login-error" class="admin-login-alert error" style="display:none;"></div>
+        <div id="admin-login-info" class="admin-login-alert info">
           A 6-digit code was sent to <strong>${window.ADMIN_FORGOT_STATE.email}</strong>.
         </div>
 
-        <form onsubmit="event.preventDefault(); handleAdminForgotVerifyOtp();">
-          <div class="form-group" style="margin-bottom:16px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:8px; display:block; text-align:center;">
+        <form onsubmit="event.preventDefault(); handleAdminForgotVerifyOtp();" class="admin-login-form">
+          <div class="form-group" style="text-align:center;">
+            <label class="form-label" style="text-align:center;">
               Enter 6-Digit Code
             </label>
-            <div id="admin-otp-inputs" style="display:flex; justify-content:center; gap:8px;">
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="0" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);" autofocus>
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="1" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);">
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="2" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);">
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="3" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);">
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="4" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);">
-              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="5" inputmode="numeric" pattern="[0-9]*" style="width:44px; height:50px; font-size:22px; text-align:center; font-weight:700; border:2px solid var(--color-border); border-radius:8px; color:var(--color-navy-deep);">
+            <div id="admin-otp-inputs" class="otp-inputs-grid">
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="0" inputmode="numeric" pattern="[0-9]*" autofocus>
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="1" inputmode="numeric" pattern="[0-9]*">
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="2" inputmode="numeric" pattern="[0-9]*">
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="3" inputmode="numeric" pattern="[0-9]*">
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="4" inputmode="numeric" pattern="[0-9]*">
+              <input type="text" maxlength="1" class="admin-otp-digit" data-idx="5" inputmode="numeric" pattern="[0-9]*">
             </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; font-size:12px; color:var(--color-text-muted);">
-            <span id="admin-otp-timer-display" style="font-weight:600; color:#DC2626;">⏱️ Expires in: 05:00</span>
-            <button type="button" id="admin-otp-resend-btn" onclick="handleAdminForgotResendOtp()" 
-                    style="background:none; border:none; color:var(--color-gold-warm); font-weight:700; cursor:pointer; font-size:12px; padding:0;" disabled>
+          <div class="otp-timer-bar">
+            <span id="admin-otp-timer-display" class="otp-timer-text">⏱️ Expires in: 05:00</span>
+            <button type="button" id="admin-otp-resend-btn" onclick="handleAdminForgotResendOtp()" class="otp-resend-action" disabled>
               Resend Code (60s)
             </button>
           </div>
 
-          <button type="submit" id="admin-verify-otp-btn" class="btn btn-gold" 
-                  style="width:100%; padding:12px; font-size:15px; font-weight:700; letter-spacing:0.5px; border-radius:8px;">
-            ✓ Verify Code & Proceed
+          <button type="submit" id="admin-verify-otp-btn" class="btn btn-gold btn-submit">
+            ✓ Verify Code &amp; Proceed
           </button>
         </form>
 
-        <div style="text-align:center; margin-top:16px;">
-          <a href="javascript:void(0)" onclick="switchAdminLoginView('forgot-request')" 
-             style="color:var(--color-text-muted); font-size:12px; text-decoration:none;">
-            « Change Email Address
+        <div class="admin-login-footer">
+          <a href="javascript:void(0)" onclick="switchAdminLoginView('forgot-request')" class="return-site-link">
+            &larr; Change Email Address
           </a>
         </div>
       `;
@@ -501,60 +504,56 @@ export async function renderAdminLoginView(container) {
       if (subtitleEl) subtitleEl.textContent = 'Author & Admin Account';
 
       cardBody.innerHTML = `
-        <div id="admin-login-error" style="display:none; color:#EF4444; background:#FEF2F2; border:1px solid #FCA5A5; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; font-weight:600;"></div>
+        <div id="admin-login-error" class="admin-login-alert error" style="display:none;"></div>
 
-        <p style="font-size:13px; color:var(--color-text-muted); line-height:1.6; margin-bottom:16px;">
-          Enter your new password below. It will be cryptographically hashed and saved in MySQL.
-        </p>
+        <div class="forgot-instructions">
+          <p>
+            Enter your new password below. It will be cryptographically hashed and saved in MySQL.
+          </p>
+        </div>
 
-        <form onsubmit="event.preventDefault(); handleAdminForgotResetPassword();">
-          <div class="form-group" style="margin-bottom:16px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:block;">
-              New Password <span style="color:#EF4444;">*</span>
+        <form onsubmit="event.preventDefault(); handleAdminForgotResetPassword();" class="admin-login-form">
+          <div class="form-group">
+            <label class="form-label">
+              New Password <span class="required-star">*</span>
             </label>
-            <div style="position:relative; display:flex; align-items:center;">
+            <div class="input-wrapper has-toggle">
               <input type="password" id="admin-new-password" class="form-input" 
-                     placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password"
-                     style="width:100%; padding:10px 44px 10px 14px; border:1px solid var(--color-border); border-radius:8px; font-size:14px;">
+                     placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password" autofocus>
               <button type="button" class="password-toggle-btn" 
-                      onclick="toggleAdminPasswordVis('admin-new-password')" 
-                      title="Show/Hide Password" aria-label="Toggle password visibility" 
-                      style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px;">
+                      onclick="toggleAdminPasswordVis('admin-new-password', this)" 
+                      title="Show/Hide Password" aria-label="Toggle password visibility">
                 👁️
               </button>
             </div>
-            <small style="font-size:11px; color:var(--color-text-muted); margin-top:4px; display:block;">
+            <small class="input-hint">
               Password must be at least 6 characters long.
             </small>
           </div>
 
-          <div class="form-group" style="margin-bottom:20px;">
-            <label class="form-label" style="font-weight:700; color:var(--color-navy-deep); font-size:13px; margin-bottom:6px; display:block;">
-              Confirm New Password <span style="color:#EF4444;">*</span>
+          <div class="form-group">
+            <label class="form-label">
+              Confirm New Password <span class="required-star">*</span>
             </label>
-            <div style="position:relative; display:flex; align-items:center;">
+            <div class="input-wrapper has-toggle">
               <input type="password" id="admin-confirm-password" class="form-input" 
-                     placeholder="Re-enter new password" required minlength="6" autocomplete="new-password"
-                     style="width:100%; padding:10px 44px 10px 14px; border:1px solid var(--color-border); border-radius:8px; font-size:14px;">
+                     placeholder="Re-enter new password" required minlength="6" autocomplete="new-password">
               <button type="button" class="password-toggle-btn" 
-                      onclick="toggleAdminPasswordVis('admin-confirm-password')" 
-                      title="Show/Hide Password" aria-label="Toggle password visibility" 
-                      style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:18px; color:var(--color-text-muted); padding:4px 8px;">
+                      onclick="toggleAdminPasswordVis('admin-confirm-password', this)" 
+                      title="Show/Hide Password" aria-label="Toggle password visibility">
                 👁️
               </button>
             </div>
           </div>
 
-          <button type="submit" id="admin-reset-submit-btn" class="btn btn-gold" 
-                  style="width:100%; padding:12px; font-size:15px; font-weight:700; letter-spacing:0.5px; border-radius:8px;">
-            🔒 Save New Password & Update Account
+          <button type="submit" id="admin-reset-submit-btn" class="btn btn-gold btn-submit">
+            🔒 Save New Password &amp; Update Account
           </button>
         </form>
 
-        <div style="text-align:center; margin-top:16px;">
-          <a href="javascript:void(0)" onclick="switchAdminLoginView('login')" 
-             style="color:var(--color-navy-deep); font-size:13px; font-weight:600; text-decoration:none;">
-            « Cancel & Back to Login
+        <div class="admin-login-footer">
+          <a href="javascript:void(0)" onclick="switchAdminLoginView('login')" class="return-site-link">
+            &larr; Cancel &amp; Back to Login
           </a>
         </div>
       `;
@@ -564,18 +563,18 @@ export async function renderAdminLoginView(container) {
       if (subtitleEl) subtitleEl.textContent = 'Credentials Updated Successfully';
 
       cardBody.innerHTML = `
-        <div style="text-align:center; padding:10px 0;">
-          <div style="font-size:48px; margin-bottom:12px;">🎉</div>
-          <h3 style="color:var(--color-navy-deep); font-size:1.25rem; font-weight:700; margin-bottom:8px;">
+        <div class="forgot-success-content">
+          <div class="success-icon-badge">✨</div>
+          <h3 class="success-title">
             Password Updated in MySQL!
           </h3>
-          <p style="color:var(--color-text-muted); font-size:14px; line-height:1.6; margin-bottom:24px;">
-            Your author credentials have been securely updated with salted cryptographic hashing. You can now log in to the Author & Admin Portal with your new password.
+          <p class="success-desc">
+            Your author credentials have been securely updated with salted cryptographic hashing. You can now log in to the Author &amp; Admin Portal with your new password.
           </p>
 
-          <button type="button" class="btn btn-gold" style="width:100%; padding:12px; font-weight:700; border-radius:8px;"
+          <button type="button" class="btn btn-gold btn-submit"
                   onclick="switchAdminLoginView('login'); const el = document.getElementById('admin-username-input'); if(el) el.value = '${window.ADMIN_FORGOT_STATE.email}';">
-            Proceed to Author Login ➔
+            Proceed to Author Login &rarr;
           </button>
         </div>
       `;
@@ -658,10 +657,17 @@ export async function renderAdminLoginView(container) {
     }, 1000);
   }
 
-  window.toggleAdminPasswordVis = (inputId) => {
+  window.toggleAdminPasswordVis = (inputId, btn) => {
     const input = document.getElementById(inputId);
     if (input) {
-      input.type = input.type === 'password' ? 'text' : 'password';
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      const targetBtn = btn || input.parentElement?.querySelector('.password-toggle-btn');
+      if (targetBtn) {
+        targetBtn.innerHTML = isPassword ? '🙈' : '👁️';
+        targetBtn.setAttribute('title', isPassword ? 'Hide Password' : 'Show Password');
+        targetBtn.setAttribute('aria-label', isPassword ? 'Hide Password' : 'Show Password');
+      }
     }
   };
 
@@ -956,7 +962,12 @@ export async function renderAdminLoginView(container) {
         }
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = '🔒 Authenticate & Access Dashboard';
+          submitBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            <span>Log In</span>
+          `;
         }
         return;
       }
@@ -983,7 +994,7 @@ export async function renderAdminLoginView(container) {
     } catch (err) {
       console.error('Admin login error:', err);
       if (errorEl) {
-        errorEl.textContent = err.message || 'Unable to reach backend server. Please check your connection.';
+        errorEl.textContent = err?.message || 'Unable to connect to the server. Please check your internet connection.';
         errorEl.style.display = 'block';
       }
       if (submitBtn) {
@@ -993,20 +1004,15 @@ export async function renderAdminLoginView(container) {
     }
   };
 
-  // Initial Shell Render
+  // Initial Shell Render (matches reference design system)
   container.innerHTML = `
-    <div class="admin-login-wrapper">
-      <div class="admin-login-card">
-        <div class="admin-login-header">
-          <div class="admin-login-seal">
-            <img src="/images/logo.png" alt="Rudhra Prarthana Novels Seal" onerror="this.src='/profile.png'">
+    <div class="auth-page-wrapper admin-login-wrapper">
+      <div class="auth-page-container">
+        <div class="rp-auth-card admin-login-card">
+          <div class="auth-card-accent-bar"></div>
+          <div class="auth-card-body" id="admin-login-body-container">
+            <!-- Dynamically switched between login, forgot-request, forgot-otp, forgot-password, forgot-success -->
           </div>
-          <h1 class="admin-login-title" id="admin-login-title-text">Author, Admin &amp; Writer Portal</h1>
-          <p class="admin-login-subtitle" id="admin-login-subtitle-text">Rudhra Prarthana Novels</p>
-        </div>
-
-        <div class="admin-login-body" id="admin-login-body-container">
-          <!-- Dynamically switched between login, forgot-request, forgot-otp, forgot-password, forgot-success -->
         </div>
       </div>
     </div>
@@ -1134,8 +1140,9 @@ export async function renderAdminDashboard(container, requestedTab) {
     scheduler: 'Schedule',
     writers: 'Writer Management',
     members: 'Member Account Management',
-    forum: 'Forms & Content Management',
-    settings: 'Settings'
+    forum: 'Form Management',
+    settings: 'Settings',
+    trash: 'Trash / Recycle Bin'
   };
 
   // Render Clean Modern Dashboard Shell Structure
@@ -1295,7 +1302,7 @@ export async function renderAdminDashboard(container, requestedTab) {
                     onclick="switchAdminTab('forum')">
               <span class="admin-nav-item-content">
                 ${ADMIN_ICONS.chat}
-                <span>Forms &amp; Content Management</span>
+                <span>Form Management</span>
               </span>
               <span class="admin-nav-pill" id="nav-forum-count">-</span>
             </button>
@@ -1306,6 +1313,18 @@ export async function renderAdminDashboard(container, requestedTab) {
                 ${ADMIN_ICONS.settings}
                 <span>Settings</span>
               </span>
+            </button>
+
+            <button type="button" class="admin-nav-item ${adminState.activeTab === 'trash' ? 'active' : ''}" 
+                    onclick="switchAdminTab('trash')">
+              <span class="admin-nav-item-content">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Trash</span>
+              </span>
+              <span class="admin-nav-pill" id="nav-trash-count">-</span>
             </button>
           </nav>
 
@@ -1589,6 +1608,9 @@ function renderActiveAdminTab() {
       break;
     case 'settings':
       renderSettingsTab(canvas);
+      break;
+    case 'trash':
+      renderTrashManagementTab(canvas);
       break;
     default:
       renderOverviewTab(canvas);
@@ -10656,114 +10678,113 @@ window.forumAdminState = {
 
 
 // ============================================================================
-// FORMS & CONTENT MANAGEMENT (3-LEVEL HIERARCHY & FINE-GRAINED ACCESS CONTROL)
-// Main Title -> Sub Title -> Content Title -> Reading Content
+// ============================================================================
+// FORM MANAGEMENT (TITLE HIERARCHY ONLY: MAIN TITLE -> SUB-TITLE -> SUB-SUB-TITLE)
+// Exact match to reference design: White/Off-white, Gold accents, Drag & Drop
 // ============================================================================
 
 window.formsAdminState = {
   mainCategories: [],
   subcategories: [],
-  articles: [],
   accessRules: [],
   members: [],
-  novels: [],
   expandedMainIds: new Set(),
   expandedSubIds: new Set(),
   searchQuery: '',
-  isLoading: false
+  isLoading: false,
+  draggedMainId: null,
+  draggedSubId: null,
+  draggedSubSubId: null
 };
 
 /**
- * Render Redesigned Forms & Content Management Tab
- * Clean, expandable hierarchy: Main Titles -> Sub Titles -> Content Items -> Nested Sub-sub-titles
+ * Render Redesigned Form Management Tab
+ * Dedicated strictly to Title Organization (Main Title -> Sub-title -> Sub-sub-title)
  */
 export async function renderForumManagementTab(canvas) {
   canvas.innerHTML = `
-    <div class="admin-page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
-      <div>
-        <h1 style="font-family:'Playfair Display',serif; font-size:1.85rem; color:#0B1F33; margin:0 0 6px;">
-          Forms &amp; Content Management
-        </h1>
-        <p style="color:#64748B; font-size:13.5px; margin:0; line-height:1.5;">
-          Manage the full nested content hierarchy (<strong>Main Titles → Sub-titles → Content Items → Sub-sub-titles</strong>) with rich-text editor and fine-grained access control.
-        </p>
+    <div class="fm-page-container">
+      <!-- Header -->
+      <div class="fm-header">
+        <div class="fm-header-icon">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="fm-header-content">
+          <h1 class="fm-header-title">Form Management</h1>
+          <p class="fm-header-subtitle">
+            Create and organize your content hierarchy <span class="fm-hierarchy-pill">(Main Title &rarr; Sub-title &rarr; Sub-sub-title)</span> with rich editor and access control.
+          </p>
+        </div>
       </div>
 
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <a href="#forms" target="_blank" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-          ${ADMIN_ICONS.externalLink} View Live Forms
-        </a>
-        <button type="button" class="btn btn-outline btn-sm" onclick="window.openReorderCategoriesModal()" style="display:inline-flex; align-items:center; gap:6px; font-weight:600;">
-          ↕ Reorder Categories
+      <!-- Toolbar -->
+      <div class="fm-toolbar">
+        <button type="button" class="fm-btn-add-main" onclick="window.openCreateMainModal()">
+          <span style="font-size:16px; font-weight:700;">+</span> Add Main Title
         </button>
-        <button type="button" class="btn btn-gold btn-sm" onclick="window.openCreateMainModal()" style="display:inline-flex; align-items:center; gap:6px;">
-          ${ADMIN_ICONS.plus} + Add Main Title
-        </button>
+
+        <div class="fm-search-wrap">
+          <span class="fm-search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <input type="text" id="fm-search-input" class="fm-search-input"
+                 placeholder="Search main titles, sub-titles, or sub-sub-titles..."
+                 oninput="window.handleFormsTreeSearch(this.value)">
+        </div>
+
+        <div class="fm-toolbar-actions">
+          <button type="button" class="fm-tool-btn" onclick="window.toggleAllFormsTree(true)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="18 15 12 9 6 15"></polyline></svg> Expand All
+          </button>
+          <button type="button" class="fm-tool-btn" onclick="window.toggleAllFormsTree(false)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><polyline points="6 9 12 15 18 9"></polyline></svg> Collapse All
+          </button>
+        </div>
       </div>
+
+      <!-- Tree Container Canvas -->
+      <div id="forms-admin-tree-container">
+        <div style="text-align:center; padding:60px 20px; color:#64748B;">
+          <div style="width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#D97706; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 14px;"></div>
+          <div style="font-size:14px; font-weight:500;">Loading Form Management hierarchy...</div>
+        </div>
+      </div>
+
+      <!-- Modals Mount Point -->
+      <div id="forms-admin-modal-container"></div>
     </div>
-
-    <!-- Toolbar: Search filter, Expand/Collapse All & Summary Badges -->
-    <div class="forms-tree-toolbar">
-      <div class="forms-tree-search-wrap">
-        <span class="forms-tree-search-icon">🔍</span>
-        <input type="text" id="forms-tree-search-input" class="forms-tree-search-input" 
-               placeholder="Search main titles, sub-titles, or content..." 
-               oninput="window.handleFormsTreeSearch(this.value)">
-      </div>
-
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button type="button" class="btn btn-outline btn-xs" onclick="window.toggleAllFormsTree(true)">
-          Expand All
-        </button>
-        <button type="button" class="btn btn-outline btn-xs" onclick="window.toggleAllFormsTree(false)">
-          Collapse All
-        </button>
-        <span class="forms-tree-pill" id="tree-badge-mains">0 Mains</span>
-        <span class="forms-tree-pill" id="tree-badge-subs">0 Subs</span>
-        <span class="forms-tree-pill" id="tree-badge-arts">0 Contents</span>
-      </div>
-    </div>
-
-    <!-- Tree Container Canvas -->
-    <div id="forms-admin-tree-container">
-      <div style="text-align:center; padding:50px 20px; color:#64748B;">
-        <div style="width:34px; height:34px; border:3px solid #E2E8F0; border-top-color:#B88635; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
-        <div>Loading Forms &amp; Content Management hierarchy...</div>
-      </div>
-    </div>
-
-    <!-- Modals Mount Point -->
-    <div id="forms-admin-modal-container"></div>
   `;
 
   await window.loadFormsAdminData();
 }
 
 /**
- * Load all Forms & Content Data from Database
+ * Load all Form Titles and Access Data from Database
  */
 window.loadFormsAdminData = async () => {
   try {
-    const [mainRes, subRes, artRes, accRes, memRes, novRes] = await Promise.all([
+    window.formsAdminState.isLoading = true;
+    const [mainRes, subRes, accRes, memRes] = await Promise.all([
       apiFetch('/api/admin/content/main-categories'),
       apiFetch('/api/admin/content/subcategories'),
-      apiFetch('/api/admin/content/articles'),
       apiFetch('/api/admin/content/access-rules'),
-      apiFetch('/api/admin/members?limit=250'),
-      apiFetch('/api/admin/novels')
+      apiFetch('/api/admin/members?limit=250')
     ]);
 
     if (mainRes.ok) {
       const data = await mainRes.json();
-      window.formsAdminState.mainCategories = data.categories || [];
+      window.formsAdminState.mainCategories = (data.categories || []).sort((a, b) => (Number(a.sort_order || 0) - Number(b.sort_order || 0)) || a.title.localeCompare(b.title));
     }
     if (subRes.ok) {
       const data = await subRes.json();
-      window.formsAdminState.subcategories = data.subcategories || [];
-    }
-    if (artRes.ok) {
-      const data = await artRes.json();
-      window.formsAdminState.articles = data.articles || [];
+      window.formsAdminState.subcategories = (data.subcategories || []).sort((a, b) => (Number(a.sort_order || 0) - Number(b.sort_order || 0)) || a.title.localeCompare(b.title));
     }
     if (accRes.ok) {
       const data = await accRes.json();
@@ -10773,62 +10794,58 @@ window.loadFormsAdminData = async () => {
       const data = await memRes.json();
       window.formsAdminState.members = data.members || [];
     }
-    if (novRes.ok) {
-      const data = await novRes.json();
-      window.formsAdminState.novels = data.novels || [];
-    }
 
-    // Default expand all main and subcategories on first load
+    // Default expand all main categories on initial load so cards are open like in reference image
     if (window.formsAdminState.expandedMainIds.size === 0) {
-      window.formsAdminState.mainCategories.forEach(m => window.formsAdminState.expandedMainIds.add(m.id));
-    }
-    if (window.formsAdminState.expandedSubIds.size === 0) {
-      window.formsAdminState.subcategories.forEach(s => window.formsAdminState.expandedSubIds.add(s.id));
+      window.formsAdminState.mainCategories.forEach(c => window.formsAdminState.expandedMainIds.add(String(c.id)));
+      // Also expand subtitles that have child sub-sub-titles or match reference design
+      window.formsAdminState.subcategories.forEach(s => {
+        window.formsAdminState.expandedSubIds.add(String(s.id));
+      });
     }
 
-    // Update counter badges
-    const mBadge = document.getElementById('tree-badge-mains');
-    const sBadge = document.getElementById('tree-badge-subs');
-    const aBadge = document.getElementById('tree-badge-arts');
-    const sideBadge = document.getElementById('nav-forum-count');
-
-    if (mBadge) mBadge.textContent = `${window.formsAdminState.mainCategories.length} Mains`;
-    if (sBadge) sBadge.textContent = `${window.formsAdminState.subcategories.length} Subs`;
-    if (aBadge) aBadge.textContent = `${window.formsAdminState.articles.length} Contents`;
-    if (sideBadge) sideBadge.textContent = window.formsAdminState.mainCategories.length;
+    // Update nav counter badge
+    const badge = document.getElementById('nav-forum-count');
+    if (badge) badge.textContent = window.formsAdminState.mainCategories.length;
 
     window.renderFormsHierarchyTree();
   } catch (err) {
-    console.error('Error loading forms admin data:', err);
+    console.error('Error loading form management data:', err);
     const container = document.getElementById('forms-admin-tree-container');
     if (container) {
       container.innerHTML = `
-        <div style="background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; padding:20px; border-radius:10px; text-align:center;">
-          <strong>Error loading hierarchy:</strong> ${escapeHtml(err.message)}
-          <div style="margin-top:12px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.loadFormsAdminData()">Retry</button>
-          </div>
+        <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:12px; padding:24px; text-align:center; color:#DC2626;">
+          <div style="font-weight:700; margin-bottom:6px;">Failed to load Form Management hierarchy</div>
+          <div style="font-size:13px; color:#64748B; margin-bottom:14px;">${escapeHtml(err.message || 'Network error')}</div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.loadFormsAdminData()">Retry</button>
         </div>
       `;
     }
+  } finally {
+    window.formsAdminState.isLoading = false;
   }
 };
 
 /**
- * Filter tree search query
+ * Real-time Search Handler
  */
 window.handleFormsTreeSearch = (val) => {
   window.formsAdminState.searchQuery = (val || '').trim().toLowerCase();
+  if (window.formsAdminState.searchQuery) {
+    // Automatically expand main categories & subtitles matching query
+    window.formsAdminState.mainCategories.forEach(c => window.formsAdminState.expandedMainIds.add(String(c.id)));
+    window.formsAdminState.subcategories.forEach(s => window.formsAdminState.expandedSubIds.add(String(s.id)));
+  }
   window.renderFormsHierarchyTree();
 };
 
 /**
- * Expand or collapse all sections
+ * Expand All or Collapse All Handler
  */
 window.toggleAllFormsTree = (expand) => {
   if (expand) {
-    window.formsAdminState.mainCategories.forEach(m => window.formsAdminState.expandedMainIds.add(m.id));
-    window.formsAdminState.subcategories.forEach(s => window.formsAdminState.expandedSubIds.add(s.id));
+    window.formsAdminState.mainCategories.forEach(c => window.formsAdminState.expandedMainIds.add(String(c.id)));
+    window.formsAdminState.subcategories.forEach(s => window.formsAdminState.expandedSubIds.add(String(s.id)));
   } else {
     window.formsAdminState.expandedMainIds.clear();
     window.formsAdminState.expandedSubIds.clear();
@@ -10836,26 +10853,35 @@ window.toggleAllFormsTree = (expand) => {
   window.renderFormsHierarchyTree();
 };
 
+/**
+ * Toggle Main Title expand/collapse
+ */
 window.toggleFormsMainExpand = (mainId) => {
-  if (window.formsAdminState.expandedMainIds.has(mainId)) {
-    window.formsAdminState.expandedMainIds.delete(mainId);
+  const mIdStr = String(mainId);
+  if (window.formsAdminState.expandedMainIds.has(mIdStr)) {
+    window.formsAdminState.expandedMainIds.delete(mIdStr);
   } else {
-    window.formsAdminState.expandedMainIds.add(mainId);
-  }
-  window.renderFormsHierarchyTree();
-};
-
-window.toggleFormsSubExpand = (subId) => {
-  if (window.formsAdminState.expandedSubIds.has(subId)) {
-    window.formsAdminState.expandedSubIds.delete(subId);
-  } else {
-    window.formsAdminState.expandedSubIds.add(subId);
+    window.formsAdminState.expandedMainIds.add(mIdStr);
   }
   window.renderFormsHierarchyTree();
 };
 
 /**
- * Render the full expandable tree of Main Titles -> Sub Titles -> Content Items -> Nested Sub-sub-titles
+ * Toggle Sub Title expand/collapse
+ */
+window.toggleFormsSubExpand = (subId) => {
+  const sIdStr = String(subId);
+  if (window.formsAdminState.expandedSubIds.has(sIdStr)) {
+    window.formsAdminState.expandedSubIds.delete(sIdStr);
+  } else {
+    window.formsAdminState.expandedSubIds.add(sIdStr);
+  }
+  window.renderFormsHierarchyTree();
+};
+
+/**
+ * Render the full Form Management Hierarchy Tree
+ * Exactly matching reference image layout and style
  */
 window.renderFormsHierarchyTree = () => {
   const container = document.getElementById('forms-admin-tree-container');
@@ -10863,609 +10889,609 @@ window.renderFormsHierarchyTree = () => {
 
   const mains = window.formsAdminState.mainCategories || [];
   const subs = window.formsAdminState.subcategories || [];
-  const allArticles = window.formsAdminState.articles || [];
   const q = window.formsAdminState.searchQuery;
 
-  // Build recursive article tree for each subcategory
-  function buildRecursiveArticleTree(artList, parentId = null) {
-    return artList
-      .filter(a => {
-        if (parentId === null) {
-          return a.parent_id === null || a.parent_id === 0 || !a.parent_id;
-        }
-        return Number(a.parent_id) === Number(parentId);
-      })
-      .map(art => ({
-        ...art,
-        children: buildRecursiveArticleTree(artList, art.id)
-      }));
-  }
-
-  // Recursive renderer for content item row & its nested sub-sub-titles
-  function renderContentItemRow(art, subItem, mainItem, depth = 0) {
-    const isDis = art.is_disabled || art.status === 'disabled';
-    const hasChildren = art.children && art.children.length > 0;
-    const readLink = `#content?slug=${encodeURIComponent(art.unique_slug || art.id)}`;
-
-    let statusPillClass = 'pill-published';
-    if (isDis) statusPillClass = 'pill-disabled';
-    else if (art.status === 'draft') statusPillClass = 'pill-draft';
-    else if (art.status === 'scheduled') statusPillClass = 'pill-scheduled';
-
-    const accessLabel = (art.access_permission || 'admin_only') === 'admin_only' ? 'Admin Only'
-      : (art.access_permission === 'all_writers' ? 'All Writers' : 'Selected Writers');
-
-    return `
-      <div class="forms-tree-item-row ${depth > 0 ? 'is-child' : ''}" style="${depth > 0 ? `margin-left:${depth * 24}px; border-radius:6px; margin-top:4px; margin-bottom:4px;` : ''}">
-        <div class="forms-tree-item-left">
-          <span class="forms-tree-item-icon">${depth > 0 ? '↳ 📄' : '📄'}</span>
-          <div class="forms-tree-item-info">
-            <div>
-              <a href="${readLink}" target="_blank" class="forms-tree-item-title-link" title="Open reading view in new tab">
-                ${escapeHtml(art.title)}
-              </a>
-              ${art.content ? '<span style="font-size:11px; color:#15803D; margin-left:4px;" title="Contains rich text reading content">📖</span>' : ''}
-              ${hasChildren ? `<span class="forms-tree-pill" style="margin-left:6px; background:#EDE9FE; color:#5B21B6; font-size:10.5px;">${art.children.length} ${art.children.length === 1 ? 'part' : 'parts'}</span>` : ''}
-            </div>
-            <div class="forms-tree-item-badges">
-              <span class="forms-tree-pill ${statusPillClass}">
-                ${isDis ? 'Disabled' : (art.status ? (art.status.charAt(0).toUpperCase() + art.status.slice(1)) : 'Published')}
-              </span>
-              <span class="forms-tree-pill pill-access" title="Editing Access Permission">
-                🛡️ ${accessLabel}
-              </span>
-              <span class="forms-tree-pill" title="Author">
-                ✍️ ${escapeHtml(art.author_name || 'Rudhra Prarthana')}
-              </span>
-              <span class="forms-tree-pill" title="Comments">
-                💬 ${art.comments_count || 0}
-              </span>
-              <span class="forms-tree-pill" title="Views">
-                👁️ ${Number(art.views_count || 0).toLocaleString()}
-              </span>
-              <span class="forms-tree-pill" title="Updated Date">
-                🕒 ${art.updated_at ? new Date(art.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Recent'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div class="forms-tree-item-actions">
-          <button type="button" class="btn btn-outline btn-xs" 
-                  onclick="window.openCreateArticleModal('${escapeQuotes(mainItem.id)}', '${escapeQuotes(subItem.id)}', ${art.id})" 
-                  style="color:#6D28D9; border-color:#DDD6FE; font-weight:700;"
-                  title="Add nested child part / sub-sub-title under this item">
-            + Add Sub-sub-title
-          </button>
-          <button type="button" class="btn btn-outline btn-xs" onclick="window.openCreateArticleModal('${escapeQuotes(mainItem.id)}', '${escapeQuotes(subItem.id)}', null, ${art.id})" title="Edit content">
-            Edit
-          </button>
-          <button type="button" class="btn btn-outline btn-xs" 
-                  onclick="window.toggleContentArticleStatus(${art.id}, ${isDis ? 'true' : 'false'})"
-                  style="${isDis ? 'color:#15803D; border-color:#BBF7D0;' : 'color:#DC2626; border-color:#FECACA;'}"
-                  title="Toggle publication status">
-            ${isDis ? 'Enable' : 'Disable'}
-          </button>
-          <button type="button" class="btn btn-outline btn-xs" 
-                  onclick="window.openAccessRuleModal('content', '${art.id}', '${escapeQuotes(art.title)}')"
-                  style="color:#B88635; border-color:#E8DCCB;"
-                  title="Member Access Restriction">
-            🛡️
-          </button>
-          <button type="button" class="btn btn-outline btn-xs" onclick="window.deleteContentArticle(${art.id})" style="color:#DC2626; border-color:#FECACA;" title="Delete">
-            ✕
-          </button>
-        </div>
-      </div>
-
-      ${hasChildren ? `
-        <div class="forms-tree-nested-container" style="padding-left:12px;">
-          ${art.children.map(child => renderContentItemRow(child, subItem, mainItem, depth + 1)).join('')}
-        </div>
-      ` : ''}
-    `;
-  }
-
-  // Filter mains and subs based on search query
+  // Filter based on search query
   let filteredMains = mains;
   if (q) {
     filteredMains = mains.filter(m => {
-      const mMatch = m.title.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
-      const subMatch = subs.some(s => String(s.main_category_id) === String(m.id) && (s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)));
-      const artMatch = allArticles.some(a => String(a.main_category_id) === String(m.id) && (a.title.toLowerCase().includes(q) || (a.content || '').toLowerCase().includes(q)));
-      return mMatch || subMatch || artMatch;
+      const mainMatch = (m.title || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q);
+      const childSubs = subs.filter(s => s.main_category_id === m.id);
+      const subMatch = childSubs.some(s => 
+        (s.title || '').toLowerCase().includes(q) || 
+        (s.id || '').toLowerCase().includes(q) ||
+        subs.some(child => child.parent_id === s.id && (child.title || '').toLowerCase().includes(q))
+      );
+      return mainMatch || subMatch;
     });
   }
 
   if (filteredMains.length === 0) {
     container.innerHTML = `
-      <div style="background:#ffffff; border:1px solid #E2E8F0; border-radius:12px; padding:48px 20px; text-align:center; color:#64748B;">
-        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
-        <h3 style="font-family:'Playfair Display',serif; color:#0B1F33; margin:0 0 6px;">No Content Found</h3>
-        <p style="font-size:13.5px; margin:0 0 16px;">No main titles or nested content matched your search query "${escapeHtml(q)}".</p>
-        <button type="button" class="btn btn-gold btn-sm" onclick="window.handleFormsTreeSearch('')">Clear Search</button>
+      <div class="fm-main-card" style="padding:48px 20px; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">📋</div>
+        <div style="font-family:'Playfair Display',serif; font-size:1.35rem; font-weight:700; color:#0B1F33; margin-bottom:6px;">
+          ${q ? 'No matching titles found' : 'No Main Titles yet'}
+        </div>
+        <p style="color:#64748B; font-size:13.5px; margin-bottom:18px;">
+          ${q ? 'Try a different search term or clear the filter.' : 'Get started by creating your first Main Title category.'}
+        </p>
+        ${!q ? `
+          <button type="button" class="fm-btn-gold" onclick="window.openCreateMainModal()">
+            <span style="font-weight:700;">+</span> Add Main Title
+          </button>
+        ` : `
+          <button type="button" class="fm-btn-gold" onclick="document.getElementById('fm-search-input').value=''; window.handleFormsTreeSearch('');">
+            Clear Search
+          </button>
+        `}
       </div>
     `;
     return;
   }
 
-  // Sort main categories by sort_order ascending
-  filteredMains.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
+  // Icons used across buttons
+  const iconPencil = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+  const iconSlash = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
+  const iconCheck = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+  const iconShield = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
+  const iconTrash = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+  const iconBook = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`;
+  const iconGrip = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`;
 
-  container.innerHTML = filteredMains.map((mainCat, idx) => {
-    const isMainExpanded = window.formsAdminState.expandedMainIds.has(mainCat.id) || Boolean(q);
-    const mainSubs = subs.filter(s => String(s.main_category_id) === String(mainCat.id));
-    const mainArticles = allArticles.filter(a => String(a.main_category_id) === String(mainCat.id));
-    const isDis = mainCat.is_disabled || mainCat.status === 'disabled';
+  let html = '';
 
-    return `
-      <div class="forms-tree-main-card" id="forms-main-card-${escapeHtml(mainCat.id)}">
-        <!-- Main Title Header -->
-        <div class="forms-tree-main-header" onclick="window.toggleFormsMainExpand('${escapeQuotes(mainCat.id)}')">
-          <div class="forms-tree-main-left">
-            <!-- Order Controls (Up / Down & Badge) -->
-            <div class="forms-tree-order-control" onclick="event.stopPropagation()" title="Category display position on Forms page">
-              <span class="forms-order-badge">#${idx + 1}</span>
-              <div class="forms-order-arrows">
-                <button type="button" class="btn-order-arrow" 
-                        onclick="window.moveCategoryOrder('${escapeQuotes(mainCat.id)}', -1)" 
-                        title="Move Up in Display Order" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                <button type="button" class="btn-order-arrow" 
-                        onclick="window.moveCategoryOrder('${escapeQuotes(mainCat.id)}', 1)" 
-                        title="Move Down in Display Order" ${idx === filteredMains.length - 1 ? 'disabled' : ''}>▼</button>
-              </div>
+  filteredMains.forEach((mainCat, idx) => {
+    const isMainExpanded = window.formsAdminState.expandedMainIds.has(String(mainCat.id));
+    const isMainDisabled = Boolean(mainCat.is_disabled || mainCat.status === 'disabled');
+
+    // Subtitles belonging directly to this main category (Level 2)
+    const directSubs = subs.filter(s => s.main_category_id === mainCat.id && (!s.parent_id || s.parent_id === ''));
+    // Nested sub-sub-titles under this main category (Level 3)
+    const subSubList = subs.filter(s => s.main_category_id === mainCat.id && s.parent_id && s.parent_id !== '');
+
+    const subsCount = directSubs.length;
+    const subSubsCount = subSubList.length;
+
+    html += `
+      <div class="fm-main-card" 
+           id="fm-main-card-${mainCat.id}" 
+           draggable="true"
+           ondragstart="window.handleMainDragStart(event, '${mainCat.id}')"
+           ondragover="window.handleMainDragOver(event, '${mainCat.id}')"
+           ondragleave="window.handleMainDragLeave(event)"
+           ondrop="window.handleMainDrop(event, '${mainCat.id}')"
+           ondragend="window.handleMainDragEnd(event)">
+        
+        <!-- Main Card Header -->
+        <div class="fm-main-header">
+          <div class="fm-main-left">
+            <!-- Drag Handle -->
+            <span class="fm-drag-handle" title="Drag to reorder main title up or down">
+              ${iconGrip}
+            </span>
+
+            <!-- Title Number Badge (e.g. #1, #2, #3) -->
+            <div class="fm-num-badge">#${idx + 1}</div>
+
+            <!-- Main Title Icon Box -->
+            <div class="fm-main-icon-box">
+              ${escapeHtml(mainCat.icon || '📖')}
             </div>
 
-            <span class="forms-tree-toggle-arrow ${!isMainExpanded ? 'is-collapsed' : ''}">▼</span>
-            <span class="forms-tree-main-icon" style="background:${escapeHtml(mainCat.color || '#EDE9FE')}; color:#ffffff;">
-              ${mainCat.icon || '💬'}
-            </span>
-            <div class="forms-tree-main-title-wrap">
-              <h2 class="forms-tree-main-title">
+            <!-- Title & Subtitle Meta -->
+            <div class="fm-main-title-wrap">
+              <h2 class="fm-main-title">
                 ${escapeHtml(mainCat.title)}
-                <span class="forms-tree-pill" style="font-size:11px; font-weight:normal; font-family:monospace;">ID: ${escapeHtml(mainCat.id)}</span>
-                <span class="forms-tree-pill" style="font-size:11px; font-weight:700; background:#FEF3C7; color:#92400E;">
-                  Order: ${mainCat.sort_order ?? (idx + 1)}
-                </span>
               </h2>
-              <div class="forms-tree-main-meta">
-                <span>${mainSubs.length} Sub-titles</span>
-                <span>•</span>
-                <span>${mainArticles.length} Content items</span>
-                <span>•</span>
-                <span class="forms-tree-pill ${!isDis ? 'pill-published' : 'pill-disabled'}">
-                  ${!isDis ? 'Published' : 'Disabled'}
+              <div class="fm-main-meta">
+                <span class="fm-main-meta-count">
+                  ${iconBook} ${subsCount} Sub-titles &bull; ${subSubsCount} Sub-sub-titles
+                </span>
+                <span class="fm-status-pill ${isMainDisabled ? 'disabled' : 'published'}">
+                  ${isMainDisabled ? 'Disabled' : 'Published'}
                 </span>
               </div>
             </div>
           </div>
 
-          <!-- Main Actions Bar -->
-          <div class="forms-tree-main-actions" onclick="event.stopPropagation()">
-            <button type="button" class="btn btn-gold btn-sm" 
-                    onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')"
-                    title="Add a new Sub-title directly inside ${escapeQuotes(mainCat.title)}"
-                    style="font-weight:700;">
-              ${ADMIN_ICONS.plus} + Add Sub-title
+          <!-- Main Actions -->
+          <div class="fm-main-actions">
+
+            <!-- Add Sub-title Button -->
+            <button type="button" class="fm-btn-gold" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')">
+              <span style="font-size:15px; font-weight:700;">+</span> Add Sub-title
             </button>
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.openCreateMainModal('${escapeQuotes(mainCat.id)}')">
-              Edit
+
+            <!-- Edit Button -->
+            <button type="button" class="fm-btn-action" onclick="window.openCreateMainModal('${escapeQuotes(mainCat.id)}')">
+              ${iconPencil} Edit
             </button>
-            <button type="button" class="btn btn-outline btn-sm" 
-                    onclick="window.toggleMainCategoryStatus('${escapeQuotes(mainCat.id)}', ${isDis ? 'true' : 'false'})"
-                    style="${isDis ? 'color:#15803D;' : 'color:#DC2626;'}">
-              ${isDis ? 'Enable' : 'Disable'}
+
+            <!-- Disable / Enable Button -->
+            <button type="button" class="fm-btn-action ${isMainDisabled ? 'text-success' : 'text-danger'}" 
+                    onclick="window.toggleMainCategoryStatus('${escapeQuotes(mainCat.id)}', ${isMainDisabled})">
+              ${isMainDisabled ? iconCheck : iconSlash} ${isMainDisabled ? 'Enable' : 'Disable'}
             </button>
-            <button type="button" class="btn btn-outline btn-sm" 
-                    onclick="window.openAccessRuleModal('main_category', '${escapeQuotes(mainCat.id)}', '${escapeQuotes(mainCat.title)}')"
-                    style="color:#B88635;" title="Member Access Control">
-              🛡️ Access
+
+            <!-- Access Control Button -->
+            <button type="button" class="fm-btn-action" 
+                    onclick="window.openAccessRuleModal('main', '${escapeQuotes(mainCat.id)}', '${escapeQuotes(mainCat.title)}')">
+              ${iconShield} Access
             </button>
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.deleteMainCategory('${escapeQuotes(mainCat.id)}')" style="color:#DC2626;" title="Delete">
-              Delete
+
+            <!-- Delete Button (No restriction, fully deletable) -->
+            <button type="button" class="fm-btn-action text-danger" 
+                    onclick="window.promptDeleteMain('${escapeQuotes(mainCat.id)}', '${escapeQuotes(mainCat.title)}', ${subsCount})">
+              ${iconTrash} Delete
             </button>
           </div>
         </div>
 
-        <!-- Main Body: Sub-titles List -->
+        <!-- Main Card Body (Collapsible) -->
         ${isMainExpanded ? `
-          <div class="forms-tree-main-body">
-            ${mainSubs.length === 0 ? `
-              <div class="forms-tree-empty">
-                <div>No Sub-titles inside <strong>${escapeHtml(mainCat.title)}</strong> yet.</div>
-                <button type="button" class="btn btn-gold btn-sm" style="margin-top:10px;" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')">
-                  + Add First Sub-title
+          <div class="fm-main-body">
+            ${subsCount === 0 ? `
+              <!-- Empty state matching reference image exactly -->
+              <div class="fm-empty-box">
+                <div class="fm-empty-icon">
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                  </svg>
+                </div>
+                <p class="fm-empty-text">No Sub-titles inside <strong>${escapeHtml(mainCat.title)}</strong> yet.</p>
+                <button type="button" class="fm-btn-gold" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')">
+                  <span style="font-weight:700;">+</span> Add Sub-title
                 </button>
               </div>
-            ` : mainSubs.map(subItem => {
-              const isSubExpanded = window.formsAdminState.expandedSubIds.has(subItem.id) || Boolean(q);
-              const subArticlesRaw = allArticles.filter(a => String(a.sub_category_id) === String(subItem.id));
-              const subTree = buildRecursiveArticleTree(subArticlesRaw, null);
-              const isSubDis = subItem.is_disabled || subItem.status === 'disabled';
+            ` : `
+              <!-- Subtitle list -->
+              <div class="fm-subs-list">
+                ${directSubs.map((sub, sIdx) => {
+                  const isSubExpanded = window.formsAdminState.expandedSubIds.has(String(sub.id));
+                  const isSubDisabled = Boolean(sub.is_disabled || sub.status === 'disabled');
+                  const childSubSubs = subs.filter(c => c.parent_id === sub.id);
 
-              return `
-                <div class="forms-tree-sub-card" id="forms-sub-card-${escapeHtml(subItem.id)}">
-                  <!-- Sub-title Header -->
-                  <div class="forms-tree-sub-header" onclick="window.toggleFormsSubExpand('${escapeQuotes(subItem.id)}')">
-                    <div class="forms-tree-sub-left">
-                      <span class="forms-tree-toggle-arrow ${!isSubExpanded ? 'is-collapsed' : ''}" style="width:20px; height:20px; font-size:10px;">▼</span>
-                      <span style="font-size:16px;">${subItem.icon || '📌'}</span>
-                      <div class="forms-tree-sub-title">
-                        ${escapeHtml(subItem.title)}
-                        <span class="forms-tree-pill" style="font-weight:normal; font-size:11px;">${subArticlesRaw.length} Content ${subArticlesRaw.length === 1 ? 'item' : 'items'}</span>
-                        <span class="forms-tree-pill ${!isSubDis ? 'pill-published' : 'pill-disabled'}">
-                          ${!isSubDis ? 'Active' : 'Disabled'}
-                        </span>
-                      </div>
-                    </div>
+                  return `
+                    <div class="fm-sub-card" 
+                         id="fm-sub-card-${sub.id}"
+                         draggable="true"
+                         ondragstart="window.handleSubDragStart(event, '${sub.id}', '${mainCat.id}')"
+                         ondragover="window.handleSubDragOver(event, '${sub.id}')"
+                         ondragleave="window.handleSubDragLeave(event)"
+                         ondrop="window.handleSubDrop(event, '${sub.id}', '${mainCat.id}')"
+                         ondragend="window.handleSubDragEnd(event)">
+                      
+                      <!-- Subtitle Header -->
+                      <div class="fm-sub-header">
+                        <div class="fm-sub-left">
+                          <!-- Drag handle -->
+                          <span class="fm-sub-drag-handle" title="Drag to reorder subtitle">
+                            ${iconGrip}
+                          </span>
 
-                    <div class="forms-tree-sub-actions" onclick="event.stopPropagation()">
-                      <button type="button" class="btn btn-primary btn-xs" 
-                              onclick="window.openCreateArticleModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(subItem.id)}')"
-                              style="font-weight:700;"
-                              title="Add content item directly inside ${escapeQuotes(subItem.title)}">
-                        + Add Content
-                      </button>
-                      <button type="button" class="btn btn-outline btn-xs" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(subItem.id)}')">
-                        Edit
-                      </button>
-                      <button type="button" class="btn btn-outline btn-xs" 
-                              onclick="window.toggleSubCategoryStatus('${escapeQuotes(subItem.id)}', ${isSubDis ? 'true' : 'false'})"
-                              style="${isSubDis ? 'color:#15803D;' : 'color:#DC2626;'}">
-                        ${isSubDis ? 'Enable' : 'Disable'}
-                      </button>
-                      <button type="button" class="btn btn-outline btn-xs" 
-                              onclick="window.openAccessRuleModal('subcategory', '${escapeQuotes(subItem.id)}', '${escapeQuotes(subItem.title)}')"
-                              style="color:#B88635;" title="Member Access Control">
-                        🛡️
-                      </button>
-                      <button type="button" class="btn btn-outline btn-xs" onclick="window.deleteSubCategory('${escapeQuotes(subItem.id)}')" style="color:#DC2626;" title="Delete">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+                          <!-- Chevron toggle -->
+                          <span class="fm-chevron" 
+                                title="${isSubExpanded ? 'Collapse' : 'Expand'}" 
+                                onclick="window.toggleFormsSubExpand('${escapeQuotes(sub.id)}')">
+                            ${isSubExpanded ? '&#9660;' : '&#9654;'}
+                          </span>
 
-                  <!-- Sub-title Body: Content Items -->
-                  ${isSubExpanded ? `
-                    <div class="forms-tree-content-list">
-                      ${subTree.length === 0 ? `
-                        <div class="forms-tree-empty" style="padding:16px;">
-                          <span>No Content items inside <strong>${escapeHtml(subItem.title)}</strong> yet.</span>
-                          <button type="button" class="btn btn-primary btn-xs" style="margin-left:8px;" onclick="window.openCreateArticleModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(subItem.id)}')">
-                            + Add Content
+                          <!-- Subtitle Star / Icon -->
+                          <span class="fm-sub-star">
+                            ${escapeHtml(sub.icon || '★')}
+                          </span>
+
+                          <!-- Subtitle Title -->
+                          <span class="fm-sub-title">
+                            ${escapeHtml(sub.title)}
+                          </span>
+                        </div>
+
+                        <!-- Subtitle Meta & Actions -->
+                        <div class="fm-sub-actions">
+
+                          <!-- Sub-sub-title count pill -->
+                          <span class="fm-count-pill">
+                            ${childSubSubs.length} Sub-sub-titles
+                          </span>
+
+                          <!-- Status pill -->
+                          <span class="fm-status-pill ${isSubDisabled ? 'disabled' : 'active'}">
+                            ${isSubDisabled ? 'Disabled' : 'Active'}
+                          </span>
+
+                          <!-- Add Sub-title button (adds sub-sub-title under this subtitle) -->
+                          <button type="button" class="fm-btn-gold-sm" 
+                                  onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                            <span style="font-weight:700;">+</span> Add Sub-title
+                          </button>
+
+                          <!-- Edit button -->
+                          <button type="button" class="fm-btn-action" 
+                                  onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                            ${iconPencil} Edit
+                          </button>
+
+                          <!-- Disable / Enable button -->
+                          <button type="button" class="fm-btn-action ${isSubDisabled ? 'text-success' : 'text-danger'}" 
+                                  onclick="window.toggleSubCategoryStatus('${escapeQuotes(sub.id)}', ${isSubDisabled})">
+                            ${isSubDisabled ? iconCheck : iconSlash} ${isSubDisabled ? 'Enable' : 'Disable'}
+                          </button>
+
+                          <!-- Access button -->
+                          <button type="button" class="fm-btn-action" 
+                                  onclick="window.openAccessRuleModal('sub', '${escapeQuotes(sub.id)}', '${escapeQuotes(sub.title)}')">
+                            ${iconShield} Access
+                          </button>
+
+                          <!-- Delete button (✕) -->
+                          <button type="button" class="fm-btn-action text-danger" 
+                                  title="Delete Subtitle"
+                                  onclick="window.promptDeleteSub('${escapeQuotes(sub.id)}', '${escapeQuotes(sub.title)}', ${childSubSubs.length})">
+                            <span style="font-size:16px; font-weight:700; line-height:1;">&times;</span>
                           </button>
                         </div>
-                      ` : subTree.map(art => renderContentItemRow(art, subItem, mainCat, 0)).join('')}
+                      </div>
+
+                      <!-- Subtitle Body (Nested Sub-sub-titles) -->
+                      ${isSubExpanded ? `
+                        <div class="fm-sub-body">
+                          ${childSubSubs.length === 0 ? `
+                            <!-- Empty state matching reference image exactly -->
+                            <div class="fm-sub-empty-box">
+                              <span class="fm-sub-empty-text">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                  <polyline points="14 2 14 8 20 8"></polyline>
+                                </svg>
+                                No Sub-titles inside this section yet.
+                              </span>
+                              <button type="button" class="fm-btn-gold-sm" 
+                                      onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                                <span style="font-weight:700;">+</span> Add Sub-title
+                              </button>
+                            </div>
+                          ` : `
+                            <!-- Nested Sub-sub-titles -->
+                            <div class="fm-subsubs-list">
+                              ${childSubSubs.map(child => {
+                                const isChildDis = Boolean(child.is_disabled || child.status === 'disabled');
+                                return `
+                                  <div class="fm-subsub-row" id="fm-subsub-${child.id}">
+                                    <div class="fm-subsub-left">
+                                      <span class="fm-sub-drag-handle" title="Sub-sub-title">
+                                        ${iconGrip}
+                                      </span>
+                                      <span style="font-size:14px;">${escapeHtml(child.icon || '🔖')}</span>
+                                      <span class="fm-subsub-title">${escapeHtml(child.title)}</span>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                      <span class="fm-status-pill ${isChildDis ? 'disabled' : 'active'}">
+                                        ${isChildDis ? 'Disabled' : 'Active'}
+                                      </span>
+                                      <button type="button" class="fm-btn-action" 
+                                              onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}', '${escapeQuotes(child.id)}')">
+                                        ${iconPencil} Edit
+                                      </button>
+                                      <button type="button" class="fm-btn-action ${isChildDis ? 'text-success' : 'text-danger'}" 
+                                              onclick="window.toggleSubCategoryStatus('${escapeQuotes(child.id)}', ${isChildDis})">
+                                        ${isChildDis ? iconCheck : iconSlash} ${isChildDis ? 'Enable' : 'Disable'}
+                                      </button>
+                                      <button type="button" class="fm-btn-action" 
+                                              onclick="window.openAccessRuleModal('sub', '${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}')">
+                                        ${iconShield} Access
+                                      </button>
+                                      <button type="button" class="fm-btn-action text-danger" 
+                                              onclick="window.promptDeleteSub('${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}', 0)">
+                                        <span style="font-size:15px; font-weight:700;">&times;</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                `;
+                              }).join('')}
+                            </div>
+                          `}
+                        </div>
+                      ` : ''}
                     </div>
-                  ` : ''}
-                </div>
-              `;
-            }).join('')}
+                  `;
+                }).join('')}
+              </div>
+            `}
           </div>
         ` : ''}
       </div>
     `;
-  }).join('');
+  });
+
+  container.innerHTML = html;
 };
 
-/**
- * Open Modal to Create or Edit Main Category
- */
+// ============================================================================
+// DRAG AND DROP REORDERING (MAIN TITLES & SUBTITLES)
+// ============================================================================
+
+window.handleMainDragStart = (e, catId) => {
+  window.formsAdminState.draggedMainId = catId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', catId);
+  const card = document.getElementById(`fm-main-card-${catId}`);
+  if (card) {
+    card.classList.add('is-dragging');
+  }
+};
+
+window.handleMainDragOver = (e, targetCatId) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const targetCard = document.getElementById(`fm-main-card-${targetCatId}`);
+  if (targetCard && window.formsAdminState.draggedMainId !== targetCatId) {
+    targetCard.classList.add('drag-over-top');
+  }
+};
+
+window.handleMainDragLeave = (e) => {
+  if (e.currentTarget && e.currentTarget.classList) {
+    e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+  }
+};
+
+window.handleMainDrop = async (e, targetCatId) => {
+  e.preventDefault();
+  const draggedId = window.formsAdminState.draggedMainId;
+  if (!draggedId || draggedId === targetCatId) {
+    window.handleMainDragEnd(e);
+    return;
+  }
+
+  const list = [...window.formsAdminState.mainCategories];
+  const fromIdx = list.findIndex(c => c.id === draggedId);
+  const toIdx = list.findIndex(c => c.id === targetCatId);
+
+  if (fromIdx !== -1 && toIdx !== -1) {
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+
+    // Update sort_order locally
+    list.forEach((item, index) => {
+      item.sort_order = index + 1;
+    });
+    window.formsAdminState.mainCategories = list;
+    window.renderFormsHierarchyTree();
+
+    // Persist to backend database
+    try {
+      const orderPayload = list.map((c, i) => ({ id: c.id, sortOrder: i + 1 }));
+      const res = await apiFetch('/api/admin/content/main-categories/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ order: orderPayload })
+      });
+      if (res.ok) {
+        showToast('Main title order updated successfully! 📌');
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to save title order.');
+      }
+    } catch (err) {
+      console.error('Reorder error:', err);
+      showToast('Error saving order to database.');
+    }
+  }
+
+  window.handleMainDragEnd(e);
+};
+
+window.handleMainDragEnd = (e) => {
+  window.formsAdminState.draggedMainId = null;
+  document.querySelectorAll('.fm-main-card').forEach(c => {
+    c.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+  });
+};
+
+// Subtitle Drag and Drop
+window.handleSubDragStart = (e, subId, mainId) => {
+  e.stopPropagation();
+  window.formsAdminState.draggedSubId = subId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', subId);
+  const card = document.getElementById(`fm-sub-card-${subId}`);
+  if (card) {
+    card.classList.add('is-dragging');
+  }
+};
+
+window.handleSubDragOver = (e, targetSubId) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'move';
+  const targetCard = document.getElementById(`fm-sub-card-${targetSubId}`);
+  if (targetCard && window.formsAdminState.draggedSubId !== targetSubId) {
+    targetCard.classList.add('drag-over-top');
+  }
+};
+
+window.handleSubDragLeave = (e) => {
+  if (e.currentTarget && e.currentTarget.classList) {
+    e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+  }
+};
+
+window.handleSubDrop = async (e, targetSubId, mainId) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const draggedId = window.formsAdminState.draggedSubId;
+  if (!draggedId || draggedId === targetSubId) {
+    window.handleSubDragEnd(e);
+    return;
+  }
+
+  const allSubs = [...window.formsAdminState.subcategories];
+  const mainSubs = allSubs.filter(s => s.main_category_id === mainId && (!s.parent_id || s.parent_id === ''));
+
+  const fromIdx = mainSubs.findIndex(s => s.id === draggedId);
+  const toIdx = mainSubs.findIndex(s => s.id === targetSubId);
+
+  if (fromIdx !== -1 && toIdx !== -1) {
+    const [moved] = mainSubs.splice(fromIdx, 1);
+    mainSubs.splice(toIdx, 0, moved);
+
+    // Update sort_order for mainSubs
+    mainSubs.forEach((item, index) => {
+      item.sort_order = index + 1;
+    });
+
+    window.renderFormsHierarchyTree();
+
+    // Persist to backend database
+    try {
+      const orderPayload = mainSubs.map((s, i) => ({ id: s.id, sortOrder: i + 1 }));
+      const res = await apiFetch('/api/admin/content/subcategories/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ order: orderPayload })
+      });
+      if (res.ok) {
+        showToast('Sub-title order updated successfully! 📌');
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to save sub-title order.');
+      }
+    } catch (err) {
+      console.error('Reorder sub error:', err);
+      showToast('Error saving sub-title order.');
+    }
+  }
+
+  window.handleSubDragEnd(e);
+};
+
+window.handleSubDragEnd = (e) => {
+  window.formsAdminState.draggedSubId = null;
+  document.querySelectorAll('.fm-sub-card').forEach(c => {
+    c.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+  });
+};
+
+// Up/Down button click fallbacks for Mobile and Touch
+window.moveMainCategoryOrder = async (catId, direction) => {
+  const list = [...window.formsAdminState.mainCategories];
+  const idx = list.findIndex(c => c.id === catId);
+  if (idx === -1) return;
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= list.length) return;
+
+  const [moved] = list.splice(idx, 1);
+  list.splice(targetIdx, 0, moved);
+
+  list.forEach((item, i) => { item.sort_order = i + 1; });
+  window.formsAdminState.mainCategories = list;
+  window.renderFormsHierarchyTree();
+
+  try {
+    const orderPayload = list.map((c, i) => ({ id: c.id, sortOrder: i + 1 }));
+    await apiFetch('/api/admin/content/main-categories/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ order: orderPayload })
+    });
+    showToast('Main title order updated! 📌');
+  } catch (err) {
+    showToast('Error saving order.');
+  }
+};
+
+window.moveSubCategoryOrder = async (subId, direction, mainId) => {
+  const allSubs = [...window.formsAdminState.subcategories];
+  const mainSubs = allSubs.filter(s => s.main_category_id === mainId && (!s.parent_id || s.parent_id === ''));
+  const idx = mainSubs.findIndex(s => s.id === subId);
+  if (idx === -1) return;
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= mainSubs.length) return;
+
+  const [moved] = mainSubs.splice(idx, 1);
+  mainSubs.splice(targetIdx, 0, moved);
+
+  mainSubs.forEach((item, i) => { item.sort_order = i + 1; });
+  window.renderFormsHierarchyTree();
+
+  try {
+    const orderPayload = mainSubs.map((s, i) => ({ id: s.id, sortOrder: i + 1 }));
+    await apiFetch('/api/admin/content/subcategories/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ order: orderPayload })
+    });
+    showToast('Sub-title order updated! 📌');
+  } catch (err) {
+    showToast('Error saving order.');
+  }
+};
+
+// ============================================================================
+// MAIN TITLE MODALS & HANDLERS
+// ============================================================================
+
 window.openCreateMainModal = (editId = null) => {
   const container = document.getElementById('forms-admin-modal-container');
   if (!container) return;
 
-  let existing = null;
-  if (editId) {
-    existing = (window.formsAdminState.mainCategories || []).find(m => String(m.id) === String(editId));
-  }
+  const isEdit = Boolean(editId);
+  const existing = isEdit ? window.formsAdminState.mainCategories.find(c => c.id === editId) : null;
+  const popularEmojis = ['📖', '📚', '💬', '📌', '⭐', '🎧', '✍️', '🌟', '💡', '🏷️', '📝', '☕', '🎭', '🔮', '✨', '👑', '🔥', '💎', '🌸', '🏆'];
 
   container.innerHTML = `
     <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:540px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+      <div class="fm-modal-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
-            ${existing ? 'Edit Main Title' : 'New Main Category Title'}
+            ${isEdit ? 'Edit Main Title' : 'Add New Main Title'}
           </h3>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
+          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
         </div>
 
         <div style="margin-bottom:14px;">
           <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Main Title Name *</label>
-          <input type="text" id="main-form-title" class="form-input" 
-                 value="${existing ? escapeQuotes(existing.title) : ''}" 
-                 placeholder="e.g. General, Announcements, Readers Lounge" 
-                 style="width:100%; box-sizing:border-box;">
+          <input type="text" id="modal-main-title" class="form-input" 
+                 value="${escapeQuotes(existing ? existing.title : '')}" 
+                 placeholder="e.g. General, Review Time, Amazon Kindle & Audio Novels" 
+                 style="width:100%; box-sizing:border-box;"
+                 oninput="if(!'${isEdit}') window.autoFillMainSlug(this.value)">
         </div>
 
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Unique Slug / ID *</label>
-          <input type="text" id="main-form-id" class="form-input" 
-                 value="${existing ? escapeQuotes(existing.id) : ''}" 
-                 ${existing ? 'disabled style="background:#F1F5F9; cursor:not-allowed; width:100%; box-sizing:border-box;"' : 'style="width:100%; box-sizing:border-box;"'} 
-                 placeholder="e.g. general, readers-lounge">
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:18px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Display Order</label>
-            <input type="number" id="main-form-order" class="form-input" min="1" 
-                   value="${existing ? (existing.sort_order ?? 1) : ((window.formsAdminState.mainCategories?.length || 0) + 1)}" 
-                   placeholder="e.g. 1, 2, 3" style="width:100%; box-sizing:border-box;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon / Emoji</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="modal-main-icon" class="form-input" 
+                   value="${escapeQuotes(existing ? (existing.icon || '📖') : '📖')}" 
+                   style="width:80px; text-align:center; font-size:18px; box-sizing:border-box;">
+            <span style="font-size:12px; color:#64748B;">Select below or type custom emoji</span>
           </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon Emoji</label>
-            <input type="text" id="main-form-icon" class="form-input" value="${existing ? escapeQuotes(existing.icon || '💬') : '💬'}" style="width:100%; box-sizing:border-box;">
-          </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Accent Color</label>
-            <input type="color" id="main-form-color" class="form-input" value="${existing ? (existing.color || '#2E1065') : '#2E1065'}" style="width:100%; height:38px; box-sizing:border-box; cursor:pointer;">
-          </div>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="window.submitMainForm('${existing ? escapeQuotes(existing.id) : ''}')">
-            ${existing ? 'Save Changes' : 'Create Main Title'}
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-};
-
-window.submitMainForm = async (editId = null) => {
-  const title = document.getElementById('main-form-title')?.value?.trim();
-  const id = document.getElementById('main-form-id')?.value?.trim();
-  const icon = document.getElementById('main-form-icon')?.value?.trim() || '💬';
-  const color = document.getElementById('main-form-color')?.value || '#2E1065';
-  const orderVal = document.getElementById('main-form-order')?.value;
-  const sort_order = (orderVal !== '' && orderVal !== undefined && !isNaN(Number(orderVal))) ? parseInt(orderVal, 10) : undefined;
-
-  if (!title) {
-    showToast('Please enter a main title name.');
-    return;
-  }
-  if (!editId && !id) {
-    showToast('Please enter a unique ID.');
-    return;
-  }
-
-  try {
-    const url = editId ? `/api/admin/content/main-categories/${encodeURIComponent(editId)}` : '/api/admin/content/main-categories';
-    const method = editId ? 'PUT' : 'POST';
-    const res = await apiFetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId || id, title, icon, color, sort_order, sortOrder: sort_order })
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to save main category.');
-      return;
-    }
-    showToast(`Main title "${title}" saved successfully! ✓`);
-    window.closeFormsAdminModal();
-    await window.loadFormsAdminData();
-  } catch (err) {
-    showToast(err.message || 'Error saving category.');
-  }
-};
-
-/**
- * Move Category Display Order Up (-1) or Down (+1)
- */
-window.moveCategoryOrder = async (catId, direction) => {
-  const mains = [...(window.formsAdminState.mainCategories || [])];
-  mains.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
-  const currentIdx = mains.findIndex(m => String(m.id) === String(catId));
-  if (currentIdx === -1) return;
-  const targetIdx = currentIdx + direction;
-  if (targetIdx < 0 || targetIdx >= mains.length) return;
-
-  const temp = mains[currentIdx];
-  mains[currentIdx] = mains[targetIdx];
-  mains[targetIdx] = temp;
-
-  const orderPayload = mains.map((m, i) => ({ id: m.id, sortOrder: i + 1 }));
-
-  try {
-    const res = await apiFetch('/api/admin/content/main-categories/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order: orderPayload })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      window.formsAdminState.mainCategories = data.categories || mains;
-      window.renderFormsHierarchyTree();
-      showToast('Category display order updated!');
-    } else {
-      throw new Error(data.error || 'Failed to update order');
-    }
-  } catch (err) {
-    showToast('Could not reorder: ' + err.message);
-  }
-};
-
-/**
- * Open Drag-and-Drop / Interactive Category Reorder Modal
- */
-window.openReorderCategoriesModal = () => {
-  const container = document.getElementById('forms-admin-modal-container');
-  if (!container) return;
-
-  const categories = [...(window.formsAdminState.mainCategories || [])];
-  categories.sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
-
-  window._reorderModalState = categories.map(c => ({ id: c.id, title: c.title, icon: c.icon, sort_order: c.sort_order }));
-
-  function renderList() {
-    const listEl = document.getElementById('reorder-cat-modal-list');
-    if (!listEl) return;
-    listEl.innerHTML = window._reorderModalState.map((cat, i) => `
-      <div class="reorder-cat-item" data-index="${i}" 
-           style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:8px; gap:10px;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span style="font-size:16px; color:#94A3B8;">☰</span>
-          <span class="forms-order-badge" style="background:#B88635; color:#fff; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:12px;">#${i + 1}</span>
-          <span style="font-size:18px;">${cat.icon || '💬'}</span>
-          <div>
-            <strong style="color:#0B1F33; font-size:14px;">${escapeHtml(cat.title)}</strong>
-            <span style="font-size:11px; color:#64748B; margin-left:6px;">(${escapeHtml(cat.id)})</span>
-          </div>
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn btn-outline btn-xs" onclick="window.shiftModalOrder(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Move Up" style="padding:4px 8px; font-weight:bold;">▲</button>
-          <button type="button" class="btn btn-outline btn-xs" onclick="window.shiftModalOrder(${i}, 1)" ${i === window._reorderModalState.length - 1 ? 'disabled' : ''} title="Move Down" style="padding:4px 8px; font-weight:bold;">▼</button>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  window.shiftModalOrder = (idx, direction) => {
-    const targetIdx = idx + direction;
-    if (targetIdx < 0 || targetIdx >= window._reorderModalState.length) return;
-    const temp = window._reorderModalState[idx];
-    window._reorderModalState[idx] = window._reorderModalState[targetIdx];
-    window._reorderModalState[targetIdx] = temp;
-    renderList();
-  };
-
-  window.saveModalOrder = async () => {
-    const payload = window._reorderModalState.map((cat, i) => ({ id: cat.id, sortOrder: i + 1 }));
-    try {
-      const res = await apiFetch('/api/admin/content/main-categories/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: payload })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        window.formsAdminState.mainCategories = data.categories || [];
-        window.closeFormsAdminModal();
-        window.renderFormsHierarchyTree();
-        showToast('Category display order updated successfully!');
-      } else {
-        throw new Error(data.error || 'Failed to reorder categories');
-      }
-    } catch (err) {
-      showToast('Could not save order: ' + err.message);
-    }
-  };
-
-  container.innerHTML = `
-    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:520px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-          <div>
-            <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0 0 4px;">
-              Reorder Main Categories
-            </h3>
-            <p style="color:#64748B; font-size:12.5px; margin:0;">
-              Arrange categories in any order. The arrangement will apply to all members on the Forms page.
-            </p>
-          </div>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
-        </div>
-
-        <div id="reorder-cat-modal-list" style="max-height:360px; overflow-y:auto; margin:16px 0; padding-right:4px;"></div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid #E2E8F0; padding-top:16px;">
-          <small style="color:#64748B;">Use ▲ / ▼ buttons to set order.</small>
-          <div style="display:flex; gap:10px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-            <button type="button" class="btn btn-gold btn-sm" onclick="window.saveModalOrder()">
-              Save Arrangement
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  renderList();
-};
-
-/**
- * Open Modal to Create or Edit Sub-title (Auto-selects Parent Main Title!)
- */
-window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
-  const container = document.getElementById('forms-admin-modal-container');
-  if (!container) return;
-
-  const categories = window.formsAdminState.mainCategories || [];
-  let existing = null;
-  if (editId) {
-    existing = (window.formsAdminState.subcategories || []).find(s => String(s.id) === String(editId));
-  }
-
-  const selectedMainId = existing ? existing.main_category_id : (preselectedMainId || categories[0]?.id || '');
-  const selectedMain = categories.find(c => String(c.id) === String(selectedMainId));
-
-  container.innerHTML = `
-    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:560px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-          <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
-            ${existing ? 'Edit Sub-title' : 'New Sub-title Section'}
-          </h3>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
-        </div>
-
-        ${preselectedMainId && !existing ? `
-          <div style="background:#FAF5EC; border:1px solid #E8DCCB; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; color:#B88635;">
-            Parent Main Title: <strong>${escapeHtml(selectedMain ? selectedMain.title : preselectedMainId)}</strong>
-          </div>
-        ` : ''}
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Parent Main Title *</label>
-          <select id="sub-form-main" class="form-input" style="width:100%; box-sizing:border-box;">
-            ${categories.map(c => `
-              <option value="${escapeHtml(c.id)}" ${String(c.id) === String(selectedMainId) ? 'selected' : ''}>
-                ${escapeHtml(c.icon || '📂')} ${escapeHtml(c.title)}
-              </option>
+          <div class="fm-emoji-grid">
+            ${popularEmojis.map(em => `
+              <button type="button" class="fm-emoji-btn" onclick="document.getElementById('modal-main-icon').value='${em}'">${em}</button>
             `).join('')}
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Slug / ID</label>
+          <input type="text" id="modal-main-slug" class="form-input" 
+                 value="${escapeQuotes(existing ? existing.id : '')}" 
+                 ${isEdit ? 'readonly style="background:#F1F5F9; cursor:not-allowed; width:100%; box-sizing:border-box;"' : 'style="width:100%; box-sizing:border-box;"'}
+                 placeholder="e.g. review-time, general">
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Status</label>
+          <select id="modal-main-status" class="form-input" style="width:100%; box-sizing:border-box;">
+            <option value="published" ${existing && (existing.status === 'published' || !existing.is_disabled) ? 'selected' : ''}>Published (Active)</option>
+            <option value="disabled" ${existing && (existing.status === 'disabled' || existing.is_disabled) ? 'selected' : ''}>Disabled (Hidden)</option>
           </select>
         </div>
 
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Category Title / Sub-title Name *</label>
-          <input type="text" id="sub-form-title" class="form-input" 
-                 value="${existing ? escapeQuotes(existing.title) : ''}" 
-                 placeholder="e.g. Welcome to Rudhra Novels, Announcements, Tea Time" 
-                 style="width:100%; box-sizing:border-box;">
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Unique Slug / ID *</label>
-          <input type="text" id="sub-form-id" class="form-input" 
-                 value="${existing ? escapeQuotes(existing.id) : ''}" 
-                 ${existing ? 'disabled style="background:#F1F5F9; cursor:not-allowed; width:100%; box-sizing:border-box;"' : 'style="width:100%; box-sizing:border-box;"'} 
-                 placeholder="e.g. welcome-notes, tea-time-chat">
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Description / Purpose</label>
-          <textarea id="sub-form-desc" class="form-input" rows="2" placeholder="Brief description for members..." style="width:100%; box-sizing:border-box;">${existing ? escapeQuotes(existing.description || '') : ''}</textarea>
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon Emoji</label>
-            <input type="text" id="sub-form-icon" class="form-input" value="${existing ? escapeQuotes(existing.icon || '📌') : '📌'}" style="width:100%; box-sizing:border-box;">
-          </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Display Order</label>
-            <input type="number" id="sub-form-order" class="form-input" value="${existing ? (existing.sort_order || 0) : 0}" style="width:100%; box-sizing:border-box;">
-          </div>
-        </div>
-
         <div style="display:flex; justify-content:flex-end; gap:10px;">
           <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="window.submitSubForm('${existing ? escapeQuotes(existing.id) : ''}')">
-            ${existing ? 'Save Changes' : 'Create Sub-title'}
+          <button type="button" class="fm-btn-gold" onclick="window.submitMainForm('${existing ? existing.id : ''}')">
+            ${isEdit ? 'Save Changes' : 'Create Main Title'}
           </button>
         </div>
       </div>
@@ -11473,527 +11499,63 @@ window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
   `;
 };
 
-window.submitSubForm = async (editId = null) => {
-  const mainCategoryId = document.getElementById('sub-form-main')?.value;
-  const title = document.getElementById('sub-form-title')?.value?.trim();
-  const id = document.getElementById('sub-form-id')?.value?.trim();
-  const description = document.getElementById('sub-form-desc')?.value?.trim();
-  const icon = document.getElementById('sub-form-icon')?.value?.trim() || '📌';
-  const sortOrder = parseInt(document.getElementById('sub-form-order')?.value || '0', 10);
-
-  if (!title) {
-    showToast('Please enter a sub-title name.');
-    return;
-  }
-  if (!editId && !id) {
-    showToast('Please enter a unique ID.');
-    return;
-  }
-
-  try {
-    const url = editId ? `/api/admin/content/subcategories/${encodeURIComponent(editId)}` : '/api/admin/content/subcategories';
-    const method = editId ? 'PUT' : 'POST';
-    const res = await apiFetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId || id, mainCategoryId, title, description, icon, sortOrder })
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to save sub-title.');
-      return;
-    }
-    showToast(`Sub-title "${title}" saved successfully! ✓`);
-    window.closeFormsAdminModal();
-    await window.loadFormsAdminData();
-  } catch (err) {
-    showToast(err.message || 'Error saving sub-title.');
-  }
-};
-
-/**
- * Open Modal to Create or Edit Content Article (Auto-selects Parent Main, Sub, and Parent Content Item!)
- */
-window.openCreateArticleModal = async (preselectedMainId = null, preselectedSubId = null, preselectedParentId = null, editId = null) => {
-  const container = document.getElementById('forms-admin-modal-container');
-  if (!container) return;
-
-  const categories = window.formsAdminState.mainCategories || [];
-  const subcategories = window.formsAdminState.subcategories || [];
-  const allArticles = window.formsAdminState.articles || [];
-
-  let existing = null;
-  if (editId) {
-    try {
-      const res = await apiFetch(`/api/admin/content/articles/${editId}`);
-      const data = await res.json();
-      if (res.ok && data.success) {
-        existing = data.article;
-      }
-    } catch {}
-  }
-
-  const selectedMainId = existing ? existing.mainCategoryId : (preselectedMainId || categories[0]?.id || '');
-  const selectedSubId = existing ? existing.subCategoryId : (preselectedSubId || subcategories.find(s => String(s.main_category_id) === String(selectedMainId))?.id || '');
-  const selectedParentId = existing ? (existing.parentId || null) : (preselectedParentId || null);
-
-  const parentArticle = selectedParentId ? allArticles.find(a => String(a.id) === String(selectedParentId)) : null;
-
-  container.innerHTML = `
-    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:820px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2); max-height:92vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <div>
-            <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0 0 2px;">
-              ${existing ? `Edit: ${escapeHtml(existing.title)}` : (selectedParentId ? '+ Add Sub-sub-title (Nested Content)' : '+ Add New Content Article')}
-            </h3>
-            <span style="font-size:12px; color:#64748B;">
-              Publish or schedule rich-text reading content with full permissions and novel-style comments.
-            </span>
-          </div>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
-        </div>
-
-        ${parentArticle ? `
-          <div style="background:#FAF5FF; border:1px solid #DDD6FE; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; color:#5B21B6; display:flex; align-items:center; gap:8px;">
-            <span>✨</span>
-            <div>Nesting under parent content: <strong>${escapeHtml(parentArticle.title)}</strong> (Part / Sub-sub-title)</div>
-          </div>
-        ` : ''}
-
-        <!-- Parent Hierarchy Selectors (Auto-selected!) -->
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Main Category *</label>
-            <select id="art-form-main" class="form-input" style="width:100%; box-sizing:border-box;" onchange="window.updateModalSubOptions(this.value)">
-              ${categories.map(c => `
-                <option value="${escapeHtml(c.id)}" ${String(c.id) === String(selectedMainId) ? 'selected' : ''}>
-                  ${escapeHtml(c.icon || '📂')} ${escapeHtml(c.title)}
-                </option>
-              `).join('')}
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-title Section *</label>
-            <select id="art-form-sub" class="form-input" style="width:100%; box-sizing:border-box;">
-              ${subcategories.filter(s => !selectedMainId || String(s.main_category_id) === String(selectedMainId)).map(s => `
-                <option value="${escapeHtml(s.id)}" ${String(s.id) === String(selectedSubId) ? 'selected' : ''}>
-                  ${escapeHtml(s.icon || '📌')} ${escapeHtml(s.title)}
-                </option>
-              `).join('')}
-            </select>
-          </div>
-        </div>
-
-        <!-- Title & Slug -->
-        <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:14px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Content Title *</label>
-            <input type="text" id="art-form-title" class="form-input" 
-                   value="${existing ? escapeQuotes(existing.title) : ''}" 
-                   placeholder="" 
-                   style="width:100%; box-sizing:border-box; font-weight:600;" 
-                   oninput="window.autoFillArticleSlug(this.value)">
-          </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Slug Identifier</label>
-            <input type="text" id="art-form-slug" class="form-input" 
-                   value="${existing ? escapeQuotes(existing.uniqueSlug || existing.unique_slug || '') : ''}" 
-                   placeholder="" 
-                   style="width:100%; box-sizing:border-box; font-family:monospace; font-size:12px;">
-          </div>
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Short Hook / Excerpt (Optional)</label>
-          <input type="text" id="art-form-summary" class="form-input" 
-                 value="${existing ? escapeQuotes(existing.summary || '') : ''}" 
-                 placeholder="" 
-                 style="width:100%; box-sizing:border-box;">
-        </div>
-
-        <!-- Rich-Text Content Editor with Formatting Toolbar -->
-        <div style="margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
-            <label style="font-size:12px; font-weight:700; color:#0B1F33;">
-              Reading Content (Optional if creating container header)
-            </label>
-            <div style="display:flex; gap:4px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('**', '**', 'bold text')" title="Bold"><strong>B</strong></button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('*', '*', 'italic text')" title="Italic"><em>I</em></button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('<u>', '</u>', 'underlined text')" title="Underline"><u>U</u></button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('## ', '', 'Heading')" title="H2">H2</button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('### ', '', 'Subheading')" title="H3">H3</button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('> ', '', 'Quote text')" title="Quote">Quote</button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('- ', '', 'List item')" title="Bullet list">• List</button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.insertEditorFormat('---', '', '')" title="Divider">Divider</button>
-              <input type="file" id="art-form-image-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" onchange="window.handleArticleDirectImageUpload(event)">
-              <button type="button" class="btn btn-gold btn-xs" onclick="document.getElementById('art-form-image-file-input').click()" title="Upload image from computer/device" style="display:inline-flex; align-items:center; gap:4px; font-weight:700;">
-                📷 Upload Image
-              </button>
-              <button type="button" class="btn btn-outline btn-xs" onclick="window.openArticleImageModal()" title="Insert image by URL or browse upload" style="display:inline-flex; align-items:center; gap:4px;">
-                🔗 Image URL
-              </button>
-            </div>
-          </div>
-          <textarea id="art-form-content" class="form-input" rows="10" 
-                    placeholder="" 
-                    style="width:100%; box-sizing:border-box; resize:vertical; font-family:Georgia, serif; font-size:14px; line-height:1.7;">${existing ? escapeQuotes(existing.content || '') : ''}</textarea>
-        </div>
-
-        <!-- Publishing Status, Visibility & Access Permissions -->
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:14px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Publication Status</label>
-            <select id="art-form-status" class="form-input" style="width:100%; box-sizing:border-box;" onchange="window.toggleScheduledField(this.value)">
-              <option value="published" ${(existing?.status === 'published' || !existing) ? 'selected' : ''}>Published (Live)</option>
-              <option value="draft" ${existing?.status === 'draft' ? 'selected' : ''}>Draft</option>
-              <option value="scheduled" ${existing?.status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
-              <option value="disabled" ${existing?.status === 'disabled' ? 'selected' : ''}>Disabled (Hidden)</option>
-            </select>
-          </div>
-
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Visibility (Readers)</label>
-            <select id="art-form-visibility" class="form-input" style="width:100%; box-sizing:border-box;">
-              <option value="public" ${(existing?.visibility === 'public' || !existing) ? 'selected' : ''}>Public (All Visitors)</option>
-              <option value="members" ${existing?.visibility === 'members' ? 'selected' : ''}>All Logged-in Members</option>
-              <option value="selected_members" ${existing?.visibility === 'selected_members' ? 'selected' : ''}>Selected Members</option>
-              <option value="admin_only" ${existing?.visibility === 'admin_only' ? 'selected' : ''}>Admin Only</option>
-            </select>
-          </div>
-
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Access Permission (Writers)</label>
-            <select id="art-form-access-perm" class="form-input" style="width:100%; box-sizing:border-box;">
-              <option value="admin_only" ${(existing?.accessPermission === 'admin_only' || !existing) ? 'selected' : ''}>Admin Only</option>
-              <option value="all_writers" ${existing?.accessPermission === 'all_writers' ? 'selected' : ''}>All Authorized Writers</option>
-              <option value="selected_writers" ${existing?.accessPermission === 'selected_writers' ? 'selected' : ''}>Selected Writers</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="art-scheduled-row" style="margin-bottom:14px; display:${existing?.status === 'scheduled' ? 'block' : 'none'};">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Scheduled Release Date &amp; Time</label>
-          <input type="datetime-local" id="art-form-scheduled-at" class="form-input" 
-                 value="${existing?.scheduledAt ? new Date(existing.scheduledAt).toISOString().slice(0, 16) : ''}" 
-                 style="width:100%; box-sizing:border-box;">
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Author Attribution</label>
-            <input type="text" id="art-form-author" class="form-input" 
-                   value="${existing ? escapeQuotes(existing.authorName || 'Rudhra Prarthana') : 'Rudhra Prarthana'}" 
-                   style="width:100%; box-sizing:border-box;">
-          </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sort Order</label>
-            <input type="number" id="art-form-order" class="form-input" 
-                   value="${existing ? (existing.sortOrder || 0) : 0}" 
-                   style="width:100%; box-sizing:border-box;">
-          </div>
-        </div>
-
-        <!-- Hidden Parent ID Reference -->
-        <input type="hidden" id="art-form-parent-id" value="${selectedParentId || ''}">
-
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="window.previewArticleContent()">
-            👁️ Preview
-          </button>
-          <div style="display:flex; gap:10px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.submitArticleForm('${existing ? existing.id : ''}', 'draft')">
-              Save Draft
-            </button>
-            <button type="button" class="btn btn-gold btn-sm" onclick="window.submitArticleForm('${existing ? existing.id : ''}', 'publish')">
-              ${existing ? 'Update &amp; Save' : 'Publish Content'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-};
-
-window.updateModalSubOptions = (mainId) => {
-  const subSelect = document.getElementById('art-form-sub');
-  if (!subSelect) return;
-  const subs = window.formsAdminState.subcategories || [];
-  const filtered = subs.filter(s => String(s.main_category_id) === String(mainId));
-  subSelect.innerHTML = filtered.map(s => `
-    <option value="${escapeHtml(s.id)}">${escapeHtml(s.icon || '📌')} ${escapeHtml(s.title)}</option>
-  `).join('') || '<option value="">No sub-titles available</option>';
-};
-
-window.autoFillArticleSlug = (title) => {
-  const slugInput = document.getElementById('art-form-slug');
-  if (slugInput && !slugInput.dataset.manual) {
-    slugInput.value = (title || '')
+window.autoFillMainSlug = (title) => {
+  const slugInput = document.getElementById('modal-main-slug');
+  if (slugInput) {
+    slugInput.value = title
       .toLowerCase()
+      .trim()
       .replace(/[^\w\s-]/g, '')
       .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
 };
 
-window.toggleScheduledField = (status) => {
-  const row = document.getElementById('art-scheduled-row');
-  if (row) {
-    row.style.display = status === 'scheduled' ? 'block' : 'none';
-  }
-};
-
-window.insertEditorFormat = (prefix, suffix, placeholder) => {
-  const textarea = document.getElementById('art-form-content');
-  if (!textarea) return;
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-  const selected = text.slice(start, end) || placeholder;
-  const replacement = prefix + selected + suffix;
-  textarea.value = text.slice(0, start) + replacement + text.slice(end);
-  textarea.focus();
-  textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
-};
-
-/**
- * Direct Image Upload Handler for Article Content Editor
- */
-window.handleArticleDirectImageUpload = async (event) => {
-  const file = event.target?.files?.[0];
-  if (!file) return;
-
-  if (!file.type.startsWith('image/')) {
-    showToast('Please select a valid image file (JPEG, PNG, WebP, GIF).');
-    event.target.value = '';
-    return;
-  }
-
-  if (file.size > 10 * 1024 * 1024) {
-    showToast('Image file size must be under 10MB.');
-    event.target.value = '';
-    return;
-  }
-
-  showToast('Uploading image to server...');
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const dataUrl = e.target.result;
-    try {
-      const res = await apiFetch('/api/upload/image', {
-        method: 'POST',
-        body: JSON.stringify({
-          data: dataUrl,
-          folder: 'media',
-          filename: file.name
-        })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Failed to upload image.');
-      }
-
-      const cleanAlt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
-      const imgTag = `\n<img src="${data.url}" alt="${escapeHtml(cleanAlt)}" style="max-width:100%; border-radius:8px; margin:16px 0; display:block;" />\n`;
-      window.insertEditorFormat(imgTag, '', '');
-      showToast('Image uploaded and inserted into content! ✓');
-    } catch (err) {
-      showToast('Error uploading image: ' + err.message);
-    } finally {
-      event.target.value = '';
-    }
-  };
-  reader.readAsDataURL(file);
-};
-
-/**
- * Interactive Image Modal for Article Content Editor (Upload or URL)
- */
-window.openArticleImageModal = () => {
-  let modal = document.getElementById('art-image-insert-modal');
-  if (modal) modal.remove();
-
-  modal = document.createElement('div');
-  modal.id = 'art-image-insert-modal';
-  modal.className = 'admin-modal-backdrop';
-  modal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:100000; display:flex; align-items:center; justify-content:center; padding:16px;';
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
-
-  modal.innerHTML = `
-    <div class="modal-card" style="max-width:480px; width:100%; background:#FFFFFF; border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.25); overflow:hidden;" onclick="event.stopPropagation()">
-      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#FAF5EC; border-bottom:1px solid rgba(200,155,60,0.2);">
-        <h3 style="font-family:'Playfair Display',serif; margin:0; font-size:1.15rem; color:#0B1F33; display:flex; align-items:center; gap:8px;">
-          <span>🖼️</span> Insert Image into Content
-        </h3>
-        <button type="button" class="modal-close-btn" onclick="document.getElementById('art-image-insert-modal')?.remove()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#64748B;">✕</button>
-      </div>
-
-      <div class="modal-body" style="padding:20px;">
-        <!-- Option 1: Direct File Upload -->
-        <div style="margin-bottom:20px; padding:20px 16px; border:2px dashed #CBD5E1; border-radius:8px; text-align:center; background:#F8FAFC; cursor:pointer; transition:all 0.15s ease;"
-             onmouseover="this.style.borderColor='var(--color-gold-warm)'; this.style.background='#FFFDF8';"
-             onmouseout="this.style.borderColor='#CBD5E1'; this.style.background='#F8FAFC';"
-             onclick="document.getElementById('art-form-image-file-input').click(); document.getElementById('art-image-insert-modal')?.remove();">
-          <div style="font-size:32px; margin-bottom:6px;">📁</div>
-          <div style="font-weight:700; font-size:14px; color:#0B1F33; margin-bottom:4px;">Upload Image from Device</div>
-          <div style="font-size:12px; color:#64748B;">Click here to choose JPG, PNG, WebP, or GIF (up to 10MB)</div>
-        </div>
-
-        <div style="display:flex; align-items:center; margin:18px 0; gap:10px;">
-          <hr style="flex:1; border:none; border-top:1px solid #E2E8F0;" />
-          <span style="font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase;">or enter image url</span>
-          <hr style="flex:1; border:none; border-top:1px solid #E2E8F0;" />
-        </div>
-
-        <!-- Option 2: Image URL -->
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Web Image URL</label>
-          <input type="url" id="art-modal-image-url" class="form-input" placeholder="https://example.com/photo.jpg" style="width:100%; box-sizing:border-box;">
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('art-image-insert-modal')?.remove()">Cancel</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="window.confirmInsertImageUrl()">Insert URL</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  document.getElementById('art-modal-image-url')?.focus();
-};
-
-window.confirmInsertImageUrl = () => {
-  const input = document.getElementById('art-modal-image-url');
-  const url = input?.value?.trim();
-  if (!url) {
-    showToast('Please enter an image URL.');
-    return;
-  }
-  if (!/^https?:\/\//i.test(url) && !url.startsWith('/uploads/')) {
-    showToast('Please enter a valid URL starting with http://, https://, or /uploads/');
-    return;
-  }
-  window.insertEditorFormat(`\n<img src="${url}" alt="Article image" style="max-width:100%; border-radius:8px; margin:16px 0; display:block;" />\n`, '', '');
-  showToast('Image inserted into content! ✓');
-  document.getElementById('art-image-insert-modal')?.remove();
-};
-
-window.insertEditorImagePrompt = () => {
-  window.openArticleImageModal();
-};
-
-/**
- * Preview Formatted Article Content Modal
- */
-window.previewArticleContent = () => {
-  const title = document.getElementById('art-form-title')?.value || 'Preview Title';
-  const author = document.getElementById('art-form-author')?.value || 'Rudhra Prarthana';
-  const rawContent = document.getElementById('art-form-content')?.value || 'No content written yet.';
-
-  let formatted = escapeHtml(rawContent)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^### (.*$)/gim, '<h3 style="color:#1A0B2E; margin:18px 0 8px;">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 style="color:#1A0B2E; margin:24px 0 10px;">$1</h2>')
-    .replace(/^> (.*$)/gim, '<blockquote style="border-left:4px solid #C89B3C; padding-left:14px; color:#475569; margin:14px 0;">$1</blockquote>')
-    .replace(/---/g, '<hr style="border:none; border-top:1px solid #E2E8F0; margin:20px 0;" />')
-    .replace(/\n/g, '<br>');
-
-  const previewModal = document.createElement('div');
-  previewModal.className = 'admin-modal-backdrop';
-  previewModal.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:100000; display:flex; align-items:center; justify-content:center; padding:16px;';
-  previewModal.onclick = () => previewModal.remove();
-
-  previewModal.innerHTML = `
-    <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:760px; padding:28px; max-height:90vh; overflow-y:auto; box-shadow:0 25px 50px rgba(0,0,0,0.25);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #E2E8F0; padding-bottom:12px;">
-        <span style="font-size:12px; font-weight:700; color:#B88635; letter-spacing:1px;">FORMATTED PREVIEW</span>
-        <button type="button" onclick="this.closest('.admin-modal-backdrop').remove()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
-      </div>
-
-      <h1 style="font-family:'Playfair Display',serif; font-size:1.75rem; color:#1A0B2E; margin:0 0 10px;">${escapeHtml(title)}</h1>
-      <div style="font-size:12.5px; color:#64748B; margin-bottom:20px; display:flex; gap:10px;">
-        <span>✍️ By ${escapeHtml(author)}</span>
-        <span>•</span>
-        <span>Rudhra Prarthana Novels</span>
-      </div>
-
-      <div style="font-family:Georgia,serif; font-size:15px; line-height:1.8; color:#1E293B; margin-bottom:28px;">
-        ${formatted}
-      </div>
-
-      <div style="text-align:right;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('.admin-modal-backdrop').remove()">Close Preview</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(previewModal);
-};
-
-window.submitArticleForm = async (editId = null, forceMode = null) => {
-  const mainCategoryId = document.getElementById('art-form-main')?.value;
-  const subCategoryId = document.getElementById('art-form-sub')?.value;
-  const parentId = document.getElementById('art-form-parent-id')?.value || null;
-  const title = document.getElementById('art-form-title')?.value?.trim();
-  const uniqueSlug = document.getElementById('art-form-slug')?.value?.trim();
-  const summary = document.getElementById('art-form-summary')?.value?.trim();
-  const content = document.getElementById('art-form-content')?.value || '';
-  const statusField = document.getElementById('art-form-status')?.value || 'published';
-  const status = forceMode === 'draft' ? 'draft' : statusField;
-  const visibility = document.getElementById('art-form-visibility')?.value || 'public';
-  const accessPermission = document.getElementById('art-form-access-perm')?.value || 'admin_only';
-  const scheduledAt = document.getElementById('art-form-scheduled-at')?.value || null;
-  const authorName = document.getElementById('art-form-author')?.value?.trim() || 'Rudhra Prarthana';
-  const sortOrder = parseInt(document.getElementById('art-form-order')?.value || '0', 10);
+window.submitMainForm = async (editId = null) => {
+  const title = document.getElementById('modal-main-title')?.value.trim();
+  const icon = document.getElementById('modal-main-icon')?.value.trim() || '📖';
+  const slug = document.getElementById('modal-main-slug')?.value.trim();
+  const status = document.getElementById('modal-main-status')?.value || 'published';
 
   if (!title) {
-    showToast('Please enter a content title.');
-    return;
-  }
-  if (!mainCategoryId || !subCategoryId) {
-    showToast('Please select parent main category and sub-title.');
+    showToast('Please enter a title name.');
     return;
   }
 
+  const payload = {
+    title,
+    icon,
+    status,
+    is_disabled: status === 'disabled' ? 1 : 0
+  };
+
   try {
-    const url = editId ? `/api/admin/content/articles/${editId}` : '/api/admin/content/articles';
-    const method = editId ? 'PUT' : 'POST';
-    const res = await apiFetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: editId,
-        mainCategoryId,
-        subCategoryId,
-        parentId: parentId ? Number(parentId) : null,
-        title,
-        uniqueSlug,
-        summary,
-        content,
-        status,
-        visibility,
-        accessPermission,
-        scheduledAt,
-        authorName,
-        sortOrder
-      })
-    });
+    let res;
+    if (editId) {
+      res = await apiFetch(`/api/admin/content/main-categories/${encodeURIComponent(editId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+    } else {
+      payload.id = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      res = await apiFetch('/api/admin/content/main-categories', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+    }
+
     const data = await res.json();
     if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to save content article.');
+      showToast(data.error || 'Failed to save Main Title.');
       return;
     }
-    showToast(`Content "${title}" ${editId ? 'updated' : (status === 'draft' ? 'saved as draft' : 'published')} successfully! ✓`);
+
+    showToast(editId ? 'Main Title updated successfully! 📌' : 'Main Title created successfully! 📌');
     window.closeFormsAdminModal();
     await window.loadFormsAdminData();
   } catch (err) {
-    showToast(err.message || 'Error saving content article.');
+    console.error('Error submitting main form:', err);
+    showToast('Network error while saving title.');
   }
 };
 
@@ -12002,18 +11564,334 @@ window.toggleMainCategoryStatus = async (id, currentDis) => {
   try {
     const res = await apiFetch(`/api/admin/content/main-categories/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isDisabled: newDis })
+      body: JSON.stringify({ isDisabled: newDis, status: newDis ? 'disabled' : 'published' })
     });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Main title status updated to ${newDis ? 'Disabled' : 'Published'}! ✓`);
+    if (res.ok) {
+      showToast(newDis ? 'Main Title disabled.' : 'Main Title enabled!');
       await window.loadFormsAdminData();
-    } else {
-      showToast(data.error || 'Failed to update status.');
     }
   } catch (err) {
-    showToast(err.message || 'Error updating status.');
+    showToast('Failed to toggle status.');
+  }
+};
+
+window.promptDeleteMain = (id, title, childCount) => {
+  const container = document.getElementById('forms-admin-modal-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:36px; margin-bottom:8px; color:#EF4444;">🗑️</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.3rem; color:#0B1F33; margin:0 0 6px;">
+            Delete "${escapeHtml(title)}"?
+          </h3>
+          <p style="font-size:13px; color:#64748B; margin:0; line-height:1.5;">
+            ${childCount > 0 
+              ? `<strong style="color:#DC2626;">Warning:</strong> This Main Title contains ${childCount} sub-titles. Deleting it will permanently remove all associated sub-titles and access rules.`
+              : 'Are you sure you want to permanently delete this Main Title?'}
+          </p>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">
+            Type "<strong>${escapeHtml(title)}</strong>" to confirm:
+          </label>
+          <input type="text" id="confirm-delete-main-input" class="form-input" style="width:100%; box-sizing:border-box;" placeholder="${escapeQuotes(title)}">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
+          <button type="button" class="btn btn-sm" style="background:#EF4444; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer;" 
+                  onclick="window.executeDeleteMain('${escapeQuotes(id)}', '${escapeQuotes(title)}')">
+            Delete Permanently
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.executeDeleteMain = async (id, title) => {
+  const entered = (document.getElementById('confirm-delete-main-input')?.value || '').trim();
+  if (entered && entered.toLowerCase() !== (title || '').toLowerCase() && entered.toLowerCase() !== String(id || '').toLowerCase()) {
+    showToast(`Please type "${title}" to confirm deletion.`);
+    return;
+  }
+
+  try {
+    const res = await apiFetch(`/api/admin/content/main-categories/${encodeURIComponent(id)}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmTitle: entered })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to delete category.');
+      return;
+    }
+
+    showToast('Main Title deleted successfully! 🗑️');
+    window.closeFormsAdminModal();
+    await window.loadFormsAdminData();
+  } catch (err) {
+    showToast('Error deleting Main Title.');
+  }
+};
+
+// ============================================================================
+// SUB-TITLE & SUB-SUB-TITLE MODALS & HANDLERS
+// ============================================================================
+
+window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
+  const container = document.getElementById('forms-admin-modal-container');
+  if (!container) return;
+
+  const isEdit = Boolean(editId);
+  const existing = isEdit ? window.formsAdminState.subcategories.find(s => s.id === editId) : null;
+  const mains = window.formsAdminState.mainCategories || [];
+  const popularEmojis = ['📌', '⭐', '📖', '🔖', '✍️', '🎧', '💬', '🌸', '⚡', '💎', '🌟', '☕', '🔥', '📝'];
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
+            ${isEdit ? 'Edit Sub-title' : 'Add New Sub-title'}
+          </h3>
+          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Parent Main Title *</label>
+          <select id="modal-sub-main" class="form-input" style="width:100%; box-sizing:border-box;">
+            ${mains.map(m => `
+              <option value="${m.id}" ${(existing ? existing.main_category_id === m.id : preselectedMainId === m.id) ? 'selected' : ''}>
+                ${escapeHtml(m.title)}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-title Title Name *</label>
+          <input type="text" id="modal-sub-title" class="form-input" 
+                 value="${escapeQuotes(existing ? existing.title : '')}" 
+                 placeholder="e.g. நிலவை தொலைத்த வானம் - விமர்சனப்பகுதி" 
+                 style="width:100%; box-sizing:border-box;"
+                 oninput="if(!'${isEdit}') window.autoFillSubSlug(this.value)">
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon / Emoji</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="modal-sub-icon" class="form-input" 
+                   value="${escapeQuotes(existing ? (existing.icon || '📌') : '📌')}" 
+                   style="width:80px; text-align:center; font-size:18px; box-sizing:border-box;">
+            <span style="font-size:12px; color:#64748B;">Select below or type custom icon</span>
+          </div>
+          <div class="fm-emoji-grid">
+            ${popularEmojis.map(em => `
+              <button type="button" class="fm-emoji-btn" onclick="document.getElementById('modal-sub-icon').value='${em}'">${em}</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Slug / ID</label>
+          <input type="text" id="modal-sub-slug" class="form-input" 
+                 value="${escapeQuotes(existing ? existing.id : '')}" 
+                 ${isEdit ? 'readonly style="background:#F1F5F9; cursor:not-allowed; width:100%; box-sizing:border-box;"' : 'style="width:100%; box-sizing:border-box;"'}
+                 placeholder="e.g. nilavai-tholaitha-vaanam">
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Status</label>
+          <select id="modal-sub-status" class="form-input" style="width:100%; box-sizing:border-box;">
+            <option value="published" ${existing && (existing.status === 'published' || !existing.is_disabled) ? 'selected' : ''}>Active (Published)</option>
+            <option value="disabled" ${existing && (existing.status === 'disabled' || existing.is_disabled) ? 'selected' : ''}>Disabled (Hidden)</option>
+          </select>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
+          <button type="button" class="fm-btn-gold" onclick="window.submitSubForm('${existing ? existing.id : ''}')">
+            ${isEdit ? 'Save Changes' : 'Create Sub-title'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.autoFillSubSlug = (title) => {
+  const slugInput = document.getElementById('modal-sub-slug');
+  if (slugInput) {
+    slugInput.value = title
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || `sub-${Date.now()}`;
+  }
+};
+
+window.submitSubForm = async (editId = null) => {
+  const mainCategoryId = document.getElementById('modal-sub-main')?.value;
+  const title = document.getElementById('modal-sub-title')?.value.trim();
+  const icon = document.getElementById('modal-sub-icon')?.value.trim() || '📌';
+  const slug = document.getElementById('modal-sub-slug')?.value.trim();
+  const status = document.getElementById('modal-sub-status')?.value || 'published';
+
+  if (!mainCategoryId || !title) {
+    showToast('Please enter parent title and subtitle name.');
+    return;
+  }
+
+  const payload = {
+    mainCategoryId,
+    title,
+    icon,
+    status,
+    is_disabled: status === 'disabled' ? 1 : 0
+  };
+
+  try {
+    let res;
+    if (editId) {
+      res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(editId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+    } else {
+      payload.id = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `sub-${Date.now()}`;
+      res = await apiFetch('/api/admin/content/subcategories', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+    }
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to save Sub-title.');
+      return;
+    }
+
+    showToast(editId ? 'Sub-title updated! 📌' : 'Sub-title created! 📌');
+    window.closeFormsAdminModal();
+    await window.loadFormsAdminData();
+  } catch (err) {
+    console.error('Error submitting sub form:', err);
+    showToast('Network error saving sub-title.');
+  }
+};
+
+/**
+ * Add / Edit Sub-sub-title Modal
+ */
+window.openCreateSubSubModal = (mainId, parentSubId, editId = null) => {
+  const container = document.getElementById('forms-admin-modal-container');
+  if (!container) return;
+
+  const isEdit = Boolean(editId);
+  const existing = isEdit ? window.formsAdminState.subcategories.find(s => s.id === editId) : null;
+  const parentSub = window.formsAdminState.subcategories.find(s => s.id === parentSubId);
+  const mainCat = window.formsAdminState.mainCategories.find(c => c.id === mainId);
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
+            ${isEdit ? 'Edit Sub-sub-title' : 'Add New Sub-sub-title'}
+          </h3>
+          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
+        </div>
+
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:13px; color:#475569;">
+          <div><strong>Main Title:</strong> ${escapeHtml(mainCat ? mainCat.title : mainId)}</div>
+          <div style="margin-top:4px;"><strong>Parent Sub-title:</strong> ${escapeHtml(parentSub ? parentSub.title : parentSubId)}</div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-sub-title Name *</label>
+          <input type="text" id="modal-subsub-title" class="form-input" 
+                 value="${escapeQuotes(existing ? existing.title : '')}" 
+                 placeholder="e.g. Episode 01 Discussions, Chapter 1 Review" 
+                 style="width:100%; box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon / Emoji</label>
+          <input type="text" id="modal-subsub-icon" class="form-input" 
+                 value="${escapeQuotes(existing ? (existing.icon || '🔖') : '🔖')}" 
+                 style="width:80px; text-align:center; font-size:18px; box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Status</label>
+          <select id="modal-subsub-status" class="form-input" style="width:100%; box-sizing:border-box;">
+            <option value="published" ${existing && (existing.status === 'published' || !existing.is_disabled) ? 'selected' : ''}>Active (Published)</option>
+            <option value="disabled" ${existing && (existing.status === 'disabled' || existing.is_disabled) ? 'selected' : ''}>Disabled (Hidden)</option>
+          </select>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
+          <button type="button" class="fm-btn-gold" onclick="window.submitSubSubForm('${escapeQuotes(mainId)}', '${escapeQuotes(parentSubId)}', '${existing ? existing.id : ''}')">
+            ${isEdit ? 'Save Changes' : 'Create Sub-sub-title'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.submitSubSubForm = async (mainId, parentSubId, editId = null) => {
+  const title = document.getElementById('modal-subsub-title')?.value.trim();
+  const icon = document.getElementById('modal-subsub-icon')?.value.trim() || '🔖';
+  const status = document.getElementById('modal-subsub-status')?.value || 'published';
+
+  if (!title) {
+    showToast('Please enter a sub-sub-title name.');
+    return;
+  }
+
+  const payload = {
+    mainCategoryId: mainId,
+    parentId: parentSubId,
+    title,
+    icon,
+    status,
+    is_disabled: status === 'disabled' ? 1 : 0
+  };
+
+  try {
+    let res;
+    if (editId) {
+      res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(editId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+    } else {
+      payload.id = `part-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      res = await apiFetch('/api/admin/content/subcategories', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+    }
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to save sub-sub-title.');
+      return;
+    }
+
+    showToast(editId ? 'Sub-sub-title updated!' : 'Sub-sub-title created!');
+    window.closeFormsAdminModal();
+    await window.loadFormsAdminData();
+  } catch (err) {
+    showToast('Error saving sub-sub-title.');
   }
 };
 
@@ -12022,175 +11900,185 @@ window.toggleSubCategoryStatus = async (id, currentDis) => {
   try {
     const res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isDisabled: newDis })
+      body: JSON.stringify({ isDisabled: newDis, status: newDis ? 'disabled' : 'published' })
     });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Sub-title status updated to ${newDis ? 'Disabled' : 'Active'}! ✓`);
+    if (res.ok) {
+      showToast(newDis ? 'Sub-title disabled.' : 'Sub-title enabled!');
       await window.loadFormsAdminData();
-    } else {
-      showToast(data.error || 'Failed to update status.');
     }
   } catch (err) {
-    showToast(err.message || 'Error updating status.');
+    showToast('Failed to toggle status.');
   }
 };
 
-window.toggleContentArticleStatus = async (id, currentDis) => {
-  const newDis = !currentDis;
-  try {
-    const res = await apiFetch(`/api/admin/content/articles/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isDisabled: newDis })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Content status updated to ${newDis ? 'Disabled' : 'Published'}! ✓`);
-      await window.loadFormsAdminData();
-    } else {
-      showToast(data.error || 'Failed to update status.');
-    }
-  } catch (err) {
-    showToast(err.message || 'Error updating status.');
-  }
+window.promptDeleteSub = (id, title, childCount = 0) => {
+  const container = document.getElementById('forms-admin-modal-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:36px; margin-bottom:8px; color:#EF4444;">🗑️</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.3rem; color:#0B1F33; margin:0 0 6px;">
+            Delete "${escapeHtml(title)}"?
+          </h3>
+          <p style="font-size:13px; color:#64748B; margin:0; line-height:1.5;">
+            ${childCount > 0 
+              ? `<strong style="color:#DC2626;">Warning:</strong> This sub-title contains ${childCount} sub-sub-titles. Deleting it will permanently remove all child titles.`
+              : 'Are you sure you want to permanently delete this sub-title?'}
+          </p>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">
+            Type "<strong>${escapeHtml(title)}</strong>" to confirm:
+          </label>
+          <input type="text" id="confirm-delete-sub-input" class="form-input" style="width:100%; box-sizing:border-box;" placeholder="${escapeQuotes(title)}">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
+          <button type="button" class="btn btn-sm" style="background:#EF4444; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer;" 
+                  onclick="window.executeDeleteSub('${escapeQuotes(id)}', '${escapeQuotes(title)}')">
+            Delete Permanently
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 };
 
-window.deleteMainCategory = async (id) => {
-  const cat = (window.formsAdminState.mainCategories || []).find(m => String(m.id) === String(id));
-  const title = cat ? cat.title : id;
-  if (!confirm(`Are you sure you want to delete the main category "${title}"?\nAll nested sub-titles and content under it will be removed.`)) {
+window.executeDeleteSub = async (id, title) => {
+  const entered = (document.getElementById('confirm-delete-sub-input')?.value || '').trim();
+  if (entered && entered.toLowerCase() !== (title || '').toLowerCase() && entered.toLowerCase() !== String(id || '').toLowerCase()) {
+    showToast(`Please type "${title}" to confirm deletion.`);
     return;
   }
-  try {
-    const res = await apiFetch(`/api/admin/content/main-categories/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmTitle: title })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Category "${title}" deleted successfully. ✓`);
-      await window.loadFormsAdminData();
-    } else {
-      showToast(data.error || 'Failed to delete category.');
-    }
-  } catch (err) {
-    showToast(err.message || 'Error deleting category.');
-  }
-};
 
-window.deleteSubCategory = async (id) => {
-  const sub = (window.formsAdminState.subcategories || []).find(s => String(s.id) === String(id));
-  const title = sub ? sub.title : id;
-  if (!confirm(`Are you sure you want to delete the sub-title "${title}"?\nAll content under this section will be removed.`)) {
-    return;
-  }
   try {
-    const res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmTitle: title })
+    const res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(id)}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmTitle: entered })
     });
     const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Subcategory "${title}" deleted successfully. ✓`);
-      await window.loadFormsAdminData();
-    } else {
+    if (!res.ok || !data.success) {
       showToast(data.error || 'Failed to delete subcategory.');
+      return;
     }
+
+    showToast('Sub-title deleted successfully! 🗑️');
+    window.closeFormsAdminModal();
+    await window.loadFormsAdminData();
   } catch (err) {
-    showToast(err.message || 'Error deleting subcategory.');
+    showToast('Error deleting sub-title.');
   }
 };
 
-window.deleteContentArticle = async (id) => {
-  const art = (window.formsAdminState.articles || []).find(a => Number(a.id) === Number(id));
-  const title = art ? art.title : `#${id}`;
-  if (!confirm(`Are you sure you want to delete "${title}"?\nIf it contains nested parts / sub-sub-titles, they will also be deleted.`)) {
-    return;
-  }
-  try {
-    const res = await apiFetch(`/api/admin/content/articles/${id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmTitle: 'yes' })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Content "${title}" deleted successfully. ✓`);
-      await window.loadFormsAdminData();
-    } else {
-      showToast(data.error || 'Failed to delete content.');
-    }
-  } catch (err) {
-    showToast(err.message || 'Error deleting content.');
-  }
-};
+// ============================================================================
+// ACCESS CONTROL RULES MODAL
+// ============================================================================
 
-/**
- * Access Restriction Rules Modal & Handlers
- */
 window.openAccessRuleModal = (targetType, targetId, targetTitle) => {
   const container = document.getElementById('forms-admin-modal-container');
   if (!container) return;
 
   const members = window.formsAdminState.members || [];
+  const rules = (window.formsAdminState.accessRules || []).filter(r => 
+    String(r.target_type || r.targetType) === String(targetType) && 
+    String(r.target_id || r.targetId) === String(targetId)
+  );
 
   container.innerHTML = `
     <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#fff; border-radius:14px; width:100%; max-width:540px; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:540px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
           <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
             🛡️ Access Control: ${escapeHtml(targetTitle)}
           </h3>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button>
+          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
         </div>
 
         <p style="font-size:12.5px; color:#64748B; margin-bottom:16px;">
-          Apply individual member access restrictions or block specific readers from viewing this content.
+          Configure fine-grained reader access rules or block specific members from this title.
         </p>
 
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Restricted Member</label>
-          <select id="acc-user-id" class="form-input" style="width:100%; box-sizing:border-box;">
-            ${members.map(m => `
-              <option value="${m.id}">${escapeHtml(m.username)} (${escapeHtml(m.email || 'ID: ' + m.id)})</option>
-            `).join('')}
-          </select>
-        </div>
+        <!-- New Rule Form -->
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px; margin-bottom:18px;">
+          <div style="font-size:12.5px; font-weight:700; color:#0B1F33; margin-bottom:12px;">Add Access Restriction</div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Restriction Type</label>
-            <select id="acc-rule-type" class="form-input" style="width:100%; box-sizing:border-box;">
-              <option value="block">Block Access (Deny Reading)</option>
-              <option value="allow">Explicit Allow</option>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Restricted Member</label>
+            <select id="acc-user-id" class="form-input" style="width:100%; box-sizing:border-box;">
+              ${members.map(m => `
+                <option value="${m.id}">${escapeHtml(m.username)} (${escapeHtml(m.email || 'ID: ' + m.id)})</option>
+              `).join('')}
             </select>
           </div>
-          <div>
-            <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Duration</label>
-            <select id="acc-duration" class="form-input" style="width:100%; box-sizing:border-box;">
-              <option value="24h">24 Hours</option>
-              <option value="3d">3 Days</option>
-              <option value="7d" selected>7 Days (1 Week)</option>
-              <option value="30d">30 Days</option>
-              <option value="indefinite">Indefinite</option>
-            </select>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Rule Type</label>
+              <select id="acc-rule-type" class="form-input" style="width:100%; box-sizing:border-box;">
+                <option value="block">Block Access (Deny)</option>
+                <option value="allow">Explicit Allow</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Duration</label>
+              <select id="acc-duration" class="form-input" style="width:100%; box-sizing:border-box;">
+                <option value="24h">24 Hours</option>
+                <option value="3d">3 Days</option>
+                <option value="7d" selected>7 Days (1 Week)</option>
+                <option value="30d">30 Days</option>
+                <option value="indefinite">Indefinite (Permanent)</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div style="margin-bottom:18px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Reason for Restriction</label>
-          <input type="text" id="acc-reason" class="form-input" value="Violation of reading community guidelines" style="width:100%; box-sizing:border-box;">
-        </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:12px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Reason / Notes (Optional)</label>
+            <input type="text" id="acc-reason" class="form-input" placeholder="e.g. Community guidelines violation" style="width:100%; box-sizing:border-box;">
+          </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="window.submitAccessRule('${escapeQuotes(targetType)}', '${escapeQuotes(targetId)}')">
-            Apply Restriction
+          <button type="button" class="fm-btn-gold-sm" style="width:100%; justify-content:center;" 
+                  onclick="window.submitAccessRule('${escapeQuotes(targetType)}', '${escapeQuotes(targetId)}')">
+            + Apply Restriction
           </button>
+        </div>
+
+        <!-- Existing Rules -->
+        <div>
+          <div style="font-size:12.5px; font-weight:700; color:#0B1F33; margin-bottom:8px;">
+            Active Restrictions (${rules.length})
+          </div>
+          ${rules.length === 0 ? `
+            <div style="font-size:12.5px; color:#94A3B8; font-style:italic; padding:8px 0;">
+              No custom access rules applied to this title.
+            </div>
+          ` : `
+            <div style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+              ${rules.map(r => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; font-size:12px;">
+                  <div>
+                    <strong>${escapeHtml(r.userName || r.username || 'User #' + r.userId)}</strong> &bull;
+                    <span style="color:${r.rule_type === 'block' ? '#DC2626' : '#15803D'}; font-weight:700;">
+                      ${r.rule_type === 'block' ? 'BLOCKED' : 'ALLOWED'}
+                    </span>
+                    ${r.expires_at ? `<span style="color:#64748B;"> (Expires: ${new Date(r.expires_at).toLocaleDateString()})</span>` : ''}
+                  </div>
+                  <button type="button" class="btn btn-outline btn-xs" style="color:#EF4444; border-color:#FECACA;" 
+                          onclick="window.removeAccessRule(${r.id})">
+                    Remove
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:18px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Close</button>
         </div>
       </div>
     </div>
@@ -12199,26 +12087,52 @@ window.openAccessRuleModal = (targetType, targetId, targetTitle) => {
 
 window.submitAccessRule = async (targetType, targetId) => {
   const userId = document.getElementById('acc-user-id')?.value;
-  const ruleType = document.getElementById('acc-rule-type')?.value || 'block';
-  const duration = document.getElementById('acc-duration')?.value || '7d';
-  const reason = document.getElementById('acc-reason')?.value?.trim() || null;
+  const ruleType = document.getElementById('acc-rule-type')?.value;
+  const duration = document.getElementById('acc-duration')?.value;
+  const reason = document.getElementById('acc-reason')?.value.trim();
+
+  if (!userId) {
+    showToast('Please select a member.');
+    return;
+  }
 
   try {
     const res = await apiFetch('/api/admin/content/access-rules', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_type: targetType, target_id: targetId, user_id: userId, rule_type: ruleType, duration, reason })
+      body: JSON.stringify({
+        targetType,
+        targetId,
+        userId: Number(userId),
+        ruleType,
+        duration,
+        reason
+      })
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to apply access rule.');
+      showToast(data.error || 'Failed to apply rule.');
       return;
     }
-    showToast('Access restriction applied successfully! 🛡️');
+    showToast('Access rule applied successfully! 🛡️');
     window.closeFormsAdminModal();
     await window.loadFormsAdminData();
   } catch (err) {
-    showToast(err.message || 'Error applying restriction.');
+    showToast('Error applying access rule.');
+  }
+};
+
+window.removeAccessRule = async (ruleId) => {
+  try {
+    const res = await apiFetch(`/api/admin/content/access-rules/${ruleId}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      showToast('Access rule removed. 🛡️');
+      window.closeFormsAdminModal();
+      await window.loadFormsAdminData();
+    }
+  } catch (err) {
+    showToast('Failed to remove rule.');
   }
 };
 
@@ -12229,6 +12143,7 @@ window.closeFormsAdminModal = (event) => {
   const container = document.getElementById('forms-admin-modal-container');
   if (container) container.innerHTML = '';
 };
+
 
 // ============================================================================
 // SHORT STORIES MANAGEMENT TAB (Admin Dashboard)
@@ -14292,4 +14207,364 @@ window.handleStoryCoverSelected = async (file) => {
     }
   };
   reader.readAsDataURL(file);
+};
+
+
+// ============================================================================
+// TRASH / RECYCLE BIN MANAGEMENT TAB (ADMIN DASHBOARD)
+// ============================================================================
+
+window.trashAdminState = {
+  items: [],
+  filterType: 'all',
+  searchQuery: '',
+  isLoading: false,
+  totalCount: 0
+};
+
+export async function renderTrashManagementTab(canvas) {
+  canvas.innerHTML = `
+    <div class="trash-page-container">
+      <!-- Header -->
+      <div class="trash-header">
+        <div class="trash-header-left">
+          <div class="trash-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 class="trash-header-title">Trash / Recycle Bin</h1>
+            <p class="trash-header-subtitle">
+              Manage deleted content. You can restore items to their original location or permanently delete them.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <button type="button" class="btn-empty-trash" id="btn-empty-admin-trash" onclick="window.promptEmptyTrash()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            Empty Trash
+          </button>
+        </div>
+      </div>
+
+      <!-- Toolbar: Search & Filter -->
+      <div class="trash-toolbar">
+        <div class="trash-search-wrap">
+          <span style="position:absolute; left:12px; color:#64748B;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </span>
+          <input type="text" id="trash-search-input" class="trash-search-input" 
+                 placeholder="Search deleted items by title, location, or ID..." 
+                 oninput="window.handleTrashSearch(this.value)">
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <select id="trash-type-filter" class="trash-filter-select" onchange="window.handleTrashFilterChange(this.value)">
+            <option value="all">All Content Types</option>
+            <option value="main_category">Main Titles</option>
+            <option value="sub_category">Sub-titles</option>
+            <option value="novel">Novels</option>
+            <option value="chapter">Chapters &amp; Episodes</option>
+            <option value="short_story">Short Stories</option>
+            <option value="audio_novel">Audio Novels</option>
+          </select>
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.loadAdminTrashData()">
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Trash List Canvas -->
+      <div id="trash-items-canvas">
+        <div style="text-align:center; padding:50px 20px; color:#64748B;">
+          <div style="width:34px; height:34px; border:3px solid #E2E8F0; border-top-color:#DC2626; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 12px;"></div>
+          <div>Loading Trash items...</div>
+        </div>
+      </div>
+
+      <!-- Modals Container -->
+      <div id="trash-admin-modal-container"></div>
+    </div>
+  `;
+
+  await window.loadAdminTrashData();
+}
+
+window.loadAdminTrashData = async () => {
+  try {
+    window.trashAdminState.isLoading = true;
+    const { filterType, searchQuery } = window.trashAdminState;
+    const url = `/api/trash?type=${encodeURIComponent(filterType)}&search=${encodeURIComponent(searchQuery)}`;
+    const res = await apiFetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      window.trashAdminState.items = data.items || [];
+      window.trashAdminState.totalCount = data.total || 0;
+
+      // Update badge
+      const badge = document.getElementById('nav-trash-count');
+      if (badge) badge.textContent = window.trashAdminState.totalCount;
+
+      window.renderTrashTable();
+    } else {
+      showToast('Failed to load Trash items.');
+    }
+  } catch (err) {
+    console.error('Error loading trash items:', err);
+  } finally {
+    window.trashAdminState.isLoading = false;
+  }
+};
+
+window.handleTrashSearch = (val) => {
+  window.trashAdminState.searchQuery = val.trim();
+  window.loadAdminTrashData();
+};
+
+window.handleTrashFilterChange = (type) => {
+  window.trashAdminState.filterType = type;
+  window.loadAdminTrashData();
+};
+
+window.renderTrashTable = () => {
+  const container = document.getElementById('trash-items-canvas');
+  if (!container) return;
+
+  const items = window.trashAdminState.items || [];
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="trash-card-table">
+        <div class="trash-empty-state">
+          <div style="font-size:44px; margin-bottom:12px; opacity:0.6;">🗑️</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0 0 6px;">
+            Recycle Bin is Empty
+          </h3>
+          <p style="font-size:13.5px; margin:0;">
+            ${window.trashAdminState.searchQuery || window.trashAdminState.filterType !== 'all' 
+              ? 'No deleted items match your filter.' 
+              : 'Deleted titles, novels, episodes, and stories will appear here.'}
+          </p>
+        </div>
+      </div>
+    `;
+    const emptyBtn = document.getElementById('btn-empty-admin-trash');
+    if (emptyBtn) emptyBtn.disabled = true;
+    return;
+  }
+
+  const emptyBtn = document.getElementById('btn-empty-admin-trash');
+  if (emptyBtn) emptyBtn.disabled = false;
+
+  const typeLabels = {
+    main_category: 'Main Title',
+    sub_category: 'Sub-title',
+    novel: 'Novel',
+    chapter: 'Episode / Chapter',
+    episode: 'Episode',
+    short_story: 'Short Story',
+    audio_novel: 'Audio Novel',
+    audio_episode: 'Audio Episode',
+    article: 'Article'
+  };
+
+  container.innerHTML = `
+    <div class="trash-card-table">
+      <table class="trash-table">
+        <thead>
+          <tr>
+            <th>Item Title</th>
+            <th>Type</th>
+            <th>Original Location</th>
+            <th>Deleted Date</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr>
+              <td>
+                <div style="font-weight:700; color:#0F172A; font-size:14px; margin-bottom:2px;">
+                  ${escapeHtml(item.title)}
+                </div>
+                <div style="font-size:11.5px; color:#64748B;">
+                  ID: ${escapeHtml(item.item_id)}
+                </div>
+              </td>
+              <td>
+                <span class="trash-type-badge ${item.item_type}">
+                  ${typeLabels[item.item_type] || item.item_type}
+                </span>
+              </td>
+              <td style="color:#475569; font-size:13px;">
+                ${escapeHtml(item.original_location || 'General')}
+              </td>
+              <td style="color:#64748B; font-size:12.5px;">
+                ${item.deleted_at ? new Date(item.deleted_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Recently'}
+                ${item.deleted_by_name ? `<div style="font-size:11px; opacity:0.8;">by ${escapeHtml(item.deleted_by_name)}</div>` : ''}
+              </td>
+              <td style="text-align:right;">
+                <div style="display:inline-flex; gap:6px;">
+                  <button type="button" class="btn-restore" onclick="window.promptRestoreItem(${item.id}, '${escapeQuotes(item.title)}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    Restore
+                  </button>
+                  <button type="button" class="btn-purge" onclick="window.promptPurgeItem(${item.id}, '${escapeQuotes(item.title)}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Delete Permanently
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+};
+
+window.promptRestoreItem = (id, title) => {
+  const container = document.getElementById('trash-admin-modal-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeTrashModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:36px; margin-bottom:8px; color:#10B981;">↺</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.3rem; color:#0B1F33; margin:0 0 6px;">
+            Restore "${escapeHtml(title)}"?
+          </h3>
+          <p style="font-size:13px; color:#64748B; margin:0; line-height:1.5;">
+            This will return the item and all its original data back to its original location on the website.
+          </p>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeTrashModal()">Cancel</button>
+          <button type="button" class="btn btn-sm" style="background:#10B981; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer;" 
+                  onclick="window.executeRestoreItem(${id})">
+            Yes, Restore
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.executeRestoreItem = async (id) => {
+  try {
+    const res = await apiFetch(`/api/trash/${id}/restore`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to restore item.');
+      return;
+    }
+    showToast(data.message || 'Item restored successfully! ↺');
+    window.closeTrashModal();
+    await window.loadAdminTrashData();
+  } catch (err) {
+    showToast('Error restoring item.');
+  }
+};
+
+window.promptPurgeItem = (id, title) => {
+  const container = document.getElementById('trash-admin-modal-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeTrashModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:36px; margin-bottom:8px; color:#EF4444;">⚠️</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.3rem; color:#0B1F33; margin:0 0 6px;">
+            Permanently Delete "${escapeHtml(title)}"?
+          </h3>
+          <p style="font-size:13px; color:#DC2626; margin:0; line-height:1.5;">
+            This action cannot be undone. All data associated with this item will be completely removed forever.
+          </p>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeTrashModal()">Cancel</button>
+          <button type="button" class="btn btn-sm" style="background:#EF4444; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer;" 
+                  onclick="window.executePurgeItem(${id})">
+            Delete Permanently
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.executePurgeItem = async (id) => {
+  try {
+    const res = await apiFetch(`/api/trash/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to permanently delete item.');
+      return;
+    }
+    showToast('Item permanently purged. 🗑️');
+    window.closeTrashModal();
+    await window.loadAdminTrashData();
+  } catch (err) {
+    showToast('Error purging item.');
+  }
+};
+
+window.promptEmptyTrash = () => {
+  const container = document.getElementById('trash-admin-modal-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-modal-backdrop" onclick="window.closeTrashModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="fm-modal-box" onclick="event.stopPropagation()" style="max-width:440px;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="font-size:36px; margin-bottom:8px; color:#EF4444;">⚠️</div>
+          <h3 style="font-family:'Playfair Display',serif; font-size:1.3rem; color:#0B1F33; margin:0 0 6px;">
+            Empty Recycle Bin?
+          </h3>
+          <p style="font-size:13px; color:#DC2626; margin:0; line-height:1.5;">
+            Are you sure you want to permanently delete all items currently in the Recycle Bin? This cannot be undone.
+          </p>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeTrashModal()">Cancel</button>
+          <button type="button" class="btn btn-sm" style="background:#EF4444; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer;" 
+                  onclick="window.executeEmptyTrash()">
+            Empty All Trash
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+window.executeEmptyTrash = async () => {
+  try {
+    const res = await apiFetch('/api/trash/empty', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to empty trash.');
+      return;
+    }
+    showToast('Trash emptied successfully! 🗑️');
+    window.closeTrashModal();
+    await window.loadAdminTrashData();
+  } catch (err) {
+    showToast('Error emptying trash.');
+  }
+};
+
+window.closeTrashModal = (event) => {
+  if (event && event.target && !event.target.classList.contains('admin-modal-backdrop') && !event.target.classList.contains('btn-close')) {
+    return;
+  }
+  const container = document.getElementById('trash-admin-modal-container');
+  if (container) container.innerHTML = '';
 };
