@@ -686,14 +686,15 @@ export async function createNovel(data) {
     return { success: false, error: 'Novel title is required.' };
   }
 
-  // Prevent duplicate submissions and repeated novel records
-  const existingByTitle = await queryOne('SELECT id, title FROM novels WHERE LOWER(TRIM(title)) = LOWER(TRIM(?))', [cleanTitle]);
+  // If a novel with this exact title already exists, return it cleanly so editing/saving continues seamlessly
+  const existingByTitle = await queryOne('SELECT * FROM novels WHERE LOWER(TRIM(title)) = LOWER(TRIM(?))', [cleanTitle]);
   if (existingByTitle) {
     return { 
-      success: false, 
-      error: `A novel titled "${existingByTitle.title}" already exists (ID: ${existingByTitle.id}). Duplicate novel creation is prevented.`, 
-      code: 'DUPLICATE_NOVEL',
-      duplicateId: existingByTitle.id 
+      success: true, 
+      message: `Existing novel "${existingByTitle.title}" reused.`, 
+      novel: existingByTitle,
+      id: existingByTitle.id,
+      isExisting: true 
     };
   }
 

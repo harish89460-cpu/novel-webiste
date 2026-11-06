@@ -355,15 +355,32 @@ export async function createEpisode(data) {
       if (anyNovel) {
         rawNovelId = anyNovel.id;
       } else {
-        return { success: false, error: 'No novel container available to store content.' };
+        const defaultNovelId = 'novel-rudhra-collection';
+        await query(`
+          INSERT INTO novels (id, title, author, description, status, badge, is_published)
+          VALUES (?, ?, ?, ?, 'Ongoing', 'Ongoing', 1)
+          ON DUPLICATE KEY UPDATE id=id;
+        `, [defaultNovelId, 'Rudhra Prarthana Collection', 'Rudhra Prarthana', 'Default novel collection for chapters and episodes.']);
+        rawNovelId = defaultNovelId;
       }
     }
   }
 
   // Verify novel exists by id or title
-  const novel = await queryOne('SELECT id, title FROM novels WHERE id = ? OR title = ? LIMIT 1;', [rawNovelId, rawNovelId]);
+  let novel = await queryOne('SELECT id, title FROM novels WHERE id = ? OR title = ? LIMIT 1;', [rawNovelId, rawNovelId]);
   if (!novel) {
-    return { success: false, error: `Novel "${rawNovelId}" not found.` };
+    const anyNovel = await queryOne('SELECT id, title FROM novels ORDER BY id ASC LIMIT 1;');
+    if (anyNovel) {
+      novel = anyNovel;
+    } else {
+      const defaultNovelId = 'novel-rudhra-collection';
+      await query(`
+        INSERT INTO novels (id, title, author, description, status, badge, is_published)
+        VALUES (?, ?, ?, ?, 'Ongoing', 'Ongoing', 1)
+        ON DUPLICATE KEY UPDATE id=id;
+      `, [defaultNovelId, rawNovelId || 'Rudhra Prarthana Collection', 'Rudhra Prarthana', 'Default novel collection.']);
+      novel = { id: defaultNovelId, title: rawNovelId || 'Rudhra Prarthana Collection' };
+    }
   }
   const novelId = novel.id;
 

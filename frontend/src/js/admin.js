@@ -5628,23 +5628,36 @@ function renderEditorTab(canvas) {
   const readTimeStr = `${readTimeMins} min read`;
 
   canvas.innerHTML = `
-    <!-- Top Workflow Bar: Write Mode | Preview Option | Generate Publish Link -->
-    <div class="editor-stepper-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <button type="button" class="btn ${editorStep === 1 ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="goToEditorStep(1)" style="font-weight:700;">
-          ✍️ 1. Write Content
-        </button>
-        <span style="color:#94A3B8;">➔</span>
-        <button type="button" class="btn ${editorStep === 2 ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="goToEditorStep(2)" style="font-weight:700;">
-          👁️ 2. Preview Option (Reader View)
-        </button>
+    <!-- Top Workspace Header: Single Clear Clean Action Bar -->
+    <div class="admin-page-header" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+      <div class="admin-page-title-group">
+        <h1 class="admin-page-title" style="margin:0; font-size:1.6rem; color:var(--color-navy-deep); font-weight:700;">
+          ${isEditing ? `Edit Novel Content: ${escapeHtml(ep.title || 'Untitled')}` : 'Novel Content Writing'}
+        </h1>
       </div>
 
-      <div style="display:flex; align-items:center; gap:10px;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
+      <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <!-- Live Autosave Status Indicator -->
+        <div id="autosave-status-badge" class="editor-autosave-badge saved" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:20px; font-size:12.5px; font-weight:600; color:#334155;">
+          <span class="editor-autosave-dot" id="autosave-dot" style="width:8px; height:8px; border-radius:50%; background:#10B981; display:inline-block;"></span>
+          <span id="autosave-text">${isEditing ? 'Saved' : 'Draft'}</span>
+        </div>
+
+        <button type="button" class="btn btn-outline btn-sm" id="btn-editor-save-draft" onclick="saveEditorDraft(false)" style="font-weight:600;">
           💾 Save Draft
         </button>
-        <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700; padding:8px 18px; box-shadow:0 2px 8px rgba(200,155,60,0.3);">
+
+        ${editorStep === 1 ? `
+          <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(2)" style="font-weight:600;">
+            👁️ Preview Option
+          </button>
+        ` : `
+          <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(1)" style="font-weight:600;">
+            ← Back to Edit
+          </button>
+        `}
+
+        <button type="button" class="btn btn-gold btn-sm" id="btn-editor-publish-link" onclick="generateAdminPublishLink()" style="font-weight:700; padding:8px 18px; box-shadow:0 2px 8px rgba(200,155,60,0.3);">
           🔗 Generate Publish Link
         </button>
       </div>
@@ -5662,28 +5675,13 @@ function renderEditorTab(canvas) {
 
 function renderEditorStep1Write(ep, currentNovelId, isEditing) {
   return `
-    <div class="admin-page-header" style="margin-bottom:14px;">
-      <div class="admin-page-title-group">
-        <h1 class="admin-page-title">${isEditing ? `Edit Novel Content: ${escapeHtml(ep.title || 'Untitled')}` : 'Novel Content Writing'}</h1>
-        <p class="admin-page-subtitle">Write, format, preview reader experience, and generate unique publish links for frontend threads.</p>
-      </div>
-      <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
-          💾 Save Draft
-        </button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(2)" style="font-weight:600;">
-          👁️ Preview Option ➔
-        </button>
-        <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700; padding:8px 18px;">
-          🔗 Generate Publish Link
-        </button>
-      </div>
-    </div>
-
     <div class="editor-container">
       <input type="hidden" id="editor-novel-id" value="${escapeHtml(currentNovelId || '')}">
       <input type="hidden" id="editor-parent-id" value="${ep.parentId ? escapeHtml(ep.parentId) : ''}">
       <input type="hidden" id="editor-status-select" value="${ep.status || 'draft'}">
+
+      <!-- Crash / Session Recovery Banner Mount -->
+      <div id="draft-recovery-mount"></div>
 
       ${adminState.editingPublishedId ? `
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
@@ -5698,7 +5696,7 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
         </div>
       ` : ''}
 
-      <!-- Freely Enter Title -->
+      <!-- Title Input Card -->
       <div class="form-group editor-title-card" style="background:#FFFFFF; border:1px solid var(--color-border); border-radius:10px; padding:16px 20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
         <label class="form-label" for="editor-title-input" style="font-weight:700; color:var(--color-navy-deep); font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
           <span style="font-size:18px;">📝</span> Title <span style="color:#EF4444;">*</span>
@@ -5708,9 +5706,6 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
                value="${escapeHtml(ep.title || '')}"
                oninput="onEditorContentChange()"
                style="font-size:16px; font-weight:700; height:46px; width:100%; border-radius:8px;">
-        <div style="font-size:12px; color:var(--color-text-muted); margin-top:6px;">
-          Freely enter your title and content below without selecting predefined options.
-        </div>
       </div>
 
       <!-- Rich-Text Formatting Toolbar -->
@@ -5765,7 +5760,7 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
         </div>
       </div>
 
-      <!-- Completely Blank Writing Surface (No placeholder text) -->
+      <!-- Blank Writing Surface -->
       <div class="editor-canvas-wrap">
         <div style="display:flex; flex-direction:column; gap:6px; width:100%;">
           <div class="editor-writing-surface" id="editor-surface" contenteditable="true" 
@@ -5773,28 +5768,18 @@ function renderEditorStep1Write(ep, currentNovelId, isEditing) {
         </div>
       </div>
 
-      <!-- Bottom Status & Actions Bar -->
-      <div class="editor-status-bar" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+      <!-- Bottom Status Bar (Counters & Live Autosave - No Duplicate Action Buttons) -->
+      <div class="editor-status-bar" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 16px; background:#FAFAFA; border:1px solid #E2E8F0; border-radius:8px;">
         <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
-          <div class="editor-autosave-badge">
-            <span class="editor-autosave-dot" id="autosave-dot"></span>
-            <span id="autosave-text">Draft autosaved locally</span>
-          </div>
-          <span style="color:var(--color-border);">|</span>
           <span id="editor-word-count" style="font-weight:700; color:var(--color-navy-deep); font-size:13px;">0 words</span>
+          <span style="color:var(--color-border);">|</span>
+          <span id="editor-char-count" style="color:var(--color-text-muted); font-size:12.5px;">0 characters</span>
+          <span style="color:var(--color-border);">|</span>
           <span id="editor-read-time" style="color:var(--color-text-muted); font-size:12.5px;">1 min read</span>
         </div>
 
-        <div style="display:flex; gap:10px; align-items:center;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="saveEditorDraft(false)">
-            💾 Save Draft
-          </button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="goToEditorStep(2)" style="font-weight:600;">
-            👁️ Preview Option ➔
-          </button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="generateAdminPublishLink()" style="font-weight:700;">
-            🔗 Generate Publish Link
-          </button>
+        <div style="font-size:12px; color:var(--color-text-muted); display:flex; align-items:center; gap:6px;">
+          <span>⚡ Autosave enabled</span>
         </div>
       </div>
     </div>
@@ -5911,29 +5896,133 @@ function setupEditorEventListeners(ep) {
   if (adminState.editorStep === 1) {
     updateWordCounters();
 
-    // Check if there is an unsaved local draft for new episodes
-    if (!ep.id && !ep.content) {
-      try {
-        const rawDraft = localStorage.getItem('rp_admin_editor_draft');
-        if (rawDraft) {
-          const draftData = JSON.parse(rawDraft);
-          if (draftData && draftData.content && draftData.content.trim()) {
-            const surface = document.getElementById('editor-surface');
-            const titleInput = document.getElementById('editor-title-input');
-            if (surface && titleInput && !surface.innerText.trim()) {
-              if (confirm('An unsaved local draft was found. Do you want to restore it?')) {
-                surface.innerHTML = draftData.content;
-                if (draftData.title) titleInput.value = draftData.title;
-                updateWordCounters();
-                showToast('Autosaved draft restored.');
-              }
+    const surface = document.getElementById('editor-surface');
+    const titleInput = document.getElementById('editor-title-input');
+
+    // Save on blur (focusout)
+    if (surface && !surface._rp_blur_bound) {
+      surface._rp_blur_bound = true;
+      surface.addEventListener('blur', () => {
+        if (adminState.editorDirty) window.performNovelAutosave();
+      });
+    }
+    if (titleInput && !titleInput._rp_blur_bound) {
+      titleInput._rp_blur_bound = true;
+      titleInput.addEventListener('blur', () => {
+        if (adminState.editorDirty) window.performNovelAutosave();
+      });
+    }
+
+    // Offline -> Online synchronization
+    if (!window._rp_admin_online_listener) {
+      window._rp_admin_online_listener = true;
+      window.addEventListener('online', () => {
+        const raw = localStorage.getItem('rp_novel_editor_recovery_admin');
+        if (raw) {
+          try {
+            const data = JSON.parse(raw);
+            if (data && data.synced === false) {
+              window.performNovelAutosave();
+              showToast('Connection restored: Synchronized local draft with database.');
             }
-          }
+          } catch (e) {}
         }
-      } catch (e) {}
+      });
+    }
+
+    // Check for crash recovery draft if starting fresh
+    if (!ep.id && !ep.content) {
+      checkAdminCrashRecoveryDraft();
     }
   }
 }
+
+async function checkAdminCrashRecoveryDraft() {
+  const mount = document.getElementById('draft-recovery-mount');
+  if (!mount) return;
+
+  try {
+    let candidate = null;
+    const rawLocal = localStorage.getItem('rp_novel_editor_recovery_admin');
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      if (parsed && (parsed.title || parsed.content)) {
+        candidate = { ...parsed, source: 'local' };
+      }
+    }
+
+    try {
+      const res = await apiFetch('/api/novel-editor/latest-draft');
+      const data = await res.json();
+      if (res.ok && data.success && data.hasDraft && data.draft) {
+        if (!candidate || new Date(data.draft.updatedAt) > new Date(candidate.updatedAt)) {
+          candidate = {
+            draftId: data.draft.id,
+            title: data.draft.title,
+            content: data.draft.content,
+            updatedAt: data.draft.updatedAt,
+            source: 'server'
+          };
+        }
+      }
+    } catch (apiErr) {}
+
+    const surface = document.getElementById('editor-surface');
+    const titleInput = document.getElementById('editor-title-input');
+    if (candidate && surface && (!surface.innerText || !surface.innerText.trim()) && (!titleInput || !titleInput.value.trim())) {
+      const timeStr = candidate.updatedAt ? new Date(candidate.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'earlier';
+      mount.innerHTML = `
+        <div class="draft-recovery-card" style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:20px;">💡</span>
+            <div>
+              <strong style="color:#92400E; font-size:13.5px;">Recovered draft found from ${timeStr}</strong>
+              <div style="font-size:12px; color:#B45309;">Title: "${escapeHtml(candidate.title || 'Untitled')}" • ${candidate.source === 'server' ? 'Stored in database' : 'Saved in browser recovery'}</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-gold btn-xs" onclick="window.restoreAdminRecoveryDraft()" style="font-weight:700; padding:6px 14px;">
+              Restore Draft
+            </button>
+            <button type="button" class="btn btn-outline btn-xs" onclick="window.discardAdminRecoveryDraft()" style="font-size:12px; padding:6px 12px;">
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      `;
+      window._cachedAdminRecovery = candidate;
+    }
+  } catch (e) {
+    console.warn('Crash recovery check failed:', e);
+  }
+}
+
+window.restoreAdminRecoveryDraft = () => {
+  const candidate = window._cachedAdminRecovery;
+  if (!candidate) return;
+  const surface = document.getElementById('editor-surface');
+  const titleInput = document.getElementById('editor-title-input');
+  if (titleInput) titleInput.value = candidate.title || '';
+  if (surface) surface.innerHTML = candidate.content || '';
+  if (candidate.draftId) {
+    adminState.currentDraftId = candidate.draftId;
+    if (!adminState.editingEpisode) adminState.editingEpisode = {};
+    adminState.editingEpisode.id = candidate.draftId;
+  }
+  document.getElementById('draft-recovery-mount').innerHTML = '';
+  updateWordCounters();
+  showToast('Draft successfully restored! ✓');
+  window.performNovelAutosave();
+};
+
+window.discardAdminRecoveryDraft = () => {
+  localStorage.removeItem('rp_novel_editor_recovery_admin');
+  localStorage.removeItem('rp_admin_editor_draft');
+  window._cachedAdminRecovery = null;
+  const mount = document.getElementById('draft-recovery-mount');
+  if (mount) mount.innerHTML = '';
+  showToast('Previous draft dismissed.');
+};
 
 window.execCmd = (command, value = null) => {
   document.execCommand(command, false, value);
@@ -5957,12 +6046,191 @@ window.execFontSize = (size) => {
   onEditorContentChange();
 };
 
-window.promptInsertLink = () => {
-  const url = prompt('Enter web URL to link:');
-  if (url) {
-    document.execCommand('createLink', false, url);
-    onEditorContentChange();
+window.openRichLinkModal = (editorSurfaceId = 'editor-surface') => {
+  const surface = document.getElementById(editorSurfaceId);
+  if (!surface) return;
+
+  const selection = window.getSelection();
+  let savedRange = null;
+  if (selection && selection.rangeCount > 0) {
+    savedRange = selection.getRangeAt(0).cloneRange();
   }
+
+  // Detect if cursor or selection is inside an existing <a> element
+  let existingLinkNode = null;
+  if (selection && selection.anchorNode) {
+    let node = selection.anchorNode;
+    while (node && node !== surface) {
+      if (node.nodeType === 1 && node.tagName.toLowerCase() === 'a') {
+        existingLinkNode = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+  }
+
+  const existingText = existingLinkNode ? existingLinkNode.textContent : (savedRange ? savedRange.toString() : '');
+  const existingHref = existingLinkNode ? (existingLinkNode.getAttribute('href') || '') : '';
+  const isEditingLink = Boolean(existingLinkNode);
+
+  document.getElementById('modal-rich-link')?.remove();
+
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-rich-link" style="position:fixed; inset:0; background:rgba(15,23,42,0.65); display:flex; align-items:center; justify-content:center; z-index:999999; padding:16px; backdrop-filter:blur(3px);">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:480px; border-radius:14px; box-shadow:0 20px 45px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
+        <div style="background:#0B1F33; color:#FFF; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:15.5px; font-weight:700; display:flex; align-items:center; gap:8px;">
+            <span>🔗</span> ${isEditingLink ? 'Edit Link' : 'Insert Link'}
+          </h3>
+          <button type="button" onclick="document.getElementById('modal-rich-link').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+
+        <div style="padding:20px;">
+          <div style="margin-bottom:14px;">
+            <label style="display:block; font-size:12.5px; font-weight:700; color:#0B1F33; margin-bottom:6px;">
+              Link Text
+            </label>
+            <input type="text" id="rich-link-text" class="form-input" 
+                   value="${escapeHtml(existingText)}" 
+                   placeholder="e.g. Read Episode 1" 
+                   style="width:100%; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px;">
+            <div style="font-size:11.5px; color:#64748B; margin-top:4px;">The text readers will see and click on.</div>
+          </div>
+
+          <div style="margin-bottom:18px;">
+            <label style="display:block; font-size:12.5px; font-weight:700; color:#0B1F33; margin-bottom:6px;">
+              Web URL or Destination Link <span style="color:#EF4444;">*</span>
+            </label>
+            <input type="text" id="rich-link-url" class="form-input" 
+                   value="${escapeHtml(existingHref)}" 
+                   placeholder="e.g. https://... or #reader?novel=... or #thread?id=..." 
+                   style="width:100%; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px;">
+            <div style="font-size:11.5px; color:#64748B; margin-top:4px;">Supports full URLs (https://), reader links (#reader?), or thread links (#thread?).</div>
+          </div>
+
+          <div id="rich-link-error" style="display:none; color:#DC2626; font-size:12.5px; margin-bottom:12px; font-weight:600;"></div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px;">
+            <div>
+              ${isEditingLink ? `
+                <button type="button" class="btn btn-outline btn-sm" id="btn-remove-link-node" style="color:#DC2626; border-color:#FCA5A5; font-size:12px; padding:6px 12px;">
+                  🗑️ Remove Link
+                </button>
+              ` : '<span></span>'}
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-rich-link').remove()">
+                Cancel
+              </button>
+              <button type="button" class="btn btn-gold btn-sm" id="btn-submit-rich-link" style="font-weight:700; padding:7px 18px;">
+                ${isEditingLink ? 'Update Link' : 'Insert Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  const urlInput = document.getElementById('rich-link-url');
+  const textInput = document.getElementById('rich-link-text');
+  const errEl = document.getElementById('rich-link-error');
+
+  setTimeout(() => {
+    if (isEditingLink) {
+      urlInput?.focus();
+    } else if (!existingText) {
+      textInput?.focus();
+    } else {
+      urlInput?.focus();
+    }
+  }, 100);
+
+  const removeBtn = document.getElementById('btn-remove-link-node');
+  if (removeBtn && existingLinkNode) {
+    removeBtn.onclick = () => {
+      const textNode = document.createTextNode(existingLinkNode.textContent);
+      existingLinkNode.parentNode.replaceChild(textNode, existingLinkNode);
+      document.getElementById('modal-rich-link')?.remove();
+      if (typeof onEditorContentChange === 'function') onEditorContentChange();
+      showToast('Link removed.');
+    };
+  }
+
+  const submitBtn = document.getElementById('btn-submit-rich-link');
+  if (submitBtn) {
+    submitBtn.onclick = () => {
+      let url = (urlInput?.value || '').trim();
+      let text = (textInput?.value || '').trim();
+
+      if (!url) {
+        if (errEl) {
+          errEl.textContent = 'Please enter a destination URL.';
+          errEl.style.display = 'block';
+        }
+        urlInput?.focus();
+        return;
+      }
+
+      if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('#') && !url.startsWith('/') && !url.startsWith('mailto:')) {
+        url = 'https://' + url;
+      }
+
+      if (!text) {
+        text = url;
+      }
+
+      document.getElementById('modal-rich-link')?.remove();
+      surface.focus();
+
+      if (isEditingLink && existingLinkNode) {
+        existingLinkNode.setAttribute('href', url);
+        existingLinkNode.setAttribute('target', url.startsWith('#') ? '_self' : '_blank');
+        existingLinkNode.setAttribute('rel', 'noopener noreferrer');
+        existingLinkNode.textContent = text;
+      } else {
+        if (savedRange) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+        }
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = url.startsWith('#') ? '_self' : '_blank';
+        a.rel = 'noopener noreferrer';
+        a.style.color = '#2563EB';
+        a.style.textDecoration = 'underline';
+        a.style.fontWeight = '600';
+        a.textContent = text;
+
+        if (savedRange && !savedRange.collapsed) {
+          savedRange.deleteContents();
+          savedRange.insertNode(a);
+        } else if (savedRange) {
+          savedRange.insertNode(a);
+        } else {
+          surface.appendChild(a);
+        }
+
+        const sel = window.getSelection();
+        const newRange = document.createRange();
+        newRange.setStartAfter(a);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+
+      if (typeof onEditorContentChange === 'function') onEditorContentChange();
+      showToast(isEditingLink ? 'Link updated! ✓' : 'Link inserted! ✓');
+    };
+  }
+};
+
+window.promptInsertLink = () => {
+  window.openRichLinkModal('editor-surface');
 };
 
 window.promptInsertImage = () => {
@@ -6016,36 +6284,104 @@ window.onEditorContentChange = () => {
 
   const dot = document.getElementById('autosave-dot');
   const text = document.getElementById('autosave-text');
-  if (dot) dot.classList.add('dirty');
-  if (text) text.textContent = 'Unsaved changes...';
+  const badge = document.getElementById('autosave-status-badge');
+  if (dot) { dot.style.background = '#F59E0B'; }
+  if (text) text.textContent = 'Typing…';
+  if (badge) { badge.style.borderColor = '#FCD34D'; }
+
+  // Fast local backup
+  const titleInput = document.getElementById('editor-title-input');
+  const surface = document.getElementById('editor-surface');
+  const title = (titleInput?.value || '').trim();
+  const content = surface?.innerHTML || '';
+  try {
+    localStorage.setItem('rp_novel_editor_recovery_admin', JSON.stringify({
+      draftId: adminState.currentDraftId || (adminState.editingEpisode?.id) || null,
+      publishedId: adminState.editingPublishedId || null,
+      title,
+      content,
+      updatedAt: new Date().toISOString(),
+      synced: false
+    }));
+  } catch (e) {}
 
   if (adminState.autosaveTimer) clearTimeout(adminState.autosaveTimer);
   adminState.autosaveTimer = setTimeout(() => {
-    saveEditorLocalDraft();
-  }, 2500);
+    window.performNovelAutosave();
+  }, 1500);
 };
 
-window.setEditorPreviewTheme = (theme) => {
-  const prevSurface = document.getElementById('editor-preview-surface');
-  if (!prevSurface) return;
-  prevSurface.classList.remove('mode-light', 'mode-sepia', 'mode-dark');
-  prevSurface.classList.add(`mode-${theme}`);
+window.performNovelAutosave = async () => {
+  const surface = document.getElementById('editor-surface');
+  const titleInput = document.getElementById('editor-title-input');
+  if (!surface && !titleInput) return;
 
-  document.querySelectorAll('.mode-pill').forEach(btn => btn.classList.remove('active'));
-  const activeBtn = document.querySelector(`.mode-pill-${theme}`);
-  if (activeBtn) activeBtn.classList.add('active');
+  const content = (surface?.innerHTML || '').trim();
+  const plainText = (surface?.innerText || '').trim();
+  const title = (titleInput?.value || '').trim();
+
+  // If both empty, skip saving
+  if (!title && !plainText) return;
+
+  const dot = document.getElementById('autosave-dot');
+  const text = document.getElementById('autosave-text');
+  const badge = document.getElementById('autosave-status-badge');
+
+  if (dot) { dot.style.background = '#3B82F6'; }
+  if (text) text.textContent = 'Saving…';
+  if (badge) { badge.style.borderColor = '#93C5FD'; }
+
+  try {
+    if (adminState.editingPublishedId) {
+      const res = await apiFetch(`/api/published-novels/${adminState.editingPublishedId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ title: title || 'Untitled', content })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Autosave failed');
+    } else {
+      const res = await apiFetch('/api/novel-editor/autosave', {
+        method: 'POST',
+        body: JSON.stringify({
+          draftId: adminState.currentDraftId || (adminState.editingEpisode?.id) || null,
+          title,
+          content
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Autosave failed');
+      if (data.draftId) {
+        adminState.currentDraftId = data.draftId;
+        if (!adminState.editingEpisode) adminState.editingEpisode = {};
+        adminState.editingEpisode.id = data.draftId;
+      }
+    }
+
+    adminState.editorDirty = false;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (dot) { dot.style.background = '#10B981'; }
+    if (text) text.textContent = `Saved at ${timeStr}`;
+    if (badge) { badge.style.borderColor = '#A7F3D0'; }
+
+    try {
+      localStorage.setItem('rp_novel_editor_recovery_admin', JSON.stringify({
+        draftId: adminState.currentDraftId || adminState.editingPublishedId,
+        title,
+        content,
+        updatedAt: new Date().toISOString(),
+        synced: true
+      }));
+    } catch (e) {}
+  } catch (err) {
+    console.warn('[Autosave Error]:', err.message);
+    if (dot) { dot.style.background = '#EF4444'; }
+    if (text) text.textContent = 'Save failed — retrying';
+    if (badge) { badge.style.borderColor = '#FCA5A5'; }
+  }
 };
 
 window.saveEditorLocalDraft = () => {
-  const content = document.getElementById('editor-surface')?.innerHTML || adminState.editingEpisode?.content || '';
-  const title = document.getElementById('editor-title-input')?.value || adminState.editingEpisode?.title || '';
-  localStorage.setItem('rp_admin_editor_draft', JSON.stringify({
-    title, content, timestamp: new Date().toLocaleTimeString()
-  }));
-  const dot = document.getElementById('autosave-dot');
-  const text = document.getElementById('autosave-text');
-  if (dot) dot.classList.remove('dirty');
-  if (text) text.textContent = `Draft autosaved locally at ${new Date().toLocaleTimeString()}`;
+  window.performNovelAutosave();
 };
 
 window.saveEditorDraft = async (redirect = true) => {
@@ -6261,7 +6597,7 @@ function recalculateEpisodeNumbering(parentId) {
     }
     const nextNum = String(maxNum + 1);
     if (numInput && (!numInput.value || !isEditing)) numInput.value = nextNum;
-    if (titleInput && !isEditing && (!titleInput.value || titleInput.value.includes('('))) {
+    if (titleInput && !isEditing && (!titleInput.value || !titleInput.value.trim())) {
       titleInput.value = `${novelTitle} (Chapter ${nextNum})`;
     }
   } else {
@@ -6289,7 +6625,7 @@ function recalculateEpisodeNumbering(parentId) {
       const nextIndex = Math.max(maxSuffix + 1, children.length + 1);
       const calculatedNum = `${parentNum}.${nextIndex}`;
       if (numInput && (!numInput.value || !isEditing)) numInput.value = calculatedNum;
-      if (titleInput && !isEditing && (!titleInput.value || titleInput.value.includes('('))) {
+      if (titleInput && !isEditing && (!titleInput.value || !titleInput.value.trim())) {
         titleInput.value = `${novelTitle} (${calculatedNum})`;
       }
     }
@@ -6429,55 +6765,110 @@ if (typeof window !== 'undefined' && !window._rp_editor_beforeunload_registered)
 /* ========================================================
    PUBLISHED NOVEL MANAGEMENT VIEW (Admin)
    ======================================================== */
+let adminNovelFilter = 'all';
+let adminNovelSearch = '';
+
 async function renderPublishedNovelsTab(canvas) {
   canvas.innerHTML = `
     <div class="admin-page-header" style="margin-bottom:16px;">
       <div class="admin-page-title-group">
         <h1 class="admin-page-title" style="display:flex; align-items:center; gap:8px;">
-          <span>📚</span> Published Novel Management
+          <span>📚</span> Novel Management
         </h1>
-        <p class="admin-page-subtitle">Manage, edit, and review all novels and story content published for readers across categories.</p>
+        <p class="admin-page-subtitle">Manage, edit, review, and organize all novels, drafts, and published content across categories.</p>
       </div>
       <div class="admin-page-actions" style="display:flex; gap:10px; align-items:center;">
-        <button type="button" class="btn btn-gold btn-sm" onclick="adminState.editingPublishedId = null; adminState.editingEpisode = null; switchAdminTab('editor');">
+        <button type="button" class="btn btn-gold btn-sm" onclick="adminState.editingPublishedId = null; adminState.editingEpisode = null; adminState.currentDraftId = null; switchAdminTab('editor');">
           ✍️ + Write Novel Content
         </button>
       </div>
     </div>
 
     <!-- Summary Stats Strip -->
-    <div id="admin-published-summary-mount" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+    <div id="admin-published-summary-mount" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px;">
       <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
-        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Published Items</div>
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Total Novels</div>
         <div id="pub-stat-total" style="font-size:24px; font-weight:800; color:#0B1F33; margin-top:4px;">Loading…</div>
       </div>
       <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
-        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Total Reader Views</div>
-        <div id="pub-stat-views" style="font-size:24px; font-weight:800; color:#2563EB; margin-top:4px;">-</div>
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Published</div>
+        <div id="pub-stat-published" style="font-size:24px; font-weight:800; color:#10B981; margin-top:4px;">-</div>
       </div>
       <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
-        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Reader Reviews / Comments</div>
-        <div id="pub-stat-comments" style="font-size:24px; font-weight:800; color:#10B981; margin-top:4px;">-</div>
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Drafts</div>
+        <div id="pub-stat-drafts" style="font-size:24px; font-weight:800; color:#F59E0B; margin-top:4px;">-</div>
+      </div>
+      <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Disabled</div>
+        <div id="pub-stat-disabled" style="font-size:24px; font-weight:800; color:#64748B; margin-top:4px;">-</div>
+      </div>
+      <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:10px; padding:14px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase;">Reader Views</div>
+        <div id="pub-stat-views" style="font-size:24px; font-weight:800; color:#2563EB; margin-top:4px;">-</div>
+      </div>
+    </div>
+
+    <!-- Search & Filter Controls -->
+    <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:12px; padding:14px 18px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm ${adminNovelFilter === 'all' ? 'btn-gold' : 'btn-outline'}" onclick="setAdminNovelFilter('all')">
+          All
+        </button>
+        <button type="button" class="btn btn-sm ${adminNovelFilter === 'published' ? 'btn-gold' : 'btn-outline'}" onclick="setAdminNovelFilter('published')">
+          🟢 Published
+        </button>
+        <button type="button" class="btn btn-sm ${adminNovelFilter === 'draft' ? 'btn-gold' : 'btn-outline'}" onclick="setAdminNovelFilter('draft')">
+          📝 Drafts
+        </button>
+        <button type="button" class="btn btn-sm ${adminNovelFilter === 'disabled' ? 'btn-gold' : 'btn-outline'}" onclick="setAdminNovelFilter('disabled')">
+          ⏸️ Disabled
+        </button>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:8px; min-width:280px; flex:1; max-width:400px;">
+        <input type="text" id="admin-novels-search" class="form-input" 
+               placeholder="🔍 Search novel title..." 
+               value="${escapeHtml(adminNovelSearch)}" 
+               oninput="onAdminNovelSearchChange(this.value)"
+               style="width:100%; padding:8px 12px; font-size:13.5px; border-radius:8px;">
       </div>
     </div>
 
     <div id="admin-published-table-mount">
-      <div style="text-align:center; padding:40px; color:#64748B;">Loading published novels…</div>
+      <div style="text-align:center; padding:40px; color:#64748B;">Loading novels…</div>
     </div>
   `;
 
   await loadPublishedNovelsAdmin();
 }
 
+window.setAdminNovelFilter = (filter) => {
+  adminNovelFilter = filter;
+  renderPublishedNovelsTab(document.getElementById('admin-content-canvas'));
+};
+
+window.onAdminNovelSearchChange = (val) => {
+  adminNovelSearch = val.trim();
+  if (window._adminSearchTimer) clearTimeout(window._adminSearchTimer);
+  window._adminSearchTimer = setTimeout(() => {
+    loadPublishedNovelsAdmin();
+  }, 300);
+};
+
 async function loadPublishedNovelsAdmin() {
   const mount = document.getElementById('admin-published-table-mount');
   if (!mount) return;
 
   try {
-    const res = await apiFetch('/api/published-novels');
+    let url = `/api/published-novels?status=${encodeURIComponent(adminNovelFilter)}`;
+    if (adminNovelSearch) {
+      url += `&search=${encodeURIComponent(adminNovelSearch)}`;
+    }
+
+    const res = await apiFetch(url);
     const data = await res.json();
     if (!res.ok || !data.success) {
-      mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Failed to load published novels: ${data.error || 'Server error'}</div>`;
+      mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Failed to load novels: ${data.error || 'Server error'}</div>`;
       return;
     }
 
@@ -6486,99 +6877,182 @@ async function loadPublishedNovelsAdmin() {
     if (navCount) navCount.textContent = items.length;
 
     const totalViews = items.reduce((acc, i) => acc + (i.viewsCount || 0), 0);
-    const totalComments = items.reduce((acc, i) => acc + (i.commentsCount || 0), 0);
+    const pubCount = items.filter(i => i.status === 'published').length;
+    const draftCount = items.filter(i => i.status === 'draft').length;
+    const disCount = items.filter(i => i.status === 'disabled').length;
 
     const totalEl = document.getElementById('pub-stat-total');
+    const pubEl = document.getElementById('pub-stat-published');
+    const draftEl = document.getElementById('pub-stat-drafts');
+    const disEl = document.getElementById('pub-stat-disabled');
     const viewsEl = document.getElementById('pub-stat-views');
-    const commentsEl = document.getElementById('pub-stat-comments');
+
     if (totalEl) totalEl.textContent = items.length;
+    if (pubEl) pubEl.textContent = pubCount;
+    if (draftEl) draftEl.textContent = draftCount;
+    if (disEl) disEl.textContent = disCount;
     if (viewsEl) viewsEl.textContent = totalViews.toLocaleString();
-    if (commentsEl) commentsEl.textContent = totalComments.toLocaleString();
 
     if (items.length === 0) {
       mount.innerHTML = `
         <div style="background:#FFF; border:1px solid #E2E8F0; border-radius:12px; padding:48px 24px; text-align:center;">
           <div style="font-size:40px; margin-bottom:12px;">📚</div>
-          <h3 style="font-size:18px; font-weight:700; color:#0B1F33; margin:0 0 6px;">No Published Novels Found</h3>
-          <p style="color:#64748B; font-size:14px; margin:0 0 20px;">You haven't published any novel content to the frontend categories yet.</p>
-          <button type="button" class="btn btn-gold btn-sm" onclick="switchAdminTab('editor')">
-            ✍️ + Write Your First Novel Content
+          <h3 style="font-size:18px; font-weight:700; color:#0B1F33; margin:0 0 6px;">No Novels Found</h3>
+          <p style="color:#64748B; font-size:14px; margin:0 0 20px;">
+            ${adminNovelSearch ? `No novels matching "${escapeHtml(adminNovelSearch)}".` : 'No novels in this category.'}
+          </p>
+          <button type="button" class="btn btn-gold btn-sm" onclick="adminState.editingPublishedId = null; adminState.editingEpisode = null; switchAdminTab('editor');">
+            ✍️ + Write Novel Content
           </button>
         </div>
       `;
       return;
     }
 
+    window._adminNovelItems = items;
+
     mount.innerHTML = `
       <div class="admin-table-wrapper" style="box-shadow:0 1px 3px rgba(0,0,0,0.05); border-radius:12px; overflow-x:auto;">
-        <table class="admin-table" style="width:100%; border-collapse:collapse; min-width:850px;">
+        <table class="admin-table" style="width:100%; border-collapse:collapse; min-width:920px;">
           <thead>
             <tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0;">
-              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Title & Reader Link</th>
-              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Category / Section</th>
-              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Author</th>
-              <th style="padding:14px 18px; text-align:center; font-size:12.5px; font-weight:700; color:#475569;">Views / Comments</th>
-              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Published Date</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Novel Title & Link</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Creator</th>
+              <th style="padding:14px 18px; text-align:center; font-size:12.5px; font-weight:700; color:#475569;">Status</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Created</th>
+              <th style="padding:14px 18px; text-align:left; font-size:12.5px; font-weight:700; color:#475569;">Last Updated</th>
               <th style="padding:14px 18px; text-align:right; font-size:12.5px; font-weight:700; color:#475569;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${items.map(item => `
-              <tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'">
-                <td style="padding:14px 18px;">
-                  <div style="font-weight:700; font-size:14.5px; color:#0B1F33; margin-bottom:4px;">
-                    <a href="#thread?id=${item.id}" target="_blank" style="color:#0B1F33; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                      <span>${escapeHtml(item.title)}</span>
-                      <span style="font-size:11px; color:#3B82F6;">↗</span>
-                    </a>
-                  </div>
-                  <div style="font-size:12px; color:#64748B; display:flex; align-items:center; gap:8px;">
-                    <span style="background:#F1F5F9; padding:2px 6px; border-radius:4px; font-family:monospace; font-size:11px;">#thread?id=${item.id}</span>
-                    <button type="button" class="btn btn-outline" style="padding:1px 6px; font-size:10.5px; height:auto;" onclick="navigator.clipboard.writeText(window.location.origin + '/#thread?id=${item.id}'); showToast('Reader link copied!');">
-                      📋 Copy Link
-                    </button>
-                  </div>
-                </td>
-                <td style="padding:14px 18px; font-size:13px;">
-                  <span style="background:#EDE9FE; color:#5B21B6; padding:3px 8px; border-radius:6px; font-weight:600; font-size:12px;">
-                    ${escapeHtml(item.categoryTitle || 'General')}
-                  </span>
-                  ${item.subcategoryTitle ? `
-                    <div style="font-size:11.5px; color:#64748B; margin-top:4px;">
-                      ${escapeHtml(item.subcategoryTitle)}
+            ${items.map(item => {
+              const isPub = item.status === 'published';
+              const isDis = item.status === 'disabled';
+              const isDrf = item.status === 'draft';
+              const statusPill = isPub 
+                ? '<span style="background:#DCFCE7; color:#166534; padding:3px 10px; border-radius:12px; font-weight:700; font-size:12px;">🟢 Published</span>'
+                : (isDis 
+                    ? '<span style="background:#F1F5F9; color:#475569; padding:3px 10px; border-radius:12px; font-weight:700; font-size:12px;">⏸️ Disabled</span>'
+                    : '<span style="background:#FEF3C7; color:#92400E; padding:3px 10px; border-radius:12px; font-weight:700; font-size:12px;">📝 Draft</span>');
+
+              const createdStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+              const updatedStr = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+
+              return `
+                <tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='transparent'">
+                  <td style="padding:14px 18px;">
+                    <div style="font-weight:700; font-size:14.5px; color:#0B1F33; margin-bottom:4px;">
+                      ${isPub ? `
+                        <a href="#thread?id=${item.id}" target="_blank" style="color:#0B1F33; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                          <span>${escapeHtml(item.title)}</span>
+                          <span style="font-size:11px; color:#3B82F6;">↗</span>
+                        </a>
+                      ` : `<span>${escapeHtml(item.title)}</span>`}
                     </div>
-                  ` : ''}
-                </td>
-                <td style="padding:14px 18px; font-size:13px; color:#334155; font-weight:600;">
-                  ${escapeHtml(item.authorName)}
-                </td>
-                <td style="padding:14px 18px; text-align:center; font-size:12.5px;">
-                  <span style="font-weight:700; color:#0B1F33;">${item.viewsCount}</span> <span style="color:#94A3B8;">views</span>
-                  <div style="font-size:11.5px; color:#64748B;">${item.commentsCount} comments</div>
-                </td>
-                <td style="padding:14px 18px; font-size:12.5px; color:#64748B;">
-                  ${item.publishedAt ? new Date(item.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                </td>
-                <td style="padding:14px 18px; text-align:right;">
-                  <div style="display:inline-flex; align-items:center; gap:8px;">
-                    <button type="button" class="btn btn-outline btn-sm" onclick="editPublishedNovelAdmin(${item.id})" style="display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Edit Title and Content in Editor">
-                      ✏️ Edit
-                    </button>
-                    <button type="button" class="btn btn-outline btn-sm" onclick="deletePublishedNovelAdmin(${item.id}, '${escapeQuote(item.title)}')" style="color:#DC2626; border-color:#FCA5A5; display:inline-flex; align-items:center; gap:4px; font-weight:600; padding:6px 12px;" title="Delete Published Novel">
-                      🗑️ Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
+                    ${isPub ? `
+                      <div style="font-size:12px; color:#64748B; display:flex; align-items:center; gap:8px;">
+                        <span style="background:#F1F5F9; padding:2px 6px; border-radius:4px; font-family:monospace; font-size:11px;">#thread?id=${item.id}</span>
+                        <button type="button" class="btn btn-outline" style="padding:1px 6px; font-size:10.5px; height:auto;" onclick="navigator.clipboard.writeText(window.location.origin + '/#thread?id=${item.id}'); showToast('Reader link copied! 📋');">
+                          📋 Copy
+                        </button>
+                      </div>
+                    ` : ''}
+                  </td>
+                  <td style="padding:14px 18px; font-size:13px; color:#334155; font-weight:600;">
+                    ${escapeHtml(item.authorName)}
+                  </td>
+                  <td style="padding:14px 18px; text-align:center;">
+                    ${statusPill}
+                  </td>
+                  <td style="padding:14px 18px; font-size:12.5px; color:#64748B;">
+                    ${createdStr}
+                  </td>
+                  <td style="padding:14px 18px; font-size:12.5px; color:#64748B;">
+                    ${updatedStr}
+                  </td>
+                  <td style="padding:14px 18px; text-align:right;">
+                    <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                      <button type="button" class="btn btn-outline btn-sm" onclick="editPublishedNovelAdmin(${item.id})" style="padding:5px 10px; font-size:12px; font-weight:600;" title="Edit Title and Content in Editor">
+                        ✏️ Edit
+                      </button>
+                      <button type="button" class="btn btn-outline btn-sm" onclick="viewPublishedNovelAdmin(${item.id})" style="padding:5px 10px; font-size:12px; font-weight:600;" title="View Content">
+                        👁️ View
+                      </button>
+                      ${!isDrf ? `
+                        <button type="button" class="btn btn-outline btn-sm" onclick="togglePublishedNovelStatusAdmin(${item.id}, '${isPub ? 'disabled' : 'published'}')" style="padding:5px 10px; font-size:12px; font-weight:600;" title="${isPub ? 'Disable Novel' : 'Enable Novel'}">
+                          ${isPub ? '⏸️ Disable' : '▶️ Enable'}
+                        </button>
+                      ` : ''}
+                      <button type="button" class="btn btn-outline btn-sm" onclick="deletePublishedNovelAdmin(${item.id}, '${escapeQuote(item.title)}')" style="color:#DC2626; border-color:#FCA5A5; padding:5px 10px; font-size:12px; font-weight:600;" title="Delete Novel">
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
     `;
   } catch (err) {
-    mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Error loading published novels: ${err.message}</div>`;
+    mount.innerHTML = `<div style="color:#EF4444; padding:20px;">Error loading novels: ${err.message}</div>`;
   }
 }
+
+window.viewPublishedNovelAdmin = (id) => {
+  const item = (window._adminNovelItems || []).find(x => Number(x.id) === Number(id));
+  if (!item) return;
+
+  document.getElementById('modal-view-novel')?.remove();
+  const modalHtml = `
+    <div class="admin-modal-backdrop" id="modal-view-novel" style="position:fixed; inset:0; background:rgba(15,23,42,0.65); display:flex; align-items:center; justify-content:center; z-index:999999; padding:20px; backdrop-filter:blur(3px);">
+      <div class="admin-modal-card" style="background:#FFF; width:100%; max-width:680px; max-height:85vh; border-radius:14px; box-shadow:0 20px 45px rgba(0,0,0,0.25); display:flex; flex-direction:column; overflow:hidden;">
+        <div style="background:#0B1F33; color:#FFF; padding:16px 22px; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:16px; font-weight:700;">📖 Novel Preview</h3>
+          <button type="button" onclick="document.getElementById('modal-view-novel').remove()" style="background:transparent; border:none; color:#FFF; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:22px; overflow-y:auto; flex:1;">
+          <div style="font-size:12px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+            ${escapeHtml(item.status || 'Draft').toUpperCase()} • by ${escapeHtml(item.authorName || 'Author')}
+          </div>
+          <h2 style="margin:0 0 16px; font-size:1.45rem; color:#0B1F33;">${escapeHtml(item.title)}</h2>
+          <div style="font-size:14px; line-height:1.8; color:#334155; border-top:1px solid #E2E8F0; padding-top:16px;">
+            ${item.content || '<p style="color:#94A3B8; font-style:italic;">No content written yet.</p>'}
+          </div>
+        </div>
+        <div style="background:#F8FAFC; border-top:1px solid #E2E8F0; padding:12px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:12px; color:#64748B;">
+            Updated: ${item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '-'}
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('modal-view-novel').remove()">Close</button>
+            <button type="button" class="btn btn-gold btn-sm" onclick="document.getElementById('modal-view-novel').remove(); editPublishedNovelAdmin(${item.id});">Edit in Editor</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+};
+
+window.togglePublishedNovelStatusAdmin = async (id, targetStatus) => {
+  try {
+    const res = await apiFetch(`/api/published-novels/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: targetStatus })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Failed to update status.');
+      return;
+    }
+    showToast(`Novel status updated to ${targetStatus}! ✓`);
+    loadPublishedNovelsAdmin();
+  } catch (e) {
+    showToast('Error updating status: ' + e.message);
+  }
+};
 
 window.editPublishedNovelAdmin = async (publishedId) => {
   try {
@@ -6590,13 +7064,14 @@ window.editPublishedNovelAdmin = async (publishedId) => {
     }
     const item = data.item;
     adminState.editingPublishedId = item.id;
+    adminState.currentDraftId = item.id;
     adminState.editingEpisode = {
       id: item.chapterId || null,
       publishedArticleId: item.id,
       novelId: item.novelId,
       title: item.title,
       content: item.content,
-      status: 'published'
+      status: item.status || 'published'
     };
     adminState.editorStep = 1;
     adminState.editorDirty = false;
@@ -6608,34 +7083,35 @@ window.editPublishedNovelAdmin = async (publishedId) => {
       if (titleInput) titleInput.value = item.title || '';
       if (surface) surface.innerHTML = item.content || '';
       if (typeof updateWordCounters === 'function') updateWordCounters();
-      showToast(`Editing published novel "${item.title}". Update title & content, then click Save.`);
+      showToast(`Editing novel "${item.title}". Update title & content, then click Save.`);
     }, 150);
   } catch (err) {
-    showToast('Error opening published novel: ' + err.message);
+    showToast('Error opening novel: ' + err.message);
   }
 };
 
 window.cancelEditingPublishedNovelAdmin = () => {
   adminState.editingPublishedId = null;
   adminState.editingEpisode = null;
+  adminState.currentDraftId = null;
   switchAdminTab('published-novels');
 };
 
 window.deletePublishedNovelAdmin = async (id, title) => {
-  const confirmed = confirm(`Are you sure you want to delete the published novel "${title}"?\n\nThis will permanently remove it from the reader page and delete associated comments.`);
+  const confirmed = confirm(`Are you sure you want to delete the novel "${title}"?\n\nThis will safely move it to the Trash system, where it can be restored if needed.`);
   if (!confirmed) return;
 
   try {
     const res = await apiFetch(`/api/published-novels/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to delete published novel.');
+      showToast(data.error || 'Failed to delete novel.');
       return;
     }
-    showToast(`Published novel "${title}" was successfully deleted.`);
+    showToast(`Novel "${title}" moved to Trash. ✓`);
     loadPublishedNovelsAdmin();
   } catch (err) {
-    showToast('Error deleting published novel: ' + err.message);
+    showToast('Error deleting novel: ' + err.message);
   }
 };
 

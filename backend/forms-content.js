@@ -1,6 +1,7 @@
 import { moveToTrash } from './trash.js';
 import { getPublicShortStories } from './short-stories.js';
 import { checkAndPublishDueNovels } from './scheduler.js';
+import { transliterateTamil } from './novels.js';
 // Forms, Novel Content, and Reading Management Layer for Rudhra Prarthana Novels
 // Implements 3-Level Hierarchy: Main Title -> Sub Title -> Content Title -> Reading Content
 // With dedicated reading pages, comments, and fine-grained individual member access control
@@ -30,15 +31,28 @@ export function isUserWriter(user) {
 }
 
 /**
- * Generate a clean URL-friendly slug
+ * Generate a clean URL-friendly slug supporting Tamil, English, and Unicode
  */
 export function generateSlug(text) {
-  return String(text || '')
+  if (!text || typeof text !== 'string') return `item-${Date.now().toString(36)}`;
+  const transliterated = transliterateTamil(text.trim());
+  let slug = transliterated
     .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '') || `item-${Date.now()}`;
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+  if (!slug) {
+    slug = text
+      .toLowerCase()
+      .trim()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/gu, '')
+      .replace(/-{2,}/g, '-');
+  }
+  if (!slug) {
+    slug = `item-${Date.now().toString(36)}`;
+  }
+  return slug;
 }
 
 /**

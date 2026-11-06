@@ -331,6 +331,7 @@ export async function restoreFromTrash({ trashId, user }) {
         break;
       }
 
+      case 'content_article':
       case 'article': {
         const art = data.article || data;
         await conn.query(`
