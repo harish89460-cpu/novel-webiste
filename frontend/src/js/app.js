@@ -1246,6 +1246,7 @@ async function renderForumView(container, hash = '') {
 
     if (currentSub) {
       const subArticles = currentSub.articles || [];
+      const hasChildren = Boolean(currentSub.children && currentSub.children.length > 0);
 
       container.innerHTML = `
         <div class="container forum-page">
@@ -1281,7 +1282,7 @@ async function renderForumView(container, hash = '') {
                 <div class="forms-subpage-meta">
                   <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}${parentSub ? ` › ${escapeHtml(parentSub.title)}` : ''}</span>
                   <span>•</span>
-                  <span>${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}</span>
+                  <span>${hasChildren ? `${currentSub.children.length} ${currentSub.children.length === 1 ? 'Section' : 'Sections'}` : `${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}`}</span>
                 </div>
               </div>
             </div>
@@ -1295,13 +1296,13 @@ async function renderForumView(container, hash = '') {
               <!-- Compact Aligned Summary Header Row -->
               <div class="forum-summary-bar">
                 <div class="forum-summary-stats">
-                  <span class="forum-summary-stat-item"><strong>${subArticles.length}</strong> Content ${subArticles.length === 1 ? 'Title' : 'Titles'}</span>
+                  <span class="forum-summary-stat-item"><strong>${hasChildren ? currentSub.children.length : subArticles.length}</strong> ${hasChildren ? (currentSub.children.length === 1 ? 'Section' : 'Sections') : (subArticles.length === 1 ? 'Content Title' : 'Content Titles')}</span>
                   <span>•</span>
                   <span class="forum-summary-stat-item"><strong>${currentSub.stats?.totalComments ?? subArticles.reduce((s, a) => s + Number(a.commentsCount || 0), 0)}</strong> Comments</span>
                   <span>•</span>
                   <span class="forum-summary-stat-item"><strong>${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</strong> Views</span>
                 </div>
-                ${(subArticles.length > 0 && (currentSub.stats?.latestTitle || subArticles[0]?.title)) ? `
+                ${(!hasChildren && subArticles.length > 0 && (currentSub.stats?.latestTitle || subArticles[0]?.title)) ? `
                   <div class="forum-summary-latest">
                     <span>Latest:</span>
                     <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
@@ -1313,7 +1314,7 @@ async function renderForumView(container, hash = '') {
               </div>
 
               <!-- Nested Sub-sections Table (if currentSub has children) -->
-              ${(currentSub.children && currentSub.children.length > 0) ? `
+              ${hasChildren ? `
                 <div style="margin-bottom:24px;">
                   <div style="font-size:12.5px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.75px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
                     <span>📂</span> Sections (${currentSub.children.length})
@@ -1329,7 +1330,8 @@ async function renderForumView(container, hash = '') {
                     <div class="forum-table-body">
                       ${currentSub.children.map(child => {
                         const childLink = `#forms?sub=${encodeURIComponent(child.id)}`;
-                        const childNotes = child.articles?.length || 0;
+                        const hasGrandChildren = Boolean(child.children && child.children.length > 0);
+                        const childNotes = hasGrandChildren ? child.children.length : (child.articles?.length || 0);
                         const childComments = child.stats?.totalComments ?? (child.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
                         const childViews = child.stats?.totalViews ?? (child.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
                         return `
@@ -1340,11 +1342,11 @@ async function renderForumView(container, hash = '') {
                               </span>
                               <div class="forum-table-title-meta">
                                 <a href="${childLink}" class="forms-sub-title-link" title="Open ${escapeHtml(child.title)}">${escapeHtml(child.title)}</a>
-                                <span class="forum-table-tagline">Click to view all ${childNotes} content titles</span>
+                                <span class="forum-table-tagline">${hasGrandChildren ? `Click to view ${child.children.length} ${child.children.length === 1 ? 'section' : 'sections'}` : `Click to view all ${childNotes} content titles`}</span>
                               </div>
                             </div>
                             <div class="forum-table-cell-author">
-                              <span class="forum-stat-pill">📄 ${childNotes} ${childNotes === 1 ? 'Title' : 'Titles'}</span>
+                              <span class="forum-stat-pill">${hasGrandChildren ? '📁' : '📄'} ${hasGrandChildren ? `${child.children.length} ${child.children.length === 1 ? 'Section' : 'Sections'}` : `${childNotes} ${childNotes === 1 ? 'Title' : 'Titles'}`}</span>
                             </div>
                             <div class="forum-table-cell-stat">
                               <span class="forum-stat-pill">💬 ${childComments}</span>
@@ -1368,7 +1370,7 @@ async function renderForumView(container, hash = '') {
                     </div>
                   </div>
                 </div>
-              ` : ''}
+              ` : `
 
               <!-- Inline Thread Creator (Clean, modern forum design matching Reference Images) -->
               <div class="thread-create-wrapper" id="thread-composer-box">
@@ -1533,6 +1535,7 @@ async function renderForumView(container, hash = '') {
                   `}
                 </div>
               </div>
+              `}
 
               
             </div>
@@ -1610,7 +1613,9 @@ async function renderForumView(container, hash = '') {
       `;
 
       loadForumMembersOnline();
-      initInlineThreadComposer(currentSub.id, parentMain?.id || currentSub.mainCategoryId || currentSub.main_category_id || '');
+      if (!hasChildren) {
+        initInlineThreadComposer(currentSub.id, parentMain?.id || currentSub.mainCategoryId || currentSub.main_category_id || '');
+      }
       // Discussions mounted on dedicated thread pages
       return;
     }
@@ -1888,7 +1893,8 @@ async function renderForumView(container, hash = '') {
                       <div class="forum-table-body">
                         ${subs.map(sub => {
                           const subLink = `#forms?sub=${encodeURIComponent(sub.id)}`;
-                          const noteCount = sub.articles?.length || 0;
+                          const hasSubChildren = Boolean(sub.children && sub.children.length > 0);
+                          const noteCount = hasSubChildren ? sub.children.length : (sub.articles?.length || 0);
                           const subComments = sub.stats?.totalComments ?? (sub.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
                           const subViews = sub.stats?.totalViews ?? (sub.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
                           const latestArt = (sub.articles && sub.articles.length > 0) ? { title: sub.articles[0].title, link: `#thread?id=${encodeURIComponent(sub.articles[0].uniqueSlug || sub.articles[0].id)}`, date: sub.articles[0].publishedAt } : null;
@@ -1899,11 +1905,11 @@ async function renderForumView(container, hash = '') {
                                 <span class="forum-table-icon">${sub.icon || '📌'}</span>
                                 <div class="forum-table-title-meta">
                                   <a href="${subLink}" class="forms-sub-title-link" title="Open ${escapeHtml(sub.title)}">${escapeHtml(sub.title)}</a>
-                                  <span class="forum-table-tagline">Click to view all ${noteCount} content titles</span>
+                                  <span class="forum-table-tagline">${hasSubChildren ? `Click to view ${sub.children.length} ${sub.children.length === 1 ? 'section' : 'sections'}` : `Click to view all ${noteCount} content titles`}</span>
                                 </div>
                               </div>
                               <div class="forum-table-cell-author">
-                                <span class="forum-stat-pill">📄 ${noteCount} ${noteCount === 1 ? 'Title' : 'Titles'}</span>
+                                <span class="forum-stat-pill">${hasSubChildren ? '📁' : '📄'} ${hasSubChildren ? `${sub.children.length} ${sub.children.length === 1 ? 'Section' : 'Sections'}` : `${noteCount} ${noteCount === 1 ? 'Title' : 'Titles'}`}</span>
                               </div>
                               <div class="forum-table-cell-stat">
                                 <span class="forum-stat-pill">💬 ${subComments}</span>
