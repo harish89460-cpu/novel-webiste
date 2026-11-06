@@ -1248,7 +1248,7 @@ async function renderForumView(container, hash = '') {
     if (currentSub) {
       const hasChildren = Boolean((currentSub.children && currentSub.children.length > 0) || (currentSub.subcategories && currentSub.subcategories.length > 0));
       const isLeaf = !hasChildren;
-      const subArticles = isLeaf ? (currentSub.articles || []) : [];
+      const subArticles = currentSub.articles || [];
 
       container.innerHTML = `
         <div class="container forum-page">
@@ -1372,9 +1372,10 @@ async function renderForumView(container, hash = '') {
                     </div>
                   </div>
                 </div>
-              ` : `
+              ` : ''}
 
-              <!-- Inline Thread Creator (Clean, modern forum design matching Reference Images) -->
+              <!-- Inline Thread Creator (Clean, modern forum design - ONLY shown on Leaf Categories) -->
+              ${isLeaf ? `
               <div class="thread-create-wrapper" id="thread-composer-box">
                 <!-- State 1: Collapsed Input (First Image Reference) -->
                 <div id="tc-collapsed-box" class="thread-composer-collapsed-box">
@@ -1482,8 +1483,10 @@ async function renderForumView(container, hash = '') {
                   </div>
                 </div>
               </div>
+              ` : ''}
 
-              <!-- Compact Forum-Style Content Articles Table -->
+              <!-- Compact Forum-Style Content Articles Table (Direct threads under this section) -->
+              ${(isLeaf || subArticles.length > 0) ? `
               <div class="forum-table-card">
                 <div class="forum-table-header forum-table-header-articles">
                   <div>Thread Title</div>
@@ -1537,7 +1540,7 @@ async function renderForumView(container, hash = '') {
                   `}
                 </div>
               </div>
-              `}
+              ` : ''}
 
               
             </div>
@@ -1786,10 +1789,11 @@ async function renderForumView(container, hash = '') {
                     ` : ''}
                   </div>
 
-                  <!-- Dedicated Category Threads & Composer (ONLY when viewing Leaf Category Dedicated Page) -->
-                  ${(currentCategoryId && isCatLeaf) ? `
+                  <!-- Dedicated Category Threads & Composer (Dedicated Category Page) -->
+                  ${currentCategoryId ? `
                     <div style="padding:0 16px;">
-                      <!-- Inline Thread Creator for Category -->
+                      <!-- Inline Thread Creator for Category (ONLY when leaf category) -->
+                      ${isCatLeaf ? `
                       <div class="thread-create-wrapper" id="thread-composer-box" style="margin-bottom:16px;">
                         <div id="tc-collapsed-box" class="thread-composer-collapsed-box">
                           <input type="text" id="tc-quick-input" class="thread-quick-title-input" placeholder="Thread title" autocomplete="off" />
@@ -1846,8 +1850,10 @@ async function renderForumView(container, hash = '') {
                           </div>
                         </div>
                       </div>
+                      ` : ''}
 
                       <!-- Category Threads Table (Threads specifically for this category) -->
+                      ${(isCatLeaf || (cat.articles && cat.articles.length > 0)) ? `
                       <div class="forum-table-card" style="margin-bottom:20px;">
                         <div class="forum-table-header forum-table-header-articles">
                           <div>${escapeHtml(cat.title)} Threads</div>
@@ -1880,6 +1886,7 @@ async function renderForumView(container, hash = '') {
                           `}
                         </div>
                       </div>
+                      ` : ''}
                     </div>
                   ` : ''}
 
