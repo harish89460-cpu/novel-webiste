@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://talented-footage-code-blocked.trycloudflare.com/api/$1"
+      "destination": "https://desert-sherman-like-ours.trycloudflare.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://talented-footage-code-blocked.trycloudflare.com/uploads/$1"
+      "destination": "https://desert-sherman-like-ours.trycloudflare.com/uploads/$1"
     },
     {
       "source": "/((?!assets/).*)",
