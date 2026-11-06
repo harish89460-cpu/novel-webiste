@@ -33,7 +33,7 @@ import { initForum, renderReactionButtons } from './forum.js';
 import { initMessaging, updateUnreadMessageBadge } from './messaging.js';
 import { initNotifications } from './notifications.js';
 import { initSearch } from './search.js';
-import { initAuth, updateHeaderUserArea } from './auth.js';
+import { initAuth, updateHeaderUserArea, renderMemberLoginView } from './auth.js';
 import { renderAdminDashboard, renderAdminLoginView, verifyAdminAuthentication } from './admin.js';
 import { renderWriterDashboard } from './writer.js';
 import { updateAuthorWriterHeader, isAuthorWriterPage } from './author-header.js';
@@ -209,6 +209,11 @@ export async function renderAppView() {
   try {
     if (hash.startsWith('#admin-login') || hash.startsWith('#writer-login')) {
       await renderAdminLoginView(main);
+    } else if (hash.startsWith('#login') || hash.startsWith('#member-login')) {
+      await renderMemberLoginView(main);
+    } else if (hash.startsWith('#register')) {
+      await renderMemberLoginView(main);
+      if (typeof window.switchAuthView === 'function') window.switchAuthView('register');
     } else if (hash.startsWith('#admin')) {
       const tabParam = hash.includes('tab=') ? new URLSearchParams(hash.split('?')[1]).get('tab') : 'overview';
       await renderAdminDashboard(main, tabParam);
@@ -241,7 +246,17 @@ export async function renderAppView() {
     } else if (hash.startsWith('#forum') || hash.startsWith('#forms')) {
       await renderForumView(main, hash);
     } else if (hash.startsWith('#thread-create') || hash.startsWith('#add-thread')) {
-      await renderThreadCreateView(main, hash);
+      const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+      const subId = urlParams.get('sub') || '';
+      const catId = urlParams.get('cat') || '';
+      if (subId) {
+        window.location.hash = `#forms?sub=${encodeURIComponent(subId)}&compose=true`;
+      } else if (catId) {
+        window.location.hash = `#forms?category=${encodeURIComponent(catId)}&compose=true`;
+      } else {
+        window.location.hash = '#forms?compose=true';
+      }
+      return;
     } else if (hash.startsWith('#thread?') || hash.startsWith('#thread/')) {
       await renderContentReadingView(main, hash);
     } else if (hash.startsWith('#content?') || hash.startsWith('#content/')) {
@@ -277,6 +292,7 @@ export async function renderAppView() {
       if (!main.children.length) {
         await renderForumView(main, '#forms');
       }
+
     } else if (hash === '#home' || hash.startsWith('#home')) {
       window.location.hash = '#forms';
       return;
@@ -1204,17 +1220,29 @@ async function renderForumView(container, hash = '') {
   if (currentSubId) {
     let currentSub = null;
     let parentMain = null;
+    let parentSub = null;
+
+    function findSubRecursive(list, cat, pSub = null) {
+      for (const s of list) {
+        if (String(s.id) === String(currentSubId) || String(s.slug) === String(currentSubId)) {
+          currentSub = s;
+          parentMain = cat;
+          parentSub = pSub;
+          return true;
+        }
+        const childList = s.children || s.subcategories || [];
+        if (childList.length > 0) {
+          if (findSubRecursive(childList, cat, s)) return true;
+        }
+      }
+      return false;
+    }
 
     for (const cat of hierarchy) {
-      const found = (cat.subcategories || []).find(s => String(s.id) === String(currentSubId) || String(s.slug) === String(currentSubId));
-      if (found) {
-        currentSub = found;
-        parentMain = cat;
+      if (findSubRecursive(cat.subcategories || [], cat, null)) {
         break;
       }
     }
-
-
 
     if (currentSub) {
       const subArticles = currentSub.articles || [];
@@ -1228,7 +1256,11 @@ async function renderForumView(container, hash = '') {
             <a href="#forms">Forms &amp; Community</a>
             ${parentMain ? `
               <span class="crumb-separator">›</span>
-              <a href="#forms">${escapeHtml(parentMain.title)}</a>
+              <a href="#forms?category=${encodeURIComponent(parentMain.id)}">${escapeHtml(parentMain.title)}</a>
+            ` : ''}
+            ${parentSub ? `
+              <span class="crumb-separator">›</span>
+              <a href="#forms?sub=${encodeURIComponent(parentSub.id)}">${escapeHtml(parentSub.title)}</a>
             ` : ''}
             <span class="crumb-separator">›</span>
             <span class="crumb-current">${escapeHtml(currentSub.title)}</span>
@@ -1237,7 +1269,7 @@ async function renderForumView(container, hash = '') {
           <!-- Subtitle Header Bar -->
           <div class="forms-subpage-header-bar">
             <div class="forms-subpage-left">
-              <a href="#forms" class="btn btn-outline btn-sm">« Back to Forms</a>
+              <a href="${parentSub ? `#forms?sub=${encodeURIComponent(parentSub.id)}` : (parentMain ? `#forms?category=${encodeURIComponent(parentMain.id)}` : '#forms')}" class="btn btn-outline btn-sm">« Back${parentSub ? ` to ${escapeHtml(parentSub.title)}` : (parentMain ? ` to ${escapeHtml(parentMain.title)}` : ' to Forms')}</a>
               ${currentSub.novelId ? `
                 <a href="#novel?id=${encodeURIComponent(currentSub.novelId)}" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:4px;">
                   <span>📖</span> Novel Synopsis
@@ -1247,18 +1279,14 @@ async function renderForumView(container, hash = '') {
               <div>
                 <h1 class="forms-subpage-title">${escapeHtml(currentSub.title)}</h1>
                 <div class="forms-subpage-meta">
-                  <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}</span>
+                  <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}${parentSub ? ` › ${escapeHtml(parentSub.title)}` : ''}</span>
                   <span>•</span>
                   <span>${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}</span>
                 </div>
               </div>
             </div>
 
-            ${isPrivilegedWriter ? `
-              <a href="#thread-create?sub=${encodeURIComponent(currentSub.id)}&cat=${encodeURIComponent(parentMain?.id || '')}" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; text-decoration:none;">
-                <span style="font-size:16px;">+</span> Add Thread
-              </a>
-            ` : ''}
+            
           </div>
 
           <div class="forum-layout">
@@ -1273,7 +1301,7 @@ async function renderForumView(container, hash = '') {
                   <span>•</span>
                   <span class="forum-summary-stat-item"><strong>${Number(currentSub.stats?.totalViews ?? subArticles.reduce((s, a) => s + Number(a.viewsCount || 0), 0)).toLocaleString()}</strong> Views</span>
                 </div>
-                ${(currentSub.stats?.latestTitle || subArticles[0]?.title) ? `
+                ${(subArticles.length > 0 && (currentSub.stats?.latestTitle || subArticles[0]?.title)) ? `
                   <div class="forum-summary-latest">
                     <span>Latest:</span>
                     <a href="${currentSub.stats?.latestLink || subArticles[0]?.link || '#'}" title="${escapeHtml(currentSub.stats?.latestTitle || subArticles[0]?.title || '')}">
@@ -1282,6 +1310,173 @@ async function renderForumView(container, hash = '') {
                     <span>(${formatLastSeen(currentSub.stats?.latestDate || subArticles[0]?.publishedAt)})</span>
                   </div>
                 ` : ''}
+              </div>
+
+              <!-- Nested Sub-sections Table (if currentSub has children) -->
+              ${(currentSub.children && currentSub.children.length > 0) ? `
+                <div style="margin-bottom:24px;">
+                  <div style="font-size:12.5px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.75px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                    <span>📂</span> Sections (${currentSub.children.length})
+                  </div>
+                  <div class="forum-table-card">
+                    <div class="forum-table-header forum-table-header-articles">
+                      <div>Section</div>
+                      <div>Content Count</div>
+                      <div class="forum-table-col-center">Comments</div>
+                      <div class="forum-table-col-center">Views</div>
+                      <div class="forum-table-col-right">Latest Activity</div>
+                    </div>
+                    <div class="forum-table-body">
+                      ${currentSub.children.map(child => {
+                        const childLink = `#forms?sub=${encodeURIComponent(child.id)}`;
+                        const childNotes = child.articles?.length || 0;
+                        const childComments = child.stats?.totalComments ?? (child.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
+                        const childViews = child.stats?.totalViews ?? (child.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
+                        return `
+                          <div class="forum-table-row forum-table-row-articles">
+                            <div class="forum-table-cell-title">
+                              <span class="forum-table-icon" style="display:inline-flex; align-items:center;">
+                                ${child.icon || '🔖'}
+                              </span>
+                              <div class="forum-table-title-meta">
+                                <a href="${childLink}" class="forms-sub-title-link" title="Open ${escapeHtml(child.title)}">${escapeHtml(child.title)}</a>
+                                <span class="forum-table-tagline">Click to view all ${childNotes} content titles</span>
+                              </div>
+                            </div>
+                            <div class="forum-table-cell-author">
+                              <span class="forum-stat-pill">📄 ${childNotes} ${childNotes === 1 ? 'Title' : 'Titles'}</span>
+                            </div>
+                            <div class="forum-table-cell-stat">
+                              <span class="forum-stat-pill">💬 ${childComments}</span>
+                            </div>
+                            <div class="forum-table-cell-stat">
+                              <span class="forum-stat-pill">👁 ${Number(childViews).toLocaleString()}</span>
+                            </div>
+                            <div class="forum-table-cell-last">
+                              <div class="forum-table-meta-subrow">
+                                ${child.stats?.latestDate ? `
+                                  <span class="forum-table-last-date">🕒 ${formatLastSeen(child.stats.latestDate)}</span>
+                                  <a href="${childLink}" class="forum-table-last-link" style="color:#B88635; font-size:11px; margin-top:2px; display:inline-block;">View Section ➔</a>
+                                ` : `
+                                  <span class="forum-table-last-date" style="color:#94A3B8;">No threads yet</span>
+                                `}
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Inline Thread Creator (Clean, modern forum design matching Reference Images) -->
+              <div class="thread-create-wrapper" id="thread-composer-box">
+                <!-- State 1: Collapsed Input (First Image Reference) -->
+                <div id="tc-collapsed-box" class="thread-composer-collapsed-box">
+                  <input type="text" id="tc-quick-input" class="thread-quick-title-input" placeholder="Thread title" autocomplete="off" />
+                </div>
+
+                <!-- State 2: Expanded Rich-Text Composer (Second Image Reference) -->
+                <div id="tc-expanded-box" class="thread-composer-expanded-box" style="display:none;">
+                  <div class="thread-composer-card">
+                    <!-- Title Input -->
+                    <div class="thread-composer-title-row">
+                      <input type="text" id="tc-title-input" class="thread-composer-title-input" placeholder="Thread title" autocomplete="off" />
+                    </div>
+
+                    <!-- Formatting Toolbar -->
+                    <div class="thread-composer-toolbar" role="toolbar" aria-label="Thread Editor Toolbar">
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="undo" title="Undo (Ctrl+Z)">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="redo" title="Redo (Ctrl+Y)">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/></svg>
+                      </button>
+                      <span class="tc-divider"></span>
+
+                      <select class="tc-select" id="tc-style-select" title="Paragraph Style">
+                        <option value="p">Normal text</option>
+                        <option value="h2">Heading 1</option>
+                        <option value="h3">Heading 2</option>
+                        <option value="blockquote">Quote</option>
+                        <option value="pre">Code</option>
+                      </select>
+
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="bold" title="Bold (Ctrl+B)">
+                        <strong>B</strong>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="italic" title="Italic (Ctrl+I)">
+                        <em>I</em>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="underline" title="Underline (Ctrl+U)">
+                        <u>U</u>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="strikeThrough" title="Strikethrough">
+                        <s>S</s>
+                      </button>
+                      <span class="tc-divider"></span>
+
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="justifyLeft" title="Align Left">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="justifyCenter" title="Align Center">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="10" x2="6" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="18" y1="18" x2="6" y2="18"/></svg>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="justifyRight" title="Align Right">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+                      </button>
+                      <span class="tc-divider"></span>
+
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="insertUnorderedList" title="Bulleted List">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>
+                      </button>
+                      <button type="button" class="tc-tool-btn" data-tc-cmd="insertOrderedList" title="Numbered List">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h2v-4"/><path d="M4 10h2a1 1 0 011 1v1a1 1 0 01-1 1H4h3"/></svg>
+                      </button>
+                      <span class="tc-divider"></span>
+
+                      <button type="button" class="tc-tool-btn" id="tc-btn-link" title="Insert Link">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                      </button>
+                      <button type="button" class="tc-tool-btn" id="tc-btn-img" title="Insert Image">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      </button>
+
+                      <button type="button" class="tc-tool-btn tc-preview-btn" id="tc-btn-preview" title="Toggle Preview">
+                        👁️ Preview
+                      </button>
+                    </div>
+
+                    <!-- Editor Content Area -->
+                    <div id="tc-content-area" class="thread-composer-content-area" contenteditable="true" data-placeholder="Message..."></div>
+                    <div id="tc-preview-pane" class="thread-composer-preview-box" style="display:none;"></div>
+
+                    <!-- Attached files chips -->
+                    <div id="tc-attachment-chips" class="thread-attachments-chip-list" style="display:none;"></div>
+
+                    <!-- Error notification -->
+                    <div id="tc-error-banner" class="thread-composer-error-banner" style="display:none;"></div>
+
+                    <!-- Footer -->
+                    <div class="thread-composer-footer">
+                      <div class="thread-composer-footer-left">
+                        <button type="button" class="btn-tc-attach" id="tc-btn-attach">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                          <span>Attach files</span>
+                        </button>
+                        <input type="file" id="tc-file-input" multiple accept="image/*,.pdf,.doc,.docx" style="display:none;" />
+                      </div>
+
+                      <div class="thread-composer-footer-right">
+                        <button type="button" class="btn-tc-cancel" id="tc-btn-cancel">Cancel</button>
+                        <button type="button" class="btn btn-gold btn-tc-submit" id="tc-btn-post">
+                          Post thread
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Compact Forum-Style Content Articles Table -->
@@ -1333,34 +1528,13 @@ async function renderForumView(container, hash = '') {
                       <p style="font-size:13px; color:#64748B; margin:0 0 14px;">
                         No reading content has been published in this section yet.
                       </p>
-                      ${isPrivilegedWriter ? `
-                        <a href="#thread-create?sub=${encodeURIComponent(currentSub.id)}&cat=${encodeURIComponent(parentMain?.id || '')}" class="btn btn-gold btn-sm" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; text-decoration:none; margin-top:10px;">
-                          + Add Thread
-                        </a>
-                      ` : ''}
+                      
                     </div>
                   `}
                 </div>
               </div>
 
-              <!-- Dedicated Forum Discussion Section for Review Forms Title -->
-              <div class="forms-discussion-card" style="margin-top:24px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:22px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid #F1F5F9; flex-wrap:wrap; gap:8px;">
-                  <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:22px;">💬</span>
-                    <div>
-                      <h2 style="font-family:var(--font-serif, 'Cinzel', serif); font-size:1.25rem; font-weight:700; color:#0B1F33; margin:0;">
-                        ${escapeHtml(currentSub.title)} — Discussions &amp; Member Reviews
-                      </h2>
-                      <p style="font-size:12.5px; color:#64748B; margin:2px 0 0;">
-                        Participate in discussions about novels, characters, episodes, stories, and share your reading experiences.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div id="forms-subcategory-discussion-mount"></div>
-              </div>
+              
             </div>
 
             <!-- Sidebar Panels (Clean, without separate stats panel) -->
@@ -1436,7 +1610,8 @@ async function renderForumView(container, hash = '') {
       `;
 
       loadForumMembersOnline();
-      renderCommentsWidget('forms-subcategory-discussion-mount', `review_sub_${currentSub.id}`, 0);
+      initInlineThreadComposer(currentSub.id, parentMain?.id || currentSub.mainCategoryId || currentSub.main_category_id || '');
+      // Discussions mounted on dedicated thread pages
       return;
     }
   }
@@ -1530,10 +1705,24 @@ async function renderForumView(container, hash = '') {
         <!-- Main Content Column -->
         <div class="forum-main-col">
           <div class="forms-categories-container" id="forms-categories-root">
-            ${(currentCategoryId ? hierarchy.filter(c => c.id === currentCategoryId) : hierarchy).map(cat => {
+            ${(currentCategoryId ? hierarchy.filter(c => String(c.id).toLowerCase() === String(currentCategoryId).toLowerCase() || String(c.title).toLowerCase() === String(currentCategoryId).toLowerCase()) : hierarchy).map(cat => {
               const subs = cat.subcategories || [];
               const novels = cat.novels || [];
               const isAudio = cat.id === 'audio-novels';
+
+              function countTotalArticles(list) {
+                let count = 0;
+                for (const s of list) {
+                  count += (s.articles?.length || 0);
+                  const children = s.children || s.subcategories || [];
+                  if (children.length > 0) count += countTotalArticles(children);
+                }
+                return count;
+              }
+
+              const totalCatItems = subs.length > 0
+                ? (cat.stats?.totalItems ?? countTotalArticles(subs))
+                : (cat.stats?.totalItems ?? novels.length);
 
               const totalCatComments = subs.length > 0
                 ? (cat.stats?.totalComments ?? subs.reduce((s, sub) => s + (sub.stats?.totalComments || 0), 0))
@@ -1543,13 +1732,10 @@ async function renderForumView(container, hash = '') {
                 ? (cat.stats?.totalViews ?? subs.reduce((s, sub) => s + (sub.stats?.totalViews || 0), 0))
                 : (cat.stats?.totalViews ?? novels.reduce((s, n) => s + Number(n.viewsCount || 0), 0));
 
-              const totalCatItems = subs.length > 0
-                ? (cat.stats?.totalItems ?? subs.reduce((s, sub) => s + (sub.articles?.length || 0), 0))
-                : (cat.stats?.totalItems ?? novels.length);
-
-              const latestTitle = cat.stats?.latestTitle || (novels[0]?.title ? `${novels[0].title} — ${novels[0].latestEpisodeTitle || 'Latest Release'}` : (subs[0]?.stats?.latestTitle || null));
-              const latestLink = cat.stats?.latestLink || (novels[0]?.readLink || novels[0]?.link || (subs[0]?.stats?.latestLink || '#'));
-              const latestDate = cat.stats?.latestDate || (novels[0]?.updatedDate || (subs[0]?.stats?.latestDate || null));
+              const directCatArt = (cat.articles && cat.articles.length > 0) ? cat.articles[0] : null;
+              const latestTitle = directCatArt ? directCatArt.title : (cat.stats?.latestTitle || (novels[0]?.title ? `${novels[0].title} — ${novels[0].latestEpisodeTitle || 'Latest Release'}` : null));
+              const latestLink = directCatArt ? `#thread?id=${encodeURIComponent(directCatArt.uniqueSlug || directCatArt.id)}` : (cat.stats?.latestLink || (novels[0]?.readLink || novels[0]?.link || '#'));
+              const latestDate = directCatArt ? (directCatArt.publishedAt || directCatArt.createdAt) : (cat.stats?.latestDate || (novels[0]?.updatedDate || null));
 
               return `
                 <div class="forms-category-section" id="cat-sec-${escapeHtml(cat.id)}">
@@ -1564,7 +1750,7 @@ async function renderForumView(container, hash = '') {
                       </div>
                     </div>
                     <div class="forms-cat-actions">
-                      <span class="forms-cat-pill">${subs.length > 0 ? `${subs.length} Sections` : `${novels.length} Novels`}</span>
+                      <span class="forms-cat-pill">${subs.length > 0 ? `${subs.length} ${subs.length === 1 ? 'Section' : 'Sections'}` : `${novels.length} Novels`}</span>
                     </div>
                   </div>
 
@@ -1592,6 +1778,103 @@ async function renderForumView(container, hash = '') {
                     ` : ''}
                   </div>
 
+                  <!-- Dedicated Category Threads & Composer (When viewing Category Dedicated Page) -->
+                  ${currentCategoryId ? `
+                    <div style="padding:0 16px;">
+                      <!-- Inline Thread Creator for Category -->
+                      <div class="thread-create-wrapper" id="thread-composer-box" style="margin-bottom:16px;">
+                        <div id="tc-collapsed-box" class="thread-composer-collapsed-box">
+                          <input type="text" id="tc-quick-input" class="thread-quick-title-input" placeholder="Thread title" autocomplete="off" />
+                        </div>
+
+                        <div id="tc-expanded-box" class="thread-composer-expanded-box" style="display:none;">
+                          <div class="thread-composer-card">
+                            <div class="thread-composer-title-row">
+                              <input type="text" id="tc-title-input" class="thread-composer-title-input" placeholder="Thread title" autocomplete="off" />
+                            </div>
+
+                            <div class="thread-composer-toolbar" role="toolbar" aria-label="Thread Editor Toolbar">
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="undo" title="Undo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg></button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="redo" title="Redo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/></svg></button>
+                              <span class="tc-divider"></span>
+                              <select class="tc-select" id="tc-style-select" title="Paragraph Style">
+                                <option value="p">Normal text</option>
+                                <option value="h2">Heading 1</option>
+                                <option value="h3">Heading 2</option>
+                                <option value="blockquote">Quote</option>
+                              </select>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="bold" title="Bold"><strong>B</strong></button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="italic" title="Italic"><em>I</em></button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="underline" title="Underline"><u>U</u></button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+                              <span class="tc-divider"></span>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="justifyLeft" title="Align Left">☰</button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="justifyCenter" title="Align Center">☵</button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="justifyRight" title="Align Right">☱</button>
+                              <span class="tc-divider"></span>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="insertUnorderedList" title="Bulleted List">• ≡</button>
+                              <button type="button" class="tc-tool-btn" data-tc-cmd="insertOrderedList" title="Numbered List">1. ≡</button>
+                              <span class="tc-divider"></span>
+                              <button type="button" class="tc-tool-btn" id="tc-btn-link" title="Insert Link">🔗</button>
+                              <button type="button" class="tc-tool-btn" id="tc-btn-img" title="Insert Image">🖼️</button>
+                              <button type="button" class="tc-tool-btn tc-preview-btn" id="tc-btn-preview" title="Toggle Preview">👁️ Preview</button>
+                            </div>
+
+                            <div id="tc-content-area" class="thread-composer-content-area" contenteditable="true" data-placeholder="Message..."></div>
+                            <div id="tc-preview-pane" class="thread-composer-preview-box" style="display:none;"></div>
+                            <div id="tc-attachment-chips" class="thread-attachments-chip-list" style="display:none;"></div>
+                            <div id="tc-error-banner" class="thread-composer-error-banner" style="display:none;"></div>
+
+                            <div class="thread-composer-footer">
+                              <div class="thread-composer-footer-left">
+                                <button type="button" class="btn-tc-attach" id="tc-btn-attach">📎 <span>Attach files</span></button>
+                                <input type="file" id="tc-file-input" multiple accept="image/*,.pdf,.doc,.docx" style="display:none;" />
+                              </div>
+                              <div class="thread-composer-footer-right">
+                                <button type="button" class="btn-tc-cancel" id="tc-btn-cancel">Cancel</button>
+                                <button type="button" class="btn btn-gold btn-tc-submit" id="tc-btn-post">Post thread</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Category Threads Table (Threads specifically for this category) -->
+                      <div class="forum-table-card" style="margin-bottom:20px;">
+                        <div class="forum-table-header forum-table-header-articles">
+                          <div>${escapeHtml(cat.title)} Threads</div>
+                          <div>Author</div>
+                          <div class="forum-table-col-center">Comments</div>
+                          <div class="forum-table-col-center">Views</div>
+                          <div class="forum-table-col-right">Published</div>
+                        </div>
+                        <div class="forum-table-body">
+                          ${(cat.articles && cat.articles.length > 0) ? cat.articles.map(art => `
+                            <div class="forum-table-row forum-table-row-articles">
+                              <div class="forum-table-cell-title">
+                                <span class="forum-table-icon">📄</span>
+                                <div class="forum-table-title-meta">
+                                  <a href="#thread?id=${encodeURIComponent(art.uniqueSlug || art.id)}" class="forum-table-title-link" title="${escapeHtml(art.title)}">${escapeHtml(art.title)}</a>
+                                </div>
+                              </div>
+                              <div class="forum-table-cell-author">✍️ ${escapeHtml(art.authorName || 'Rudhra Prarthana')}</div>
+                              <div class="forum-table-cell-stat"><span class="forum-stat-pill">💬 ${art.commentsCount || 0}</span></div>
+                              <div class="forum-table-cell-stat"><span class="forum-stat-pill">👁 ${Number(art.viewsCount || 0).toLocaleString()}</span></div>
+                              <div class="forum-table-cell-last">
+                                <div class="forum-table-meta-subrow"><span class="forum-table-last-date">🕒 ${formatLastSeen(art.publishedAt)}</span></div>
+                                <a href="#thread?id=${encodeURIComponent(art.uniqueSlug || art.id)}" class="forum-table-last-link" style="color:#B88635; font-size:11px;">Read ➔</a>
+                              </div>
+                            </div>
+                          `).join('') : `
+                            <div style="padding:24px 16px; text-align:center; color:#64748B; font-size:13.5px;">
+                              No threads published directly under ${escapeHtml(cat.title)} yet. Start a discussion above!
+                            </div>
+                          `}
+                        </div>
+                      </div>
+                    </div>
+                  ` : ''}
+
                   <!-- 1. General Subcategories Table Layout (Welcome Notes, Announcements, Tea Time) -->
                   ${subs.length > 0 ? `
                     <div class="forum-table-card" style="margin:0 16px 16px; width:calc(100% - 32px);">
@@ -1608,7 +1891,7 @@ async function renderForumView(container, hash = '') {
                           const noteCount = sub.articles?.length || 0;
                           const subComments = sub.stats?.totalComments ?? (sub.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
                           const subViews = sub.stats?.totalViews ?? (sub.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
-                          const latestArt = sub.stats?.latestTitle ? { title: sub.stats.latestTitle, link: sub.stats.latestLink || subLink, date: sub.stats.latestDate } : (sub.articles && sub.articles[0]);
+                          const latestArt = (sub.articles && sub.articles.length > 0) ? { title: sub.articles[0].title, link: `#thread?id=${encodeURIComponent(sub.articles[0].uniqueSlug || sub.articles[0].id)}`, date: sub.articles[0].publishedAt } : null;
 
                           return `
                             <div class="forum-table-row forum-table-row-articles">
@@ -1803,6 +2086,11 @@ async function renderForumView(container, hash = '') {
   `;
 
   loadForumMembersOnline();
+
+  // Initialize composer on category dedicated page if viewing single category
+  if (currentCategoryId) {
+    initInlineThreadComposer('', currentCategoryId);
+  }
 
   // Periodic refresh for live statistics
   if (window._rpForumStatsInterval) {
@@ -4526,10 +4814,25 @@ async function renderThreadCreateView(container, hash = '') {
 
   let targetCat = hierarchy.find(c => String(c.id) === String(catId));
   let targetSub = null;
+  let targetParentSub = null;
+
+  function findTargetSub(list, parent = null) {
+    for (const s of list) {
+      if (String(s.id) === String(subId)) {
+        targetSub = s;
+        targetParentSub = parent;
+        return true;
+      }
+      const children = s.children || s.subcategories || [];
+      if (children.length > 0) {
+        if (findTargetSub(children, s)) return true;
+      }
+    }
+    return false;
+  }
+
   for (const c of hierarchy) {
-    const s = (c.subcategories || []).find(sub => String(sub.id) === String(subId));
-    if (s) {
-      targetSub = s;
+    if (findTargetSub(c.subcategories || [], null)) {
       if (!targetCat) targetCat = c;
       break;
     }
@@ -4547,6 +4850,10 @@ async function renderThreadCreateView(container, hash = '') {
         <a href="#forms">Forms</a>
         <span class="crumb-separator">›</span>
         <a href="#forms?category=${encodeURIComponent(targetCat?.id || catId)}">${escapeHtml(catTitle)}</a>
+        ${targetParentSub ? `
+          <span class="crumb-separator">›</span>
+          <a href="#forms?sub=${encodeURIComponent(targetParentSub.id)}">${escapeHtml(targetParentSub.title)}</a>
+        ` : ''}
         <span class="crumb-separator">›</span>
         <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}">${escapeHtml(subTitle)}</a>
         <span class="crumb-separator">›</span>
@@ -4704,6 +5011,523 @@ window.submitThreadPosting = async (catId, subId) => {
 // ============================================================================
 // DEDICATED THREAD & CONTENT READING VIEW (Novel Reading Layout & Rules)
 // ============================================================================
+
+// ============================================================================
+// INLINE THREAD COMPOSER & COMMUNITY THREAD ACTIONS
+// ============================================================================
+
+
+// ============================================================================
+// CLEAN RICH-TEXT LINK INSERTION DIALOG (Text & URL Validation)
+// ============================================================================
+window.openLinkInsertionModal = function(targetEditor) {
+  if (!targetEditor) return;
+
+  // Capture selection or active range
+  const sel = window.getSelection();
+  let selectedText = '';
+  let savedRange = null;
+
+  if (sel && sel.rangeCount > 0) {
+    savedRange = sel.getRangeAt(0).cloneRange();
+    selectedText = sel.toString().trim();
+  }
+
+  const modalId = 'tc-link-modal-popup';
+  let modal = document.getElementById(modalId);
+  if (modal) modal.remove();
+
+  modal = document.createElement('div');
+  modal.id = modalId;
+  modal.className = 'modal-backdrop active';
+  modal.style.cssText = 'position:fixed; inset:0; background:rgba(11,31,51,0.55); z-index:999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(2px); padding:16px;';
+
+  modal.innerHTML = `
+    <div style="background:#FFFFFF; border-radius:12px; width:100%; max-width:440px; box-shadow:0 12px 36px rgba(0,0,0,0.22); overflow:hidden; border:1px solid #E2E8F0; font-family:var(--font-sans, inherit);">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;">
+        <div style="font-weight:700; font-size:15px; color:#0F172A; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:16px;">🔗</span>
+          <span>Insert Link</span>
+        </div>
+        <button type="button" id="tc-link-close-btn" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748B; padding:0; line-height:1;">&times;</button>
+      </div>
+
+      <div style="padding:18px 20px;">
+        <div id="tc-link-error-msg" style="display:none; background:#FEF2F2; color:#991B1B; padding:8px 12px; border-radius:6px; font-size:12.5px; margin-bottom:14px; font-weight:600; border:1px solid #FCA5A5;"></div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px;">
+            Link Text <span style="font-weight:400; color:#64748B;">(Text displayed to readers)</span>
+          </label>
+          <input type="text" id="tc-link-text-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="e.g. Read novel here" value="${escapeHtml(selectedText)}" />
+        </div>
+
+        <div style="margin-bottom:18px;">
+          <label style="display:block; font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px;">
+            Web Address (URL) <span style="color:#DC2626;">*</span>
+          </label>
+          <input type="text" id="tc-link-url-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="https://example.com or /#forms" />
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #F1F5F9; padding-top:14px;">
+          <button type="button" class="btn btn-outline btn-sm" id="tc-link-cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-gold btn-sm" id="tc-link-submit-btn" style="font-weight:700; padding:7px 20px;">Insert Link</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const urlInput = document.getElementById('tc-link-url-val');
+  const textInput = document.getElementById('tc-link-text-val');
+  const errorBox = document.getElementById('tc-link-error-msg');
+  const closeBtn = document.getElementById('tc-link-close-btn');
+  const cancelBtn = document.getElementById('tc-link-cancel-btn');
+  const submitBtn = document.getElementById('tc-link-submit-btn');
+
+  if (selectedText) {
+    urlInput?.focus();
+  } else {
+    textInput?.focus();
+  }
+
+  function closeModal() {
+    modal.remove();
+  }
+
+  closeBtn?.addEventListener('click', closeModal);
+  cancelBtn?.addEventListener('click', closeModal);
+
+  submitBtn?.addEventListener('click', () => {
+    let rawUrl = (urlInput?.value || '').trim();
+    let displayText = (textInput?.value || '').trim();
+
+    if (!rawUrl) {
+      errorBox.textContent = 'Please enter a valid destination URL.';
+      errorBox.style.display = 'block';
+      urlInput?.focus();
+      return;
+    }
+
+    // Auto prepend https:// if missing protocol and not a hash/relative route
+    if (!/^https?:\/\//i.test(rawUrl) && !/^mailto:/i.test(rawUrl) && !rawUrl.startsWith('#') && !rawUrl.startsWith('/')) {
+      rawUrl = 'https://' + rawUrl;
+    }
+
+    // Default display text to URL if empty
+    if (!displayText) {
+      displayText = rawUrl;
+    }
+
+    closeModal();
+    targetEditor.focus();
+
+    // Restore range if available
+    if (savedRange && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+
+    const safeUrl = escapeQuotes(rawUrl);
+    const linkHtml = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#C89B3C; text-decoration:underline; font-weight:600;">${escapeHtml(displayText)}</a>&nbsp;`;
+    document.execCommand('insertHTML', false, linkHtml);
+  });
+};
+
+window.initInlineThreadComposer = function(subId, catId) {
+  const collapsedBox = document.getElementById('tc-collapsed-box');
+  const expandedBox = document.getElementById('tc-expanded-box');
+  const quickInput = document.getElementById('tc-quick-input');
+  const titleInput = document.getElementById('tc-title-input');
+  const contentArea = document.getElementById('tc-content-area');
+  const previewPane = document.getElementById('tc-preview-pane');
+  const previewBtn = document.getElementById('tc-btn-preview');
+  const cancelBtn = document.getElementById('tc-btn-cancel');
+  const postBtn = document.getElementById('tc-btn-post');
+  const attachBtn = document.getElementById('tc-btn-attach');
+  const fileInput = document.getElementById('tc-file-input');
+  const chipsList = document.getElementById('tc-attachment-chips');
+  const errorBanner = document.getElementById('tc-error-banner');
+  const styleSelect = document.getElementById('tc-style-select');
+
+  if (!collapsedBox || !expandedBox) return;
+
+  const uploadedAttachments = [];
+
+  function expandComposer() {
+    const token = localStorage.getItem('rp_auth_token');
+    if (!token && !window.IS_LOGGED_IN) {
+      showToast('Please log in to start a new thread.');
+      if (typeof window.openLoginModal === 'function') {
+        window.openLoginModal();
+      } else {
+        window.location.hash = '#auth?mode=login';
+      }
+      quickInput?.blur();
+      return;
+    }
+
+    collapsedBox.style.display = 'none';
+    expandedBox.style.display = 'block';
+
+    if (quickInput && quickInput.value.trim() && titleInput) {
+      titleInput.value = quickInput.value;
+      contentArea?.focus();
+    } else {
+      titleInput?.focus();
+    }
+  }
+
+  function collapseComposer() {
+    expandedBox.style.display = 'none';
+    collapsedBox.style.display = 'block';
+    if (previewPane && contentArea) {
+      previewPane.style.display = 'none';
+      contentArea.style.display = 'block';
+      if (previewBtn) previewBtn.innerHTML = '👁️ Preview';
+    }
+    if (errorBanner) errorBanner.style.display = 'none';
+  }
+
+  quickInput?.addEventListener('focus', expandComposer);
+  quickInput?.addEventListener('click', expandComposer);
+  cancelBtn?.addEventListener('click', collapseComposer);
+
+  // Auto expand if query parameter compose=true
+  if (window.location.hash.includes('compose=true')) {
+    expandComposer();
+  }
+
+  // Formatting toolbar action buttons
+  const toolButtons = expandedBox.querySelectorAll('.tc-tool-btn[data-tc-cmd]');
+  toolButtons.forEach(btn => {
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const cmd = btn.getAttribute('data-tc-cmd');
+      if (cmd) {
+        document.execCommand(cmd, false, null);
+        contentArea?.focus();
+      }
+    });
+  });
+
+  // Paragraph format style dropdown
+  styleSelect?.addEventListener('change', (e) => {
+    const tag = e.target.value;
+    if (tag) {
+      document.execCommand('formatBlock', false, tag);
+      contentArea?.focus();
+    }
+  });
+
+  // Link button
+  const linkBtn = document.getElementById('tc-btn-link');
+  linkBtn?.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (typeof window.openLinkInsertionModal === 'function') {
+      window.openLinkInsertionModal(contentArea);
+    } else {
+      const url = prompt('Enter the link destination URL (e.g. https://example.com):');
+      if (url && url.trim()) {
+        document.execCommand('createLink', false, url.trim());
+        contentArea?.focus();
+      }
+    }
+  });
+
+  // Image button & Attach files
+  function triggerUpload() {
+    fileInput?.click();
+  }
+  const imgBtn = document.getElementById('tc-btn-img');
+  imgBtn?.addEventListener('click', triggerUpload);
+  attachBtn?.addEventListener('click', triggerUpload);
+
+  fileInput?.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      try {
+        const isImage = file.type.startsWith('image/');
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const token = localStorage.getItem('rp_auth_token');
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        };
+
+        const res = await fetch('/api/upload/image', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            data: base64Data,
+            folder: 'comments',
+            filename: file.name
+          })
+        });
+
+        const data = await res.json();
+        if (data.success && data.url) {
+          uploadedAttachments.push({
+            name: file.name,
+            url: data.url,
+            isImage
+          });
+
+          // Insert image into editor directly if image
+          if (isImage && contentArea) {
+            contentArea.focus();
+            document.execCommand('insertHTML', false, `<p><img src="${data.url}" alt="${escapeHtml(file.name)}" style="max-width:100%; border-radius:8px; margin:8px 0;" /></p><p></p>`);
+          }
+
+          // Render attachment chips
+          if (chipsList) {
+            chipsList.style.display = 'flex';
+            const chip = document.createElement('div');
+            chip.className = 'thread-attach-chip';
+            chip.innerHTML = `
+              <span>${isImage ? '🖼️' : '📎'}</span>
+              <span>${escapeHtml(file.name)}</span>
+              <span class="thread-attach-chip-remove" title="Remove">&times;</span>
+            `;
+            chip.querySelector('.thread-attach-chip-remove').addEventListener('click', () => {
+              chip.remove();
+              const idx = uploadedAttachments.findIndex(a => a.url === data.url);
+              if (idx > -1) uploadedAttachments.splice(idx, 1);
+              if (uploadedAttachments.length === 0 && chipsList) chipsList.style.display = 'none';
+            });
+            chipsList.appendChild(chip);
+          }
+        } else {
+          showToast(data.error || 'Failed to upload attachment.');
+        }
+      } catch (err) {
+        showToast('Error uploading attachment: ' + err.message);
+      }
+    }
+    fileInput.value = '';
+  });
+
+  // Toggle live preview
+  previewBtn?.addEventListener('click', () => {
+    if (!previewPane || !contentArea) return;
+    const isShowing = previewPane.style.display === 'block';
+    if (isShowing) {
+      previewPane.style.display = 'none';
+      contentArea.style.display = 'block';
+      previewBtn.innerHTML = '👁️ Preview';
+      contentArea.focus();
+    } else {
+      previewPane.innerHTML = contentArea.innerHTML || '<p style="color:#94A3B8; font-style:italic;">No message content entered yet.</p>';
+      contentArea.style.display = 'none';
+      previewPane.style.display = 'block';
+      previewBtn.innerHTML = '✏️ Edit View';
+    }
+  });
+
+  // Submit Post Thread
+  postBtn?.addEventListener('click', async () => {
+    if (errorBanner) errorBanner.style.display = 'none';
+
+    const title = (titleInput?.value || '').trim();
+    const content = (contentArea?.innerHTML || '').trim();
+    const textOnly = (contentArea?.textContent || '').trim();
+
+    if (!title) {
+      if (errorBanner) {
+        errorBanner.textContent = 'Please enter a thread title.';
+        errorBanner.style.display = 'block';
+      }
+      titleInput?.focus();
+      return;
+    }
+
+    if (!textOnly && !content.includes('<img')) {
+      if (errorBanner) {
+        errorBanner.textContent = 'Please enter a message or attach an image for your thread.';
+        errorBanner.style.display = 'block';
+      }
+      contentArea?.focus();
+      return;
+    }
+
+    postBtn.disabled = true;
+    postBtn.textContent = 'Posting thread...';
+
+    try {
+      const token = localStorage.getItem('rp_auth_token');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+
+      const res = await fetch('/api/content/threads', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          mainCategoryId: catId,
+          subCategoryId: subId,
+          title,
+          content,
+          status: 'published',
+          isPublished: 1
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to post thread.');
+      }
+
+      showToast('Thread posted successfully! 🎉');
+      const newSlug = data.article?.uniqueSlug || data.article?.id || '';
+      if (newSlug) {
+        window.location.hash = `#thread?id=${encodeURIComponent(newSlug)}`;
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      if (errorBanner) {
+        errorBanner.textContent = err.message || 'Error posting thread.';
+        errorBanner.style.display = 'block';
+      }
+      postBtn.disabled = false;
+      postBtn.textContent = 'Post thread';
+    }
+  });
+};
+
+// Edit Thread Modal
+window.openEditThreadModal = async function(threadId) {
+  const token = localStorage.getItem('rp_auth_token');
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+  try {
+    const res = await fetch(`/api/content/articles/${threadId}`, { headers });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load thread details.');
+    const art = data.article;
+
+    const modalId = 'edit-thread-modal';
+    let modal = document.getElementById(modalId);
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = modalId;
+      modal.className = 'modal-backdrop active';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div class="modal-dialog" style="max-width:700px; width:95%; background:#FFFFFF; border-radius:12px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.15);">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;">
+          <h3 style="margin:0; font-family:var(--font-serif); font-size:1.25rem; color:#0B1F33;">✏️ Edit Thread</h3>
+          <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748B;">&times;</button>
+        </div>
+        <div style="padding:20px;">
+          <div id="modal-edit-error" style="display:none; background:#FEF2F2; color:#991B1B; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:14px; font-weight:600;"></div>
+          <div style="margin-bottom:16px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Title</label>
+            <input type="text" id="modal-edit-title" class="form-input" style="width:100%; box-sizing:border-box; padding:10px 14px; font-size:15px;" value="${escapeQuote(art.title)}" />
+          </div>
+          <div style="margin-bottom:20px;">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Message Content</label>
+            <div id="modal-edit-content" style="min-height:160px; max-height:360px; overflow-y:auto; border:1px solid #CBD5E1; border-radius:8px; padding:12px; font-size:14px; line-height:1.6;" contenteditable="true">
+              ${art.content || ''}
+            </div>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #F1F5F9; padding-top:16px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+            <button type="button" class="btn btn-gold btn-sm" id="modal-edit-save-btn">Save Changes</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-edit-link-btn')?.addEventListener('click', () => {
+      const editContent = document.getElementById('modal-edit-content');
+      window.openLinkInsertionModal(editContent);
+    });
+
+    document.getElementById('modal-edit-save-btn').addEventListener('click', async () => {
+      const newTitle = document.getElementById('modal-edit-title').value.trim();
+      const newContent = document.getElementById('modal-edit-content').innerHTML.trim();
+      const errBox = document.getElementById('modal-edit-error');
+      if (!newTitle) {
+        errBox.textContent = 'Please enter a thread title.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      const saveBtn = document.getElementById('modal-edit-save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const updateRes = await fetch(`/api/content/threads/${threadId}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            title: newTitle,
+            content: newContent
+          })
+        });
+        const updateData = await updateRes.json();
+        if (!updateRes.ok || !updateData.success) throw new Error(updateData.error || 'Failed to update thread.');
+
+        showToast('Thread updated successfully! ✨');
+        modal.remove();
+        window.location.reload();
+      } catch (e) {
+        errBox.textContent = e.message || 'Error updating thread.';
+        errBox.style.display = 'block';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+      }
+    });
+  } catch (err) {
+    showToast('Error opening edit modal: ' + err.message);
+  }
+};
+
+// Delete Thread Action
+window.confirmDeleteThread = async function(threadId, threadTitle, subId) {
+  const confirmed = confirm(`Are you sure you want to delete the thread "${threadTitle}"?\n\nIt will be safely moved to Trash.`);
+  if (!confirmed) return;
+
+  const token = localStorage.getItem('rp_auth_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+
+  try {
+    const res = await fetch(`/api/content/threads/${threadId}`, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({ confirmTitle: threadTitle })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete thread.');
+
+    showToast('Thread moved to Trash.');
+    if (subId) {
+      window.location.hash = `#forms?sub=${encodeURIComponent(subId)}`;
+    } else {
+      window.location.hash = '#forms';
+    }
+  } catch (err) {
+    showToast('Error deleting thread: ' + err.message);
+  }
+};
+
 async function renderContentReadingView(container, hash) {
   const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
   const slug = urlParams.get('id') || urlParams.get('slug') || (hash.includes('/') ? hash.split('/')[1] : '');
@@ -4806,16 +5630,22 @@ async function renderContentReadingView(container, hash) {
             <span class="crumb-separator">›</span>
             <a href="#forms">Forms</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms?category=${encodeURIComponent(art.mainCategoryId || '')}">${escapeHtml(art.mainCategoryTitle || 'Category')}</a>
-            <span class="crumb-separator">›</span>
-            <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle || 'Section')}</a>
+            <a href="#forms?category=${encodeURIComponent(art.mainCategoryId || '')}">${escapeHtml(art.mainCategoryTitle || 'General')}</a>
+                        ${(art.parentSubCategoryTitle && art.subCategoryTitle) ? `
+              <span class="crumb-separator">›</span>
+              <a href="#forms?sub=${encodeURIComponent(art.parentSubCategoryId)}">${escapeHtml(art.parentSubCategoryTitle)}</a>
+            ` : ''}
+            ${art.subCategoryTitle ? `
+              <span class="crumb-separator">›</span>
+              <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
+            ` : ''}
             <span class="crumb-separator">›</span>
             <span class="crumb-current">${escapeHtml(art.title)}</span>
           </nav>
 
           <div class="content-reading-back-bar" style="margin-bottom:18px;">
-            <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}" class="content-back-btn">
-              « Back to ${escapeHtml(art.subCategoryTitle || 'Section')}
+            <a href="${art.subCategoryId ? `#forms?sub=${encodeURIComponent(art.subCategoryId)}` : `#forms?category=${encodeURIComponent(art.mainCategoryId || '')}`}" class="content-back-btn">
+              « Back to ${escapeHtml(art.subCategoryTitle || art.mainCategoryTitle || 'Forms')}
             </a>
             <div style="font-size:12px; color:#64748B;">
               Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
@@ -4835,15 +5665,36 @@ async function renderContentReadingView(container, hash) {
 
             <div class="reader-meta-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; border-top:1px solid rgba(0,0,0,0.06); border-bottom:1px solid rgba(0,0,0,0.06);">
               <div style="display:flex; align-items:center; gap:10px;">
-                <img src="${authorAvatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C;" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
+                <img src="${authorAvatar}" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C;" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
                 <div>
-                  <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep);">
+                  <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                     ${escapeHtml(art.authorName)}
-                    <span class="forms-role-badge" style="margin-left:6px;">Official Author</span>
+                    <span class="forms-role-badge" style="font-size:11px; background:${art.authorRole === 'admin' ? '#FEF3C7; color:#92400E;' : (art.authorRole === 'writer' ? '#EDE9FE; color:#5B21B6;' : '#E0F2FE; color:#0369A1;')}">
+                      ${art.authorRole === 'admin' ? '👑 Admin' : (art.authorRole === 'writer' ? '✍️ Author' : '👤 Member')}
+                    </span>
                   </div>
-                  <div style="font-size:11px; color:#64748B;">Rudhra Prarthana Novels</div>
+                  <div style="font-size:11.5px; color:#64748B;">Rudhra Prarthana Community</div>
                 </div>
               </div>
+
+              ${(function() {
+                const user = window.CURRENT_USER;
+                const isAdmin = Boolean(user && (user.isAdmin || ['admin', 'administrator', 'editor'].includes((user.role || '').toLowerCase())));
+                const isOwner = Boolean(user && Number(user.id) === Number(art.authorId));
+                if (isAdmin || isOwner) {
+                  return `
+                    <div style="display:inline-flex; align-items:center; gap:8px;">
+                      <button type="button" class="btn btn-outline btn-sm" onclick="window.openEditThreadModal(${art.id})" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;">
+                        <span>✏️</span> Edit
+                      </button>
+                      <button type="button" class="btn btn-outline btn-sm" onclick="window.confirmDeleteThread(${art.id}, '${escapeQuotes(art.title)}', '${escapeQuotes(art.subCategoryId)}')" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px; color:#DC2626; border-color:#FCA5A5;">
+                        <span>🗑️</span> Delete
+                      </button>
+                    </div>
+                  `;
+                }
+                return '';
+              })()}
 
               <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
                 <span title="Views">👁️ ${art.viewsCount || 0} reads</span>

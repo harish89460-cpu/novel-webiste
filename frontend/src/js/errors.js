@@ -282,9 +282,28 @@ export function getApiBaseUrl() {
   if (typeof window !== 'undefined' && window.__API_BASE_URL__) {
     return String(window.__API_BASE_URL__).trim().replace(/\/+$/, '');
   }
+
+  // 1. Same-origin or local environment check:
+  // When running on localhost, private LAN, or directly through the Cloudflare tunnel itself,
+  // ALWAYS use relative path '' so requests go to the active server/proxy seamlessly.
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (
+      host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '' ||
+      host.endsWith('.trycloudflare.com') ||
+      /^192\.168\.\d+\.\d+$/.test(host) ||
+      /^10\.\d+\.\d+\.\d+$/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(host)
+    ) {
+      return '';
+    }
+  }
+
+  // 2. Production tunnel or environment override
   try {
     if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) {
-      return String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '');
+      const envUrl = String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '');
+      if (envUrl) return envUrl;
     }
   } catch (_) {}
   return '';
@@ -365,8 +384,8 @@ export async function apiFetch(url, options = {}, timeoutMs = 8500) {
       throw timeoutErr;
     }
 
-    if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
-      const netErr = new Error('Network Connection Error');
+    if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Network Connection Error')) {
+      const netErr = new Error('Unable to connect to the server. Please check your internet connection or verify the server is running.');
       netErr.status = 0;
       netErr.isNetworkError = true;
       throw netErr;
