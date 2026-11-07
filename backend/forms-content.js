@@ -366,10 +366,23 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
     return { success: false, error: 'Content identifier is required.', code: 'NOT_FOUND' };
   }
 
+  let rawIdOrSlug = String(idOrSlug).trim();
+  // Strip any leading hash or parameters if passed
+  if (rawIdOrSlug.startsWith('#')) {
+    const match = rawIdOrSlug.match(/[?&](?:id|slug)=([^&]+)/);
+    if (match) rawIdOrSlug = match[1];
+  }
+  let decodedIdOrSlug = rawIdOrSlug;
+  try {
+    decodedIdOrSlug = decodeURIComponent(rawIdOrSlug).trim();
+  } catch (e) {
+    // keep as is if malformed URI
+  }
+
   const isAdmin = isUserAdmin(currentUser);
   const userId = currentUser ? currentUser.id : null;
 
-  // 1. Resolve content article from database
+  // 1. Resolve content article from database (support both raw/encoded and decoded slug or ID)
   const article = await queryOne(`
     SELECT a.*, 
            m.title as main_category_title, m.is_disabled as main_is_disabled, m.status as main_status,
@@ -383,9 +396,9 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
     LEFT JOIN content_subcategories ps ON ps.id = s.parent_id
     LEFT JOIN users u ON u.id = a.author_id
     LEFT JOIN profiles p ON p.user_id = a.author_id
-    WHERE a.unique_slug = ? OR CAST(a.id AS CHAR) = ?
+    WHERE a.unique_slug = ? OR a.unique_slug = ? OR CAST(a.id AS CHAR) = ? OR CAST(a.id AS CHAR) = ?
     LIMIT 1;
-  `, [String(idOrSlug), String(idOrSlug)]);
+  `, [rawIdOrSlug, decodedIdOrSlug, rawIdOrSlug, decodedIdOrSlug]);
 
   if (!article) {
     return { success: false, error: 'The requested reading content does not exist or has been removed.', code: 'NOT_FOUND' };
@@ -622,6 +635,21 @@ function formatArticle(row) {
  * Retrieve comments and replies for a content article
  */
 export async function getContentComments(contentId) {
+  let rawId = String(contentId || '').trim();
+  let decodedId = rawId;
+  try {
+    decodedId = decodeURIComponent(rawId).trim();
+  } catch (e) {}
+
+  let targetId = rawId;
+  const numId = parseInt(rawId, 10);
+  if (isNaN(numId)) {
+    const art = await queryOne(`SELECT id FROM content_articles WHERE unique_slug = ? OR unique_slug = ? LIMIT 1;`, [rawId, decodedId]);
+    if (art) targetId = art.id;
+  } else {
+    targetId = numId;
+  }
+
   const rows = await query(`
     SELECT c.*, 
            u.username, p.display_name, p.avatar, u.role
@@ -630,7 +658,7 @@ export async function getContentComments(contentId) {
     LEFT JOIN profiles p ON p.user_id = c.user_id
     WHERE c.content_id = ?
     ORDER BY c.created_at ASC;
-  `, [contentId]);
+  `, [targetId]);
 
   // Nest replies under parent comments
   const commentMap = {};

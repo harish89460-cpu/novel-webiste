@@ -23,8 +23,10 @@ export async function getNovelsList(filters = {}) {
         for (const cat of data.hierarchy) {
           for (const sub of (cat.subcategories || [])) {
             for (const art of (sub.articles || [])) {
+              const itemLink = '#thread?id=' + encodeURIComponent(art.uniqueSlug || art.id);
               novels.push({
                 id: art.id,
+                uniqueSlug: art.uniqueSlug || String(art.id),
                 title: art.title,
                 cover: art.coverImage || '/images/logo.png',
                 author: art.authorName || 'Rudhra Prarthana',
@@ -32,7 +34,8 @@ export async function getNovelsList(filters = {}) {
                 genre: sub.title,
                 views: art.viewsCount || 0,
                 commentsCount: art.commentsCount || 0,
-                readLink: '#thread?id=' + encodeURIComponent(art.uniqueSlug || art.id)
+                readLink: itemLink,
+                link: itemLink
               });
             }
           }

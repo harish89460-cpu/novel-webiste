@@ -638,7 +638,10 @@ export async function apiMiddleware(req, res, next) {
 
   // 11c. Get Single Content Article for Dedicated Reading Page
   if ((pathname.startsWith('/content/articles/') || pathname.startsWith('/content/threads/')) && !pathname.includes('/comments') && method === 'GET') {
-    const slugOrId = pathname.replace('/content/articles/', '').replace('/content/threads/', '').trim();
+    let slugOrId = pathname.replace('/content/articles/', '').replace('/content/threads/', '').trim();
+    try {
+      slugOrId = decodeURIComponent(slugOrId).trim();
+    } catch (e) {}
     const result = await getContentArticle(slugOrId, currentUser, { incrementView: true });
     if (!result.success) {
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 403;
@@ -649,7 +652,10 @@ export async function apiMiddleware(req, res, next) {
 
   // 11d. Comments for Content Article
   if (pathname.startsWith('/content/articles/') && pathname.endsWith('/comments') && method === 'GET') {
-    const slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    let slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    try {
+      slugOrId = decodeURIComponent(slugOrId).trim();
+    } catch (e) {}
     const artRes = await getContentArticle(slugOrId, currentUser, { incrementView: false });
     if (!artRes.success) {
       return sendJson(res, artRes, artRes.code === 'NOT_FOUND' ? 404 : 403);
@@ -665,7 +671,10 @@ export async function apiMiddleware(req, res, next) {
     if (currentUser.permissions && currentUser.permissions.can_comment === false) {
       return sendJson(res, { success: false, error: 'Your commenting privileges have been restricted by an administrator.' }, 403);
     }
-    const slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    let slugOrId = pathname.replace('/content/articles/', '').replace('/comments', '').trim();
+    try {
+      slugOrId = decodeURIComponent(slugOrId).trim();
+    } catch (e) {}
     const artRes = await getContentArticle(slugOrId, currentUser);
     if (!artRes.success) {
       return sendJson(res, artRes, artRes.code === 'NOT_FOUND' ? 404 : 403);
@@ -2088,7 +2097,10 @@ export async function apiMiddleware(req, res, next) {
 
   if (pathname.startsWith('/admin/content/articles/') && !pathname.endsWith('/status') && !pathname.endsWith('/delete') && !pathname.endsWith('/toggle') && method === 'GET') {
     if (requireAdminOrEditor(currentUser, res)) return;
-    const id = pathname.replace('/admin/content/articles/', '').trim();
+    let id = pathname.replace('/admin/content/articles/', '').trim();
+    try {
+      id = decodeURIComponent(id).trim();
+    } catch (e) {}
     const result = await getContentArticle(id, currentUser, { incrementView: false });
     if (!result.success) return sendJson(res, result, 404);
     return sendJson(res, result, 200);

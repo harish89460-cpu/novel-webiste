@@ -3983,7 +3983,7 @@ function renderNovelCard(n, mode = 'read') {
   const chaptersCount = n.chaptersCount ?? n.chapters_count;
   const rating = n.rating;
   const cover = n.cover || '/default-cover.jpg';
-  const link = n.link || (n.id ? `#novel?id=${encodeURIComponent(n.id)}` : '#novels');
+  const link = n.link || n.readLink || (n.uniqueSlug ? `#thread?id=${encodeURIComponent(n.uniqueSlug)}` : (n.id ? `#thread?id=${encodeURIComponent(n.id)}` : '#novels'));
   const btnText = mode === 'continue' ? 'Continue Reading ➔' : (n.btnText || t('btn_read_more'));
 
   const metaItems = [];
@@ -5603,6 +5603,23 @@ window.confirmDeleteThread = async function(threadId, threadTitle, subId) {
 async function renderContentReadingView(container, hash) {
   const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
   const slug = urlParams.get('id') || urlParams.get('slug') || (hash.includes('/') ? hash.split('/')[1] : '');
+
+  if (!slug || !slug.trim()) {
+    container.innerHTML = `
+      <div class="content-reading-wrap">
+        <div class="content-restricted-alert" style="text-align:center; padding:60px 20px;">
+          <div style="font-size:42px; margin-bottom:12px;">📚</div>
+          <h2 style="font-family:var(--font-serif); color:#9A3412; margin:0 0 8px;">No Reading Content Selected</h2>
+          <p style="color:#7C2D12; font-size:14px; margin-bottom:20px; line-height:1.6;">Please select a thread or novel from the community forum or library to start reading.</p>
+          <div style="display:flex; justify-content:center; gap:12px;">
+            <a href="#forms" class="btn btn-primary btn-sm">« Return to Forms &amp; Community</a>
+            <a href="#novels" class="btn btn-outline btn-sm">Explore Novels</a>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
 
   container.innerHTML = `
     <div class="content-reading-wrap">
