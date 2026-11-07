@@ -10,6 +10,7 @@ if (typeof window !== 'undefined') {
 }
 
 // Main Application Engine & Client Router
+import './timezone.js';
 
 import {
   getSidebarPosts,
