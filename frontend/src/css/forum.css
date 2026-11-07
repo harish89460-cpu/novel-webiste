@@ -3248,3 +3248,376 @@ html[lang="ta"] .topic-stats-bubble {
     text-align: center;
   }
 }
+
+
+/* ============================================================================
+   LATEST PROFILE POSTS PANEL & WIDGET (Compact Style Matching Trending Posts)
+   ============================================================================ */
+.latest-profile-posts-panel {
+  margin-top: 20px;
+}
+
+.profile-post-create-box {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(200, 155, 60, 0.35);
+}
+
+.profile-post-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-post-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  border: 1px solid rgba(200, 155, 60, 0.35);
+  border-radius: var(--radius-md, 8px);
+  background: #FFFFFF;
+  color: var(--color-navy-deep, #0B1F33);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.profile-post-input:focus {
+  border-color: var(--color-gold, #C89B3C);
+  box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.18);
+}
+
+.profile-post-input::placeholder {
+  color: #94A3B8;
+  font-size: 12.5px;
+}
+
+.profile-post-create-box {
+  display: block !important;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(200, 155, 60, 0.35);
+}
+
+.profile-post-input-wrap {
+  display: flex !important;
+  gap: 8px !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.profile-post-submit-btn,
+#profile-post-submit-btn,
+button.profile-post-submit-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  min-width: 70px !important;
+  height: 38px !important;
+  padding: 0 16px !important;
+  border-radius: var(--radius-md, 8px) !important;
+  background: linear-gradient(135deg, #D4AF37 0%, #C89B3C 50%, #B88635 100%) !important;
+  background-color: #C89B3C !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  border: 1px solid #B88635 !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(200, 155, 60, 0.45) !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.profile-post-submit-btn:hover,
+#profile-post-submit-btn:hover,
+button.profile-post-submit-btn:hover {
+  background: linear-gradient(135deg, #E5C158 0%, #D4A949 50%, #A07328 100%) !important;
+  background-color: #D4A949 !important;
+  color: #FFFFFF !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 14px rgba(200, 155, 60, 0.6) !important;
+}
+
+.profile-post-submit-btn:active,
+#profile-post-submit-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 2px 4px rgba(200, 155, 60, 0.3) !important;
+}
+
+.profile-post-submit-btn:disabled,
+#profile-post-submit-btn:disabled {
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+/* Post Items in Feed */
+.profile-post-item {
+  position: relative;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  border-radius: 8px;
+  padding: 10px 8px;
+  margin: 0 -8px;
+}
+
+.profile-post-item:hover {
+  background-color: rgba(200, 155, 60, 0.04);
+}
+
+.profile-post-header-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.profile-post-author-link {
+  text-decoration: none;
+  color: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.profile-post-author-link:hover .sidebar-updater-name {
+  color: var(--color-gold-warm, #B88635);
+  text-decoration: underline;
+}
+
+.profile-post-time {
+  font-size: 11px;
+  color: #94A3B8;
+  white-space: nowrap;
+}
+
+.profile-post-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #334155;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  margin-bottom: 6px;
+}
+
+.profile-post-actions-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.profile-post-action-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  color: #64748B;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.profile-post-action-btn:hover {
+  color: var(--color-gold-warm, #B88635);
+  background: rgba(200, 155, 60, 0.08);
+}
+
+.profile-post-action-btn.liked {
+  color: #E11D48;
+  font-weight: 600;
+}
+
+.profile-post-action-btn.edit-btn:hover {
+  color: #2563EB;
+}
+
+.profile-post-action-btn.delete-btn:hover {
+  color: #DC2626;
+}
+
+/* Comments Wrap */
+.profile-post-comments-wrap {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #F8FAFC;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+}
+
+.pp-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.pp-comment-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #EEF2F6;
+}
+
+.pp-comment-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pp-comment-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pp-comment-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.pp-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.pp-comment-author {
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--color-navy-deep, #0B1F33);
+  text-decoration: none;
+}
+
+.pp-comment-author:hover {
+  color: var(--color-gold, #C89B3C);
+}
+
+.pp-comment-time {
+  font-size: 10px;
+  color: #94A3B8;
+}
+
+.pp-comment-delete-btn {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: #94A3B8;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.pp-comment-delete-btn:hover {
+  color: #DC2626;
+}
+
+.pp-comment-text {
+  font-size: 11.5px;
+  color: #475569;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.pp-comment-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pp-comment-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  background: #FFFFFF;
+  color: #0F172A;
+  outline: none;
+}
+
+.pp-comment-input:focus {
+  border-color: var(--color-gold, #C89B3C);
+}
+
+/* Highlight Target Post Animation */
+@keyframes postHighlightPulse {
+  0% {
+    background-color: rgba(200, 155, 60, 0.35);
+    box-shadow: 0 0 12px rgba(200, 155, 60, 0.5);
+  }
+  50% {
+    background-color: rgba(200, 155, 60, 0.18);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.profile-post-item.highlight-glow {
+  animation: postHighlightPulse 3.5s ease-out forwards;
+  border-radius: 8px;
+}
+
+/* ============================================================================
+   DYNAMIC UPDATE & ANNOUNCEMENT PANELS (Seamless Forms Page Sidebar Integration)
+   ============================================================================ */
+.dynamic-update-panel {
+  background: var(--color-white, #FFFFFF);
+  border: 1px solid var(--color-border-card, #E2E8F0);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 1px 3px rgba(11, 31, 51, 0.05);
+  overflow: hidden;
+  margin-bottom: 20px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dynamic-update-panel:hover {
+  box-shadow: 0 4px 12px rgba(11, 31, 51, 0.08);
+}
+
+.dynamic-update-panel .forum-panel-header {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border-light, #F1F5F9);
+  background: #FAFBFD;
+}
+
+.dynamic-update-panel .forum-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-serif, 'Playfair Display', Georgia, serif);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-navy-deep, #0B1F33);
+  margin: 0;
+}
+
+.dynamic-update-panel .dynamic-update-content {
+  padding: 14px 16px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

@@ -335,7 +335,7 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export async function apiFetch(url, options = {}, timeoutMs = 8500) {
+export async function apiFetch(url, options = {}, timeoutMs = 15000) {
   const targetUrl = resolveApiUrl(url);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -373,20 +373,39 @@ export async function apiFetch(url, options = {}, timeoutMs = 8500) {
       throw errorObj;
     }
 
+    // Check for Gateway / Proxy error statuses (Cloudflare / Vercel 502/503/504/530)
+    if (response.status === 502 || response.status === 503 || response.status === 504 || response.status === 520 || response.status === 521 || response.status === 522 || response.status === 523 || response.status === 524 || response.status === 530) {
+      const netErr = new Error('Server temporarily unavailable. Please verify the backend connection or try again in a moment.');
+      netErr.status = response.status;
+      netErr.isNetworkError = true;
+      throw netErr;
+    }
+
     return response;
   } catch (err) {
     clearTimeout(timeoutId);
 
-    if (err.name === 'AbortError') {
+    if (err.name === 'AbortError' || err.isTimeout) {
       const timeoutErr = new Error('Request Timeout');
       timeoutErr.status = 408;
       timeoutErr.isTimeout = true;
+      timeoutErr.isNetworkError = true;
       throw timeoutErr;
     }
 
-    if (!navigator.onLine || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Network Connection Error')) {
+    if (
+      !navigator.onLine || 
+      err.isNetworkError ||
+      err.message?.includes('Failed to fetch') || 
+      err.message?.includes('NetworkError') || 
+      err.message?.includes('Network Connection Error') ||
+      err.message?.includes('Load failed') ||
+      err.message?.includes('NAME_NOT_RESOLVED') ||
+      err.message?.includes('Unexpected token') ||
+      err.name === 'TypeError'
+    ) {
       const netErr = new Error('Unable to connect to the server. Please check your internet connection or verify the server is running.');
-      netErr.status = 0;
+      netErr.status = err.status || 0;
       netErr.isNetworkError = true;
       throw netErr;
     }
@@ -400,6 +419,12 @@ export async function apiFetch(url, options = {}, timeoutMs = 8500) {
  */
 export function initGlobalErrorBoundaries() {
   window.addEventListener('error', (event) => {
+    // 1. Strictly ignore resource loading errors (images, stylesheets, fonts, audio, video)
+    // A 404 on an avatar or cover image MUST NOT trigger a full page 500 error!
+    if (event.target && event.target !== window) {
+      return;
+    }
+
     // Dismiss early loader or progress bar so user isn't stuck
     if (typeof window.dismissInitialLoader === 'function') {
       window.dismissInitialLoader();
@@ -408,13 +433,22 @@ export function initGlobalErrorBoundaries() {
 
     console.error('[Global App Error Boundary]', event.error || event.message);
 
-    // If main content failed to render completely
+    // Only render error view if main content is completely empty and route failed fatally
     const main = document.getElementById('main-content');
     if (main && (!main.innerHTML || main.innerHTML.trim() === '')) {
-      renderErrorView(main, {
-        code: '500',
-        retryFn: () => window.location.reload()
-      });
+      const isNet = Boolean(
+        !navigator.onLine ||
+        event.message?.includes('Failed to fetch') ||
+        event.message?.includes('NetworkError') ||
+        event.message?.includes('Load failed') ||
+        event.message?.includes('Unexpected token')
+      );
+
+      if (isNet) {
+        renderNetworkError(main, () => window.location.reload());
+      } else {
+        renderServerError(main, () => window.location.reload());
+      }
     }
   });
 
@@ -429,6 +463,30 @@ export function initGlobalErrorBoundaries() {
     if (event.reason && event.reason.isSessionExpired) {
       const main = document.getElementById('main-content');
       if (main) renderSessionExpired(main);
+      return;
+    }
+
+    const main = document.getElementById('main-content');
+    if (main && (!main.innerHTML || main.innerHTML.trim() === '')) {
+      const r = event.reason;
+      const isNet = Boolean(
+        !navigator.onLine ||
+        r?.isNetworkError ||
+        r?.isTimeout ||
+        r?.status === 0 ||
+        r?.status === 408 ||
+        r?.status === 502 ||
+        r?.status === 503 ||
+        r?.status === 504 ||
+        r?.message?.includes('Failed to fetch') ||
+        r?.message?.includes('NetworkError') ||
+        r?.message?.includes('Load failed') ||
+        r?.message?.includes('Unexpected token')
+      );
+
+      if (isNet) {
+        renderNetworkError(main, () => window.location.reload());
+      }
     }
   });
 }

@@ -6,8 +6,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query, queryOne, getDb } from './db.js';
-import { checkAndPublishDueEpisodes } from './episodes.js';
-import { formatNovel } from './novels.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,88 +13,65 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Retrieve Complete Admin Overview & Metric Counts from SQL
  */
 export async function getAdminOverview() {
-  await checkAndPublishDueEpisodes();
-
-  // 1. Novels Metrics
-  const novelStats = await queryOne(`
+  // 1. Form Management Metrics
+  const formStats = await queryOne(`
     SELECT
-      COUNT(*) AS total_novels,
-      SUM(CASE WHEN is_published = 1 AND visibility = 'public' THEN 1 ELSE 0 END) AS published_novels,
-      SUM(CASE WHEN LOWER(status) = 'ongoing' THEN 1 ELSE 0 END) AS ongoing_novels,
-      SUM(CASE WHEN LOWER(status) = 'completed' THEN 1 ELSE 0 END) AS completed_novels,
-      SUM(CASE WHEN is_published = 0 OR visibility != 'public' THEN 1 ELSE 0 END) AS draft_novels
-    FROM novels;
+      (SELECT COUNT(*) FROM forum_categories) AS total_categories,
+      (SELECT COUNT(*) FROM content_subcategories) AS total_subcategories,
+      (SELECT COUNT(*) FROM content_articles) AS total_articles,
+      (SELECT COUNT(*) FROM content_articles WHERE status = 'published') AS published_articles,
+      (SELECT COUNT(*) FROM content_articles WHERE status = 'scheduled') AS scheduled_articles,
+      (SELECT COUNT(*) FROM content_articles WHERE status = 'draft') AS draft_articles
   `);
 
-  // 2. Episodes Metrics
-  const episodeStats = await queryOne(`
-    SELECT
-      COUNT(*) AS total_episodes,
-      SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_episodes,
-      SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) AS scheduled_episodes,
-      SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_episodes,
-      SUM(CASE WHEN parent_id IS NOT NULL THEN 1 ELSE 0 END) AS sub_episodes
-    FROM chapters;
-  `);
-
-  // 3. Readers & Engagement Metrics
+  // 2. Readers, Writers & Engagement Metrics
   const engagementStats = await queryOne(`
     SELECT
       (SELECT COUNT(*) FROM users) AS total_users,
-      (SELECT COUNT(*) FROM comments) AS total_comments,
-      (SELECT COUNT(*) FROM likes WHERE target_type = 'novel') AS total_novel_likes,
-      (SELECT COUNT(*) FROM media) AS total_media
+      (SELECT COUNT(*) FROM users WHERE role = 'writer') AS total_writers,
+      (SELECT COUNT(*) FROM content_comments) AS total_comments,
+      (SELECT COUNT(*) FROM forum_topics) AS total_topics,
+      (SELECT COUNT(*) FROM media) AS total_media,
+      (SELECT COUNT(*) FROM trash_items) AS total_trash
   `);
 
-  // 4. Upcoming Scheduled Episodes
+  // 3. Upcoming Scheduled Articles
   const upcomingScheduled = await query(`
-    SELECT c.id, c.novel_id, c.chapter_num, c.episode_number, c.title, c.scheduled_at, c.timezone,
-           n.title AS novel_title, n.cover AS novel_cover
-    FROM chapters c
-    JOIN novels n ON c.novel_id = n.id
-    WHERE c.status = 'scheduled'
-    ORDER BY c.scheduled_at ASC
+    SELECT a.id, a.title, a.scheduled_at, 'Asia/Kolkata' AS timezone,
+           c.title AS category_title
+    FROM content_articles a
+    LEFT JOIN forum_categories c ON a.main_category_id = c.id
+    WHERE a.status = 'scheduled'
+    ORDER BY a.scheduled_at ASC
     LIMIT 6;
   `);
 
-  // 5. Recent Activity / Latest Episodes
-  const recentEpisodes = await query(`
-    SELECT c.id, c.novel_id, c.chapter_num, c.episode_number, c.title, c.status, c.created_at, c.updated_at,
-           n.title AS novel_title
-    FROM chapters c
-    JOIN novels n ON c.novel_id = n.id
-    ORDER BY c.updated_at DESC
-    LIMIT 6;
-  `);
-
-  // 6. Recent Novels
-  const recentNovels = await query(`
-    SELECT id, title, author, status, badge, cover, chapters_count, is_published, visibility, updated_at
-    FROM novels
-    ORDER BY updated_at DESC
+  // 4. Recent Articles
+  const recentArticles = await query(`
+    SELECT a.id, a.unique_slug, a.title, a.status, a.is_published, a.visibility, a.updated_at, a.views_count,
+           c.title AS category_title
+    FROM content_articles a
+    LEFT JOIN forum_categories c ON a.main_category_id = c.id
+    ORDER BY a.updated_at DESC
     LIMIT 6;
   `);
 
   const statsObj = {
-    novels: {
-      total: Number(novelStats?.total_novels || 0),
-      published: Number(novelStats?.published_novels || 0),
-      ongoing: Number(novelStats?.ongoing_novels || 0),
-      completed: Number(novelStats?.completed_novels || 0),
-      drafts: Number(novelStats?.draft_novels || 0)
-    },
-    episodes: {
-      total: Number(episodeStats?.total_episodes || 0),
-      published: Number(episodeStats?.published_episodes || 0),
-      scheduled: Number(episodeStats?.scheduled_episodes || 0),
-      drafts: Number(episodeStats?.draft_episodes || 0),
-      subEpisodes: Number(episodeStats?.sub_episodes || 0)
+    forms: {
+      categories: Number(formStats?.total_categories || 0),
+      subcategories: Number(formStats?.total_subcategories || 0),
+      articles: Number(formStats?.total_articles || 0),
+      published: Number(formStats?.published_articles || 0),
+      scheduled: Number(formStats?.scheduled_articles || 0),
+      drafts: Number(formStats?.draft_articles || 0)
     },
     community: {
       users: Number(engagementStats?.total_users || 0),
+      writers: Number(engagementStats?.total_writers || 0),
       comments: Number(engagementStats?.total_comments || 0),
-      likes: Number(engagementStats?.total_novel_likes || 0),
-      media: Number(engagementStats?.total_media || 0)
+      topics: Number(engagementStats?.total_topics || 0),
+      media: Number(engagementStats?.total_media || 0),
+      trash: Number(engagementStats?.total_trash || 0)
     }
   };
 
@@ -104,42 +79,33 @@ export async function getAdminOverview() {
     success: true,
     stats: statsObj,
     counts: {
-      novels: statsObj.novels.total,
-      episodes: statsObj.episodes.total,
+      categories: statsObj.forms.categories,
+      subcategories: statsObj.forms.subcategories,
+      articles: statsObj.forms.articles,
       users: statsObj.community.users,
+      writers: statsObj.community.writers,
       comments: statsObj.community.comments,
+      topics: statsObj.community.topics,
       media: statsObj.community.media,
+      trash: statsObj.community.trash,
       ...statsObj
     },
-    upcomingScheduled: upcomingScheduled.map(r => ({
+    upcomingScheduled: (upcomingScheduled || []).map(r => ({
       id: r.id,
-      novelId: r.novel_id,
-      novelTitle: r.novel_title,
-      novelCover: r.novel_cover,
-      episodeNumber: r.episode_number || r.chapter_num,
       title: r.title,
+      categoryTitle: r.category_title || 'General',
       scheduledAt: r.scheduled_at,
       timezone: r.timezone || 'Asia/Kolkata'
     })),
-    recentEpisodes: recentEpisodes.map(r => ({
+    recentArticles: (recentArticles || []).map(r => ({
       id: r.id,
-      novelId: r.novel_id,
-      novelTitle: r.novel_title,
-      episodeNumber: r.episode_number || r.chapter_num,
+      slug: r.unique_slug,
       title: r.title,
+      categoryTitle: r.category_title || 'General',
       status: r.status,
-      updatedAt: r.updated_at
-    })),
-    recentNovels: recentNovels.map(r => ({
-      id: r.id,
-      title: r.title,
-      author: r.author,
-      status: r.status,
-      badge: r.badge,
-      cover: r.cover,
-      chaptersCount: Number(r.chapters_count || 0),
       isPublished: Boolean(r.is_published),
       visibility: r.visibility,
+      viewsCount: r.views_count || 0,
       updatedAt: r.updated_at
     }))
   };
@@ -166,7 +132,7 @@ export async function getMediaList({ search = '', limit = 50, offset = 0 } = {})
   return {
     success: true,
     total: Number(totalRow?.total || 0),
-    media: rows.map(r => ({
+    media: (rows || []).map(r => ({
       id: r.id,
       filename: r.filename,
       originalName: r.original_name,
@@ -244,7 +210,7 @@ export async function deleteMediaAsset(id) {
 export async function getSiteSettings() {
   const rows = await query('SELECT * FROM site_settings;');
   const settings = {};
-  for (const r of rows) {
+  for (const r of rows || []) {
     settings[r.setting_key] = r.setting_value;
   }
   return { success: true, settings };

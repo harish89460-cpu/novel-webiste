@@ -109,6 +109,8 @@ import { showToast } from './reader.js';
 import { t } from './i18n.js';
 import { updateHeaderUserArea } from './auth.js';
 import { clearHomepageCache } from './content-service.js';
+import { renderNovelContentWritingPage, renderNovelManagementPage } from './novel-system.js';
+import { renderUpdatePanelsManagementTab, openUpdatePanelModal } from './admin-update-panels.js';
 
 export function escapeQuote(str) {
   if (!str) return '';
@@ -1130,17 +1132,17 @@ export async function renderAdminDashboard(container, requestedTab) {
 
   const TAB_TITLES = {
     overview: 'Dashboard',
-    novels: 'Novels',
-    'novel-create': 'Create New Novel',
-    audio: 'Audio Novels',
-    'short-stories': 'Short Stories',
-    episodes: 'Episodes',
     editor: 'Novel Content Writing',
-    'published-novels': 'Published Novel Management',
+    novels: 'Novel Management',
+    'published-novels': 'Novel Management',
+    'novel-create': 'Novel Content Writing',
     scheduler: 'Schedule',
     writers: 'Writer Management',
+    submissions: 'Writer Submissions',
+    'writer-chats': 'Writer Chat History',
     members: 'Member Account Management',
     forum: 'Form Management',
+    updates: 'Dynamic Update Panels',
     settings: 'Settings',
     trash: 'Trash / Recycle Bin'
   };
@@ -1200,57 +1202,21 @@ export async function renderAdminDashboard(container, requestedTab) {
               </span>
             </button>
 
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'novels' ? 'active' : ''}" 
+            <button type="button" class="admin-nav-item ${(adminState.activeTab === 'editor' || adminState.activeTab === 'novel-create') ? 'active' : ''}" 
+                    onclick="switchAdminTab('editor', { novelId: null })">
+              <span class="admin-nav-item-content">
+                ${ADMIN_ICONS.feather || ADMIN_ICONS.edit}
+                <span>Novel Content Writing</span>
+              </span>
+            </button>
+
+            <button type="button" class="admin-nav-item ${(adminState.activeTab === 'novels' || adminState.activeTab === 'published-novels') ? 'active' : ''}" 
                     onclick="switchAdminTab('novels')">
               <span class="admin-nav-item-content">
                 ${ADMIN_ICONS.book}
-                <span>Novels</span>
+                <span>Novel Management</span>
               </span>
               <span class="admin-nav-pill" id="nav-novels-count">-</span>
-            </button>
-
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'audio' ? 'active' : ''}" 
-                    onclick="switchAdminTab('audio')">
-              <span class="admin-nav-item-content">
-                ${ADMIN_ICONS.headphones}
-                <span>Audio Novels</span>
-              </span>
-              <span class="admin-nav-pill" id="nav-audio-count">-</span>
-            </button>
-
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'short-stories' ? 'active' : ''}" 
-                    onclick="switchAdminTab('short-stories')">
-              <span class="admin-nav-item-content">
-                ${ADMIN_ICONS.feather}
-                <span>Short Stories</span>
-              </span>
-              <span class="admin-nav-pill" id="nav-short-stories-count">-</span>
-            </button>
-
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'episodes' ? 'active' : ''}" 
-                    onclick="switchAdminTab('episodes')">
-              <span class="admin-nav-item-content">
-                ${ADMIN_ICONS.episodes}
-                <span>Episodes</span>
-              </span>
-              <span class="admin-nav-pill" id="nav-episodes-count">-</span>
-            </button>
-
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'editor' ? 'active' : ''}" 
-                    onclick="switchAdminTab('editor')">
-              <span class="admin-nav-item-content">
-                ${ADMIN_ICONS.edit}
-                <span>Novel Writing</span>
-              </span>
-            </button>
-
-            <button type="button" class="admin-nav-item ${adminState.activeTab === 'published-novels' ? 'active' : ''}" 
-                    onclick="switchAdminTab('published-novels')">
-              <span class="admin-nav-item-content">
-                <span>📚</span>
-                <span>Published Novels</span>
-              </span>
-              <span class="admin-nav-pill" id="nav-published-count">-</span>
             </button>
 
             <button type="button" class="admin-nav-item ${adminState.activeTab === 'scheduler' ? 'active' : ''}" 
@@ -1305,6 +1271,18 @@ export async function renderAdminDashboard(container, requestedTab) {
                 <span>Form Management</span>
               </span>
               <span class="admin-nav-pill" id="nav-forum-count">-</span>
+            </button>
+
+            <button type="button" class="admin-nav-item ${adminState.activeTab === 'updates' ? 'active' : ''}" 
+                    onclick="switchAdminTab('updates')">
+              <span class="admin-nav-item-content">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                <span>Update Panels</span>
+              </span>
+              <span class="admin-nav-pill" id="nav-updates-count" style="background:rgba(200, 155, 60, 0.15); color:#8C6116;">New</span>
             </button>
 
             <button type="button" class="admin-nav-item ${adminState.activeTab === 'settings' ? 'active' : ''}" 
@@ -1380,10 +1358,15 @@ export async function renderAdminDashboard(container, requestedTab) {
     }
   };
 
-  window.switchAdminTab = (tab) => {
+  window.switchAdminTab = (tab, params = {}) => {
     if (adminState.activeTab === 'editor' && adminState.editorDirty && tab !== 'editor') {
       const confirmLeave = confirm('You have unsaved changes in the editor. Are you sure you want to leave? Your draft has been backed up in local storage.');
       if (!confirmLeave) return;
+    }
+    if (params.novelId !== undefined) {
+      adminState.editingNovelId = params.novelId;
+    } else if (tab === 'editor' && !params.preserveNovelId) {
+      adminState.editingNovelId = null;
     }
     adminState.activeTab = tab;
     
@@ -1470,15 +1453,13 @@ export async function renderAdminDashboard(container, requestedTab) {
  */
 async function loadAdminInitialData() {
   try {
-    const [novelsRes, overviewRes, audioRes, writersRes] = await Promise.all([
-      apiFetch('/api/admin/novels'),
+    const [overviewRes, writersRes] = await Promise.all([
       apiFetch('/api/admin/overview'),
-      apiFetch('/api/admin/audio-novels'),
       apiFetch('/api/admin/writers')
     ]);
 
-    if (!novelsRes.ok || !overviewRes.ok) {
-      if (novelsRes.status === 401 || overviewRes.status === 401 || novelsRes.status === 403 || overviewRes.status === 403) {
+    if (!overviewRes.ok) {
+      if (overviewRes.status === 401 || overviewRes.status === 403) {
         localStorage.removeItem('rp_auth_token');
         sessionStorage.removeItem('rp_admin_redirect');
         window.IS_LOGGED_IN = false;
@@ -1490,32 +1471,9 @@ async function loadAdminInitialData() {
       }
     }
 
-    if (novelsRes.ok) {
-      const novelsData = await novelsRes.json();
-      adminState.novels = novelsData.novels || [];
-      if (!adminState.selectedNovelId && adminState.novels.length > 0) {
-        adminState.selectedNovelId = adminState.novels[0].id;
-      }
-    }
 
-    if (audioRes && audioRes.ok) {
-      const audioData = await audioRes.json();
-      adminState.audioNovels = audioData.audioNovels || [];
-      const audioCountBadge = document.getElementById('nav-audio-count');
-      if (audioCountBadge) audioCountBadge.textContent = adminState.audioNovels.length;
-    }
 
-    try {
-      const ssRes = await apiFetch('/api/admin/short-stories');
-      if (ssRes && ssRes.ok) {
-        const ssData = await ssRes.json();
-        adminState.shortStories = ssData.stories || [];
-        const ssBadge = document.getElementById('nav-short-stories-count');
-        if (ssBadge) ssBadge.textContent = adminState.shortStories.length;
-      }
-    } catch (err) {
-      console.warn('Failed to load short stories badge:', err);
-    }
+
 
     if (writersRes && writersRes.ok) {
       const writersData = await writersRes.json();
@@ -1524,6 +1482,19 @@ async function loadAdminInitialData() {
       if (writersCountBadge) {
         writersCountBadge.textContent = writersData.total !== undefined ? writersData.total : adminState.writers.length;
       }
+    }
+
+    try {
+      const upRes = await apiFetch('/api/admin/update-panels');
+      if (upRes.ok) {
+        const upData = await upRes.json();
+        const upBadge = document.getElementById('nav-updates-count');
+        if (upBadge && upData.panels) {
+          upBadge.textContent = upData.panels.length;
+        }
+      }
+    } catch {
+      // non-blocking
     }
 
     if (overviewRes.ok) {
@@ -1564,26 +1535,13 @@ function renderActiveAdminTab() {
     case 'overview':
       renderOverviewTab(canvas);
       break;
-    case 'novels':
-      renderNovelsTab(canvas);
-      break;
-    case 'novel-create':
-      renderNovelCreatePage(canvas);
-      break;
-    case 'audio':
-      renderAudioNovelsTab(canvas);
-      break;
-    case 'short-stories':
-      renderShortStoriesTab(canvas);
-      break;
-    case 'episodes':
-      renderEpisodesTab(canvas);
-      break;
     case 'editor':
-      renderEditorTab(canvas);
+    case 'novel-create':
+      renderNovelContentWritingPage(canvas, { isWriter: false, novelId: adminState.editingNovelId });
       break;
+    case 'novels':
     case 'published-novels':
-      renderPublishedNovelsTab(canvas);
+      renderNovelManagementPage(canvas, { isWriter: false });
       break;
     case 'scheduler':
       renderSchedulerTab(canvas);
@@ -1605,6 +1563,9 @@ function renderActiveAdminTab() {
       break;
     case 'forum':
       renderForumManagementTab(canvas);
+      break;
+    case 'updates':
+      renderUpdatePanelsManagementTab(canvas);
       break;
     case 'settings':
       renderSettingsTab(canvas);
@@ -1638,63 +1599,62 @@ async function renderOverviewTab(canvas) {
       <div class="admin-page-header">
         <div class="admin-page-title-group">
           <h1 class="admin-page-title">Dashboard</h1>
-          <p class="admin-page-subtitle">Manage novels and publishing.</p>
+          <p class="admin-page-subtitle">Manage Form Management content, categories, writers, and community.</p>
         </div>
         <div class="admin-page-actions">
-          <button type="button" class="btn btn-gold btn-sm" onclick="navigateToCreateNovel()">+ New Novel</button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="startNewEpisodeInEditor()">+ New Episode</button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="switchAdminTab('forum')">+ Form Management</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="switchAdminTab('scheduler')">Scheduler</button>
         </div>
       </div>
 
       <!-- 4 Compact Database-Backed Metric Cards -->
       <div class="admin-metrics-grid">
-        <div class="admin-metric-card">
+        <div class="admin-metric-card" onclick="switchAdminTab('forum')" style="cursor:pointer;" title="View Form Categories">
           <div class="admin-metric-header">
-            <span class="admin-metric-label">Novels</span>
-            <span class="admin-metric-icon">${ADMIN_ICONS.book}</span>
+            <span class="admin-metric-label">Categories</span>
+            <span class="admin-metric-icon">${ADMIN_ICONS.grid}</span>
           </div>
-          <div class="admin-metric-value">${n.total ?? 0}</div>
+          <div class="admin-metric-value">${stats.categories?.total ?? 0}</div>
         </div>
 
-        <div class="admin-metric-card">
+        <div class="admin-metric-card" onclick="switchAdminTab('forum')" style="cursor:pointer;" title="View Published Articles">
           <div class="admin-metric-header">
-            <span class="admin-metric-label">Published Episodes</span>
+            <span class="admin-metric-label">Articles Published</span>
             <span class="admin-metric-icon">${ADMIN_ICONS.checkCircle}</span>
           </div>
-          <div class="admin-metric-value">${e.published ?? 0}</div>
+          <div class="admin-metric-value">${stats.articles?.published ?? stats.articles?.total ?? 0}</div>
         </div>
 
-        <div class="admin-metric-card">
+        <div class="admin-metric-card" onclick="switchAdminTab('scheduler')" style="cursor:pointer;" title="View Scheduled Articles">
           <div class="admin-metric-header">
             <span class="admin-metric-label">Scheduled</span>
             <span class="admin-metric-icon">${ADMIN_ICONS.clock}</span>
           </div>
-          <div class="admin-metric-value">${e.scheduled ?? 0}</div>
+          <div class="admin-metric-value">${stats.articles?.scheduled ?? 0}</div>
         </div>
 
-        <div class="admin-metric-card">
+        <div class="admin-metric-card" onclick="switchAdminTab('members')" style="cursor:pointer;" title="View Registered Members">
           <div class="admin-metric-header">
-            <span class="admin-metric-label">Drafts</span>
-            <span class="admin-metric-icon">${ADMIN_ICONS.edit}</span>
+            <span class="admin-metric-label">Community Members</span>
+            <span class="admin-metric-icon">${ADMIN_ICONS.users}</span>
           </div>
-          <div class="admin-metric-value">${e.drafts ?? 0}</div>
+          <div class="admin-metric-value">${stats.community?.users ?? 0}</div>
         </div>
       </div>
 
-      <!-- 2-Column Content Sections: Scheduled Episodes & Novels -->
+      <!-- 2-Column Content Sections: Scheduled & Form Articles -->
       <div class="admin-content-grid">
-        <!-- Scheduled Episodes Section -->
+        <!-- Scheduled Content Section -->
         <div class="admin-card">
           <div class="admin-card-header">
-            <h2 class="admin-card-title">Recent / Upcoming Episodes</h2>
+            <h2 class="admin-card-title">Recent / Upcoming Scheduled Content</h2>
             <button type="button" class="admin-card-action-link" onclick="switchAdminTab('scheduler')">View all</button>
           </div>
           <div class="admin-card-body">
             ${(!data.upcomingScheduled || data.upcomingScheduled.length === 0) ? `
               <div class="admin-empty-state">
-                <div class="admin-empty-title">No scheduled episodes</div>
-                <div class="admin-empty-desc">Schedule an episode to see it here.</div>
+                <div class="admin-empty-title">No scheduled content</div>
+                <div class="admin-empty-desc">Schedule an article or form content to see it here.</div>
               </div>
             ` : `
               <div class="admin-compact-list">
@@ -1702,7 +1662,7 @@ async function renderOverviewTab(canvas) {
                   <div class="admin-compact-item">
                     <div class="admin-compact-info">
                       <div class="admin-compact-title">${escapeHtml(s.title)}</div>
-                      <div class="admin-compact-meta">${escapeHtml(s.novelTitle)} • Ep ${escapeHtml(s.episodeNumber)}</div>
+                      <div class="admin-compact-meta">${escapeHtml(s.categoryTitle || 'Form Management')}</div>
                     </div>
                     <span class="status-badge scheduled">${formatScheduleDate(s.scheduledAt)}</span>
                   </div>
@@ -1712,31 +1672,30 @@ async function renderOverviewTab(canvas) {
           </div>
         </div>
 
-        <!-- Novels Section -->
+        <!-- Form Management Articles Section -->
         <div class="admin-card">
           <div class="admin-card-header">
-            <h2 class="admin-card-title">Novels</h2>
-            <button type="button" class="admin-card-action-link" onclick="switchAdminTab('novels')">Manage novels</button>
+            <h2 class="admin-card-title">Recent Articles</h2>
+            <button type="button" class="admin-card-action-link" onclick="switchAdminTab('forum')">Form Management</button>
           </div>
           <div class="admin-card-body">
-            ${(!data.recentNovels || data.recentNovels.length === 0) ? `
+            ${(!data.recentArticles || data.recentArticles.length === 0) ? `
               <div class="admin-empty-state">
-                <div class="admin-empty-title">No novels yet</div>
-                <div class="admin-empty-desc">Create your first novel to get started.</div>
+                <div class="admin-empty-title">No articles yet</div>
+                <div class="admin-empty-desc">Create articles in Form Management to get started.</div>
               </div>
             ` : `
               <div class="admin-compact-list">
-                ${(data.recentNovels || []).map(nov => `
+                ${(data.recentArticles || []).map(art => `
                   <div class="admin-compact-item">
                     <div class="admin-compact-thumb-wrap">
-                      <img src="${nov.cover || '/default-cover.jpg'}" class="admin-compact-thumb" alt="" onerror="this.src='/default-cover.jpg'">
                       <div class="admin-compact-info">
-                        <div class="admin-compact-title">${escapeHtml(nov.title)}</div>
-                        <div class="admin-compact-meta">${nov.chaptersCount ?? 0} chapters • ${escapeHtml(nov.status || 'Ongoing')}</div>
+                        <div class="admin-compact-title">${escapeHtml(art.title)}</div>
+                        <div class="admin-compact-meta">${escapeHtml(art.categoryTitle || 'Form Management')} • ${escapeHtml(art.status || 'Published')}</div>
                       </div>
                     </div>
-                    <button type="button" class="btn btn-outline btn-xs" onclick="selectNovelForEpisodes('${nov.id}')">
-                      Episodes
+                    <button type="button" class="btn btn-outline btn-xs" onclick="switchAdminTab('forum')">
+                      View
                     </button>
                   </div>
                 `).join('')}
@@ -8742,7 +8701,13 @@ async function renderWriterChatAuditTab(canvas) {
         <div>
           <h1 class="admin-page-title" style="display:flex; align-items:center; gap:10px; margin:0 0 6px;">
             ${ADMIN_ICONS.chat}
-            <span>Writer Chat History & Compliance Audit</span>
+            <span>Writer Direct Messages & Compliance Audit</span>
+        </div>
+        <div>
+          <button type="button" class="btn btn-sm btn-primary" onclick="if(typeof window.openDirectMessageComposerModal === 'function') window.openDirectMessageComposerModal(); else window.location.hash='#messages';" style="display:inline-flex; align-items:center; gap:6px; background:#50E386; color:#0F172A; font-weight:700; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">
+            <span>✉️</span>
+            <span>Compose Direct Message</span>
+          </button>
           </h1>
           <p class="admin-page-desc" style="margin:0;">
             Inspect one-to-one messaging history involving registered Writers and Authors. Read-only compliance mode.
@@ -9072,6 +9037,53 @@ function renderAuditBubbles(messages) {
     const senderName = escapeHtml(m.sender_name || 'User');
     const senderRole = escapeHtml(m.sender_role || 'member');
     const isWriter = (senderRole.toLowerCase() === 'writer' || senderRole.toLowerCase() === 'author' || senderRole.toLowerCase() === 'admin');
+    const msgType = m.message_type || 'text';
+    const attachUrl = m.attachment_url;
+
+    let mediaHtml = '';
+    const isImage = attachUrl && (msgType === 'image' || /\.(png|jpe?g|webp|gif|svg)$/i.test(attachUrl));
+    const isAudio = attachUrl && (msgType === 'audio' || /\.(webm|mp3|ogg|wav|m4a)$/i.test(attachUrl));
+    const isFile = attachUrl && (msgType === 'file' || (!isImage && !isAudio));
+
+    if (isImage) {
+      mediaHtml = `
+        <div style="margin:6px 0;">
+          <img src="${escapeHtml(attachUrl)}" style="max-width:260px; max-height:220px; border-radius:6px; object-fit:cover; cursor:pointer; border:1px solid #CBD5E1;" 
+               onclick="window.open('${escapeHtml(attachUrl)}', '_blank')" alt="Attached Image" title="Click to view full image">
+        </div>
+      `;
+    } else if (isAudio) {
+      mediaHtml = `
+        <div style="margin:6px 0; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:6px 10px;">
+          <div style="font-size:11px; font-weight:600; color:#475569; margin-bottom:4px;">🎙️ Voice Message</div>
+          <audio controls src="${escapeHtml(attachUrl)}" style="width:100%; max-width:280px; height:36px;"></audio>
+        </div>
+      `;
+    } else if (isFile && attachUrl) {
+      mediaHtml = `
+        <div style="margin:6px 0; padding:6px 10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px;">
+          <a href="${escapeHtml(attachUrl)}" target="_blank" download style="display:flex; align-items:center; gap:6px; color:#2563EB; font-weight:600; font-size:12px; text-decoration:none;">
+            <span>📎</span>
+            <span>Download Attachment</span>
+          </a>
+        </div>
+      `;
+    }
+
+    let contentHtml = '';
+    if (m.content) {
+      const hasTags = /<[a-z][\s\S]*>/i.test(m.content);
+      if (hasTags) {
+        contentHtml = m.content
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+          .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+          .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+          .replace(/javascript\s*:/gi, 'blocked:')
+          .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
+      } else {
+        contentHtml = escapeHtml(m.content).replace(/\n/g, '<br>');
+      }
+    }
 
     return `
       <div style="display:flex; flex-direction:column; background:#FFFFFF; border:1px solid var(--color-border); border-radius:10px; padding:12px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.04); max-width:75%; align-self:${isWriter ? 'flex-start' : 'flex-end'};">
@@ -9081,9 +9093,8 @@ function renderAuditBubbles(messages) {
           </span>
           <span style="color:#94A3B8;">${timeStr}</span>
         </div>
-        <div style="font-size:13.5px; color:var(--color-navy-deep); line-height:1.5; word-break:break-word;">
-          ${escapeHtml(m.content)}
-        </div>
+        ${mediaHtml}
+        ${contentHtml ? `<div style="font-size:13.5px; color:var(--color-navy-deep); line-height:1.5; word-break:break-word;">${contentHtml}</div>` : ''}
         <div style="display:flex; justify-content:flex-end; margin-top:4px; font-size:10.5px; color:#94A3B8;">
           ${isRead ? '<span style="color:#0284C7;">✓✓ Read</span>' : '<span>✓ Sent</span>'}
         </div>
@@ -9091,7 +9102,6 @@ function renderAuditBubbles(messages) {
     `;
   }).join('');
 }
-
 
 /* ========================================================
    UTILITY HELPERS
@@ -11365,7 +11375,7 @@ window.renderFormsHierarchyTree = () => {
 
   const mains = window.formsAdminState.mainCategories || [];
   const subs = window.formsAdminState.subcategories || [];
-  const q = window.formsAdminState.searchQuery;
+  const q = (window.formsAdminState.searchQuery || '').trim().toLowerCase();
 
   // Filter based on search query
   let filteredMains = mains;
@@ -11375,8 +11385,7 @@ window.renderFormsHierarchyTree = () => {
       const childSubs = subs.filter(s => s.main_category_id === m.id);
       const subMatch = childSubs.some(s => 
         (s.title || '').toLowerCase().includes(q) || 
-        (s.id || '').toLowerCase().includes(q) ||
-        subs.some(child => child.parent_id === s.id && (child.title || '').toLowerCase().includes(q))
+        (s.id || '').toLowerCase().includes(q)
       );
       return mainMatch || subMatch;
     });
@@ -11423,46 +11432,51 @@ window.renderFormsHierarchyTree = () => {
 
     // Subtitles belonging directly to this main category (Level 2)
     const directSubs = subs.filter(s => s.main_category_id === mainCat.id && (!s.parent_id || s.parent_id === ''));
-    // Nested sub-sub-titles under this main category (Level 3)
-    const subSubList = subs.filter(s => s.main_category_id === mainCat.id && s.parent_id && s.parent_id !== '');
+    // Level 3 items
+    const subSubList = subs.filter(s => s.main_category_id === mainCat.id && s.parent_id && directSubs.some(d => d.id === s.parent_id));
+    // Level 4 items
+    const subSubSubList = subs.filter(s => s.main_category_id === mainCat.id && s.parent_id && subSubList.some(ss => ss.id === s.parent_id));
 
     const subsCount = directSubs.length;
     const subSubsCount = subSubList.length;
+    const subSubSubsCount = subSubSubList.length;
 
     html += `
       <div class="fm-main-card" 
-           id="fm-main-card-${mainCat.id}" 
-           draggable="true"
-           ondragstart="window.handleMainDragStart(event, '${mainCat.id}')"
-           ondragover="window.handleMainDragOver(event, '${mainCat.id}')"
-           ondragleave="window.handleMainDragLeave(event)"
-           ondrop="window.handleMainDrop(event, '${mainCat.id}')"
-           ondragend="window.handleMainDragEnd(event)">
+           id="fm-main-card-${mainCat.id}"
+           ondragover="window.handleItemDragOver(event, 'main', '${mainCat.id}', null, '${mainCat.id}', 0)"
+           ondragleave="window.handleItemDragLeave(event)"
+           ondrop="window.handleItemDrop(event, 'main', '${mainCat.id}', null, '${mainCat.id}', 0)">
         
         <!-- Main Card Header -->
         <div class="fm-main-header">
           <div class="fm-main-left">
-            <!-- Drag Handle -->
-            <span class="fm-drag-handle" title="Drag to reorder main title up or down">
+            <!-- Drag Handle (initiates Main drag) -->
+            <span class="fm-drag-handle" 
+                  draggable="true" 
+                  title="Drag to reorder main title up or down"
+                  ondragstart="window.handleItemDragStart(event, 'main', '${mainCat.id}', null, '${mainCat.id}', 0)"
+                  ondragend="window.handleItemDragEnd(event)">
               ${iconGrip}
             </span>
 
-            <!-- Title Number Badge (e.g. #1, #2, #3) -->
+            <!-- Title Number Badge -->
             <div class="fm-num-badge">#${idx + 1}</div>
 
             <!-- Main Title Icon Box -->
-            <div class="fm-main-icon-box">
+            <div class="fm-main-icon-box" onclick="window.toggleFormsMainExpand('${escapeQuotes(mainCat.id)}')" style="cursor:pointer;" title="Click to expand/collapse">
               ${escapeHtml(mainCat.icon || '📖')}
             </div>
 
             <!-- Title & Subtitle Meta -->
             <div class="fm-main-title-wrap">
-              <h2 class="fm-main-title">
+              <h2 class="fm-main-title" onclick="window.toggleFormsMainExpand('${escapeQuotes(mainCat.id)}')" style="cursor:pointer;" title="Click to expand/collapse">
                 ${escapeHtml(mainCat.title)}
+                <span class="fm-chevron" style="font-size:12px; margin-left:6px;">${isMainExpanded ? '&#9660;' : '&#9654;'}</span>
               </h2>
               <div class="fm-main-meta">
                 <span class="fm-main-meta-count">
-                  ${iconBook} ${subsCount} Sub-titles &bull; ${subSubsCount} Sub-sub-titles
+                  ${iconBook} ${subsCount} Sub-titles &bull; ${subSubsCount} Sub-sub-titles${subSubSubsCount > 0 ? ` &bull; ${subSubSubsCount} Sub-sub-sub-titles` : ''}
                 </span>
                 <span class="fm-status-pill ${isMainDisabled ? 'disabled' : 'published'}">
                   ${isMainDisabled ? 'Disabled' : 'Published'}
@@ -11473,9 +11487,8 @@ window.renderFormsHierarchyTree = () => {
 
           <!-- Main Actions -->
           <div class="fm-main-actions">
-
             <!-- Add Sub-title Button -->
-            <button type="button" class="fm-btn-gold" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')">
+            <button type="button" class="fm-btn-gold" onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: null, levelName: 'Sub-title' })">
               <span style="font-size:15px; font-weight:700;">+</span> Add Sub-title
             </button>
 
@@ -11496,7 +11509,7 @@ window.renderFormsHierarchyTree = () => {
               ${iconShield} Access
             </button>
 
-            <!-- Delete Button (No restriction, fully deletable) -->
+            <!-- Delete Button -->
             <button type="button" class="fm-btn-action text-danger" 
                     onclick="window.promptDeleteMain('${escapeQuotes(mainCat.id)}', '${escapeQuotes(mainCat.title)}', ${subsCount})">
               ${iconTrash} Delete
@@ -11508,7 +11521,7 @@ window.renderFormsHierarchyTree = () => {
         ${isMainExpanded ? `
           <div class="fm-main-body">
             ${subsCount === 0 ? `
-              <!-- Empty state matching reference image exactly -->
+              <!-- Empty state -->
               <div class="fm-empty-box">
                 <div class="fm-empty-icon">
                   <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -11517,12 +11530,12 @@ window.renderFormsHierarchyTree = () => {
                   </svg>
                 </div>
                 <p class="fm-empty-text">No Sub-titles inside <strong>${escapeHtml(mainCat.title)}</strong> yet.</p>
-                <button type="button" class="fm-btn-gold" onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}')">
+                <button type="button" class="fm-btn-gold" onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: null, levelName: 'Sub-title' })">
                   <span style="font-weight:700;">+</span> Add Sub-title
                 </button>
               </div>
             ` : `
-              <!-- Subtitle list -->
+              <!-- Subtitle list (Level 2) -->
               <div class="fm-subs-list">
                 ${directSubs.map((sub, sIdx) => {
                   const isSubExpanded = window.formsAdminState.expandedSubIds.has(String(sub.id));
@@ -11532,18 +11545,19 @@ window.renderFormsHierarchyTree = () => {
                   return `
                     <div class="fm-sub-card" 
                          id="fm-sub-card-${sub.id}"
-                         draggable="true"
-                         ondragstart="window.handleSubDragStart(event, '${sub.id}', '${mainCat.id}')"
-                         ondragover="window.handleSubDragOver(event, '${sub.id}')"
-                         ondragleave="window.handleSubDragLeave(event)"
-                         ondrop="window.handleSubDrop(event, '${sub.id}', '${mainCat.id}')"
-                         ondragend="window.handleSubDragEnd(event)">
+                         ondragover="window.handleItemDragOver(event, 'sub', '${sub.id}', null, '${mainCat.id}', 1)"
+                         ondragleave="window.handleItemDragLeave(event)"
+                         ondrop="window.handleItemDrop(event, 'sub', '${sub.id}', null, '${mainCat.id}', 1)">
                       
-                      <!-- Subtitle Header -->
+                      <!-- Subtitle Header (Level 2) -->
                       <div class="fm-sub-header">
                         <div class="fm-sub-left">
-                          <!-- Drag handle -->
-                          <span class="fm-sub-drag-handle" title="Drag to reorder subtitle">
+                          <!-- Drag handle (initiates Sub drag) -->
+                          <span class="fm-sub-drag-handle" 
+                                draggable="true" 
+                                title="Drag to reorder subtitle independently"
+                                ondragstart="window.handleItemDragStart(event, 'sub', '${sub.id}', null, '${mainCat.id}', 1)"
+                                ondragend="window.handleItemDragEnd(event)">
                             ${iconGrip}
                           </span>
 
@@ -11560,14 +11574,13 @@ window.renderFormsHierarchyTree = () => {
                           </span>
 
                           <!-- Subtitle Title -->
-                          <span class="fm-sub-title">
+                          <span class="fm-sub-title" onclick="window.toggleFormsSubExpand('${escapeQuotes(sub.id)}')" style="cursor:pointer;">
                             ${escapeHtml(sub.title)}
                           </span>
                         </div>
 
                         <!-- Subtitle Meta & Actions -->
                         <div class="fm-sub-actions">
-
                           <!-- Sub-sub-title count pill -->
                           <span class="fm-count-pill">
                             ${childSubSubs.length} Sub-sub-titles
@@ -11578,15 +11591,15 @@ window.renderFormsHierarchyTree = () => {
                             ${isSubDisabled ? 'Disabled' : 'Active'}
                           </span>
 
-                          <!-- Add Sub-title button (adds sub-sub-title under this subtitle) -->
+                          <!-- Add Sub-title button (adds Level 3 child under this Level 2 subtitle) -->
                           <button type="button" class="fm-btn-gold-sm" 
-                                  onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                                  onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(sub.id)}', levelName: 'Sub-sub-title' })">
                             <span style="font-weight:700;">+</span> Add Sub-title
                           </button>
 
                           <!-- Edit button -->
                           <button type="button" class="fm-btn-action" 
-                                  onclick="window.openCreateSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                                  onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: null, editId: '${escapeQuotes(sub.id)}', levelName: 'Sub-title' })">
                             ${iconPencil} Edit
                           </button>
 
@@ -11602,7 +11615,7 @@ window.renderFormsHierarchyTree = () => {
                             ${iconShield} Access
                           </button>
 
-                          <!-- Delete button (✕) -->
+                          <!-- Delete button -->
                           <button type="button" class="fm-btn-action text-danger" 
                                   title="Delete Subtitle"
                                   onclick="window.promptDeleteSub('${escapeQuotes(sub.id)}', '${escapeQuotes(sub.title)}', ${childSubSubs.length})">
@@ -11611,11 +11624,10 @@ window.renderFormsHierarchyTree = () => {
                         </div>
                       </div>
 
-                      <!-- Subtitle Body (Nested Sub-sub-titles) -->
+                      <!-- Subtitle Body (Nested Sub-sub-titles: Level 3) -->
                       ${isSubExpanded ? `
                         <div class="fm-sub-body">
                           ${childSubSubs.length === 0 ? `
-                            <!-- Empty state matching reference image exactly -->
                             <div class="fm-sub-empty-box">
                               <span class="fm-sub-empty-text">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -11625,45 +11637,157 @@ window.renderFormsHierarchyTree = () => {
                                 No Sub-titles inside this section yet.
                               </span>
                               <button type="button" class="fm-btn-gold-sm" 
-                                      onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}')">
+                                      onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(sub.id)}', levelName: 'Sub-sub-title' })">
                                 <span style="font-weight:700;">+</span> Add Sub-title
                               </button>
                             </div>
                           ` : `
-                            <!-- Nested Sub-sub-titles -->
+                            <!-- Nested Sub-sub-titles (Level 3 list) -->
                             <div class="fm-subsubs-list">
                               ${childSubSubs.map(child => {
+                                const isChildExpanded = window.formsAdminState.expandedSubIds.has(String(child.id));
                                 const isChildDis = Boolean(child.is_disabled || child.status === 'disabled');
+                                const grandChildSubs = subs.filter(gc => gc.parent_id === child.id);
+
                                 return `
-                                  <div class="fm-subsub-row" id="fm-subsub-${child.id}">
-                                    <div class="fm-subsub-left">
-                                      <span class="fm-sub-drag-handle" title="Sub-sub-title">
-                                        ${iconGrip}
-                                      </span>
-                                      <span style="font-size:14px;">${escapeHtml(child.icon || '🔖')}</span>
-                                      <span class="fm-subsub-title">${escapeHtml(child.title)}</span>
+                                  <div class="fm-subsub-card" id="fm-subsub-card-${child.id}">
+                                    <!-- Level 3 Header Row -->
+                                    <div class="fm-subsub-row" 
+                                         id="fm-subsub-${child.id}"
+                                         ondragover="window.handleItemDragOver(event, 'sub', '${child.id}', '${sub.id}', '${mainCat.id}', 2)"
+                                         ondragleave="window.handleItemDragLeave(event)"
+                                         ondrop="window.handleItemDrop(event, 'sub', '${child.id}', '${sub.id}', '${mainCat.id}', 2)">
+                                      <div class="fm-subsub-left">
+                                        <!-- Drag handle (initiates Level 3 drag independently) -->
+                                        <span class="fm-sub-drag-handle" 
+                                              draggable="true" 
+                                              title="Drag to reorder sub-sub-title independently"
+                                              ondragstart="window.handleItemDragStart(event, 'sub', '${child.id}', '${sub.id}', '${mainCat.id}', 2)"
+                                              ondragend="window.handleItemDragEnd(event)">
+                                          ${iconGrip}
+                                        </span>
+
+                                        <!-- Chevron toggle for Level 4 -->
+                                        <span class="fm-chevron" 
+                                              style="font-size:10px; width:16px; height:16px;"
+                                              title="${isChildExpanded ? 'Collapse' : 'Expand'}" 
+                                              onclick="window.toggleFormsSubExpand('${escapeQuotes(child.id)}')">
+                                          ${isChildExpanded ? '&#9660;' : '&#9654;'}
+                                        </span>
+
+                                        <span style="font-size:14px;">${escapeHtml(child.icon || '🔖')}</span>
+                                        <span class="fm-subsub-title" onclick="window.toggleFormsSubExpand('${escapeQuotes(child.id)}')" style="cursor:pointer;">
+                                          ${escapeHtml(child.title)}
+                                        </span>
+                                      </div>
+
+                                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <!-- Level 4 count pill -->
+                                        <span class="fm-count-pill" style="font-size:11.5px; padding:2px 8px;">
+                                          ${grandChildSubs.length} Sub-sub-sub-titles
+                                        </span>
+
+                                        <span class="fm-status-pill ${isChildDis ? 'disabled' : 'active'}">
+                                          ${isChildDis ? 'Disabled' : 'Active'}
+                                        </span>
+
+                                        <!-- Add Fourth-Level Title Button (+ Add Sub-title) -->
+                                        <button type="button" class="fm-btn-gold-xs" 
+                                                title="Add Fourth-Level Title under this section"
+                                                onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(child.id)}', levelName: 'Sub-sub-sub-title' })">
+                                          <span style="font-weight:700;">+</span> Add Sub-title
+                                        </button>
+
+                                        <button type="button" class="fm-btn-action" 
+                                                onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(sub.id)}', editId: '${escapeQuotes(child.id)}', levelName: 'Sub-sub-title' })">
+                                          ${iconPencil} Edit
+                                        </button>
+
+                                        <button type="button" class="fm-btn-action ${isChildDis ? 'text-success' : 'text-danger'}" 
+                                                onclick="window.toggleSubCategoryStatus('${escapeQuotes(child.id)}', ${isChildDis})">
+                                          ${isChildDis ? iconCheck : iconSlash} ${isChildDis ? 'Enable' : 'Disable'}
+                                        </button>
+
+                                        <button type="button" class="fm-btn-action" 
+                                                onclick="window.openAccessRuleModal('sub', '${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}')">
+                                          ${iconShield} Access
+                                        </button>
+
+                                        <button type="button" class="fm-btn-action text-danger" 
+                                                title="Delete Sub-sub-title"
+                                                onclick="window.promptDeleteSub('${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}', ${grandChildSubs.length})">
+                                          <span style="font-size:15px; font-weight:700;">&times;</span>
+                                        </button>
+                                      </div>
                                     </div>
-                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                      <span class="fm-status-pill ${isChildDis ? 'disabled' : 'active'}">
-                                        ${isChildDis ? 'Disabled' : 'Active'}
-                                      </span>
-                                      <button type="button" class="fm-btn-action" 
-                                              onclick="window.openCreateSubSubModal('${escapeQuotes(mainCat.id)}', '${escapeQuotes(sub.id)}', '${escapeQuotes(child.id)}')">
-                                        ${iconPencil} Edit
-                                      </button>
-                                      <button type="button" class="fm-btn-action ${isChildDis ? 'text-success' : 'text-danger'}" 
-                                              onclick="window.toggleSubCategoryStatus('${escapeQuotes(child.id)}', ${isChildDis})">
-                                        ${isChildDis ? iconCheck : iconSlash} ${isChildDis ? 'Enable' : 'Disable'}
-                                      </button>
-                                      <button type="button" class="fm-btn-action" 
-                                              onclick="window.openAccessRuleModal('sub', '${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}')">
-                                        ${iconShield} Access
-                                      </button>
-                                      <button type="button" class="fm-btn-action text-danger" 
-                                              onclick="window.promptDeleteSub('${escapeQuotes(child.id)}', '${escapeQuotes(child.title)}', 0)">
-                                        <span style="font-size:15px; font-weight:700;">&times;</span>
-                                      </button>
-                                    </div>
+
+                                    <!-- Level 4 Container (Sub-sub-sub-titles: Fourth Hierarchy Level) -->
+                                    ${isChildExpanded ? `
+                                      <div class="fm-subsub-body">
+                                        ${grandChildSubs.length === 0 ? `
+                                          <div class="fm-subsub-empty-box">
+                                            <span style="font-size:12px; color:#64748B;">No Sub-sub-sub-titles in this section yet.</span>
+                                            <button type="button" class="fm-btn-gold-xs" 
+                                                    onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(child.id)}', levelName: 'Sub-sub-sub-title' })">
+                                              <span style="font-weight:700;">+</span> Add Sub-title
+                                            </button>
+                                          </div>
+                                        ` : `
+                                          <div class="fm-subsubsubs-list">
+                                            ${grandChildSubs.map(gc => {
+                                              const isGcDis = Boolean(gc.is_disabled || gc.status === 'disabled');
+                                              return `
+                                                <div class="fm-subsubsub-row" 
+                                                     id="fm-subsubsub-${gc.id}"
+                                                     ondragover="window.handleItemDragOver(event, 'sub', '${gc.id}', '${child.id}', '${mainCat.id}', 3)"
+                                                     ondragleave="window.handleItemDragLeave(event)"
+                                                     ondrop="window.handleItemDrop(event, 'sub', '${gc.id}', '${child.id}', '${mainCat.id}', 3)">
+                                                  <div class="fm-subsubsub-left">
+                                                    <!-- Drag handle (initiates Level 4 drag independently) -->
+                                                    <span class="fm-sub-drag-handle" 
+                                                          draggable="true" 
+                                                          title="Drag to reorder sub-sub-sub-title independently"
+                                                          ondragstart="window.handleItemDragStart(event, 'sub', '${gc.id}', '${child.id}', '${mainCat.id}', 3)"
+                                                          ondragend="window.handleItemDragEnd(event)">
+                                                      ${iconGrip}
+                                                    </span>
+                                                    <span style="font-size:13px;">${escapeHtml(gc.icon || '🏷️')}</span>
+                                                    <span class="fm-subsubsub-title">${escapeHtml(gc.title)}</span>
+                                                  </div>
+
+                                                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                    <span class="fm-status-pill ${isGcDis ? 'disabled' : 'active'}" style="font-size:11px; padding:2px 8px;">
+                                                      ${isGcDis ? 'Disabled' : 'Active'}
+                                                    </span>
+
+                                                    <button type="button" class="fm-btn-action" 
+                                                            onclick="window.openCreateSubCategoryModal({ mainId: '${escapeQuotes(mainCat.id)}', parentId: '${escapeQuotes(child.id)}', editId: '${escapeQuotes(gc.id)}', levelName: 'Sub-sub-sub-title' })">
+                                                      ${iconPencil} Edit
+                                                    </button>
+
+                                                    <button type="button" class="fm-btn-action ${isGcDis ? 'text-success' : 'text-danger'}" 
+                                                            onclick="window.toggleSubCategoryStatus('${escapeQuotes(gc.id)}', ${isGcDis})">
+                                                      ${isGcDis ? iconCheck : iconSlash} ${isGcDis ? 'Enable' : 'Disable'}
+                                                    </button>
+
+                                                    <button type="button" class="fm-btn-action" 
+                                                            onclick="window.openAccessRuleModal('sub', '${escapeQuotes(gc.id)}', '${escapeQuotes(gc.title)}')">
+                                                      ${iconShield} Access
+                                                    </button>
+
+                                                    <button type="button" class="fm-btn-action text-danger" 
+                                                            title="Delete Sub-sub-sub-title"
+                                                            onclick="window.promptDeleteSub('${escapeQuotes(gc.id)}', '${escapeQuotes(gc.title)}', 0)">
+                                                      <span style="font-size:14px; font-weight:700;">&times;</span>
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              `;
+                                            }).join('')}
+                                          </div>
+                                        `}
+                                      </div>
+                                    ` : ''}
                                   </div>
                                 `;
                               }).join('')}
@@ -11686,168 +11810,219 @@ window.renderFormsHierarchyTree = () => {
 };
 
 // ============================================================================
-// DRAG AND DROP REORDERING (MAIN TITLES & SUBTITLES)
+// DRAG AND DROP REORDERING (ALL HIERARCHY LEVELS: LEVEL 1, 2, 3, 4)
 // ============================================================================
 
-window.handleMainDragStart = (e, catId) => {
-  window.formsAdminState.draggedMainId = catId;
+window.formsAdminState.draggedItem = null;
+
+// Universal drag start triggered strictly from the grip handles
+window.handleItemDragStart = (e, type, id, parentId, mainId, depth) => {
+  e.stopPropagation();
+  window.formsAdminState.draggedItem = {
+    type, // 'main' or 'sub'
+    id: String(id),
+    parentId: parentId ? String(parentId) : null,
+    mainId: String(mainId),
+    depth: Number(depth || 0)
+  };
   e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', catId);
-  const card = document.getElementById(`fm-main-card-${catId}`);
-  if (card) {
-    card.classList.add('is-dragging');
+  e.dataTransfer.setData('text/plain', String(id));
+
+  // Visual feedback: find closest container element and add is-dragging
+  const el = document.getElementById(type === 'main' ? `fm-main-card-${id}` : (depth === 1 ? `fm-sub-card-${id}` : (depth === 2 ? `fm-subsub-card-${id}` : `fm-subsubsub-${id}`)));
+  if (el) {
+    el.classList.add('is-dragging');
   }
 };
 
-window.handleMainDragOver = (e, targetCatId) => {
+window.handleItemDragOver = (e, targetType, targetId, targetParentId, targetMainId, targetDepth) => {
   e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const targetCard = document.getElementById(`fm-main-card-${targetCatId}`);
-  if (targetCard && window.formsAdminState.draggedMainId !== targetCatId) {
-    targetCard.classList.add('drag-over-top');
-  }
-};
+  e.stopPropagation();
+  const dragged = window.formsAdminState.draggedItem;
+  if (!dragged) return;
 
-window.handleMainDragLeave = (e) => {
-  if (e.currentTarget && e.currentTarget.classList) {
-    e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
-  }
-};
-
-window.handleMainDrop = async (e, targetCatId) => {
-  e.preventDefault();
-  const draggedId = window.formsAdminState.draggedMainId;
-  if (!draggedId || draggedId === targetCatId) {
-    window.handleMainDragEnd(e);
+  // Type mismatch check: main categories cannot be mixed with subcategories
+  if (dragged.type !== targetType) {
+    e.dataTransfer.dropEffect = 'none';
     return;
   }
 
-  const list = [...window.formsAdminState.mainCategories];
-  const fromIdx = list.findIndex(c => c.id === draggedId);
-  const toIdx = list.findIndex(c => c.id === targetCatId);
+  // Same item check
+  if (dragged.id === String(targetId)) {
+    e.dataTransfer.dropEffect = 'none';
+    return;
+  }
 
-  if (fromIdx !== -1 && toIdx !== -1) {
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-
-    // Update sort_order locally
-    list.forEach((item, index) => {
-      item.sort_order = index + 1;
-    });
-    window.formsAdminState.mainCategories = list;
-    window.renderFormsHierarchyTree();
-
-    // Persist to backend database
-    try {
-      const orderPayload = list.map((c, i) => ({ id: c.id, sortOrder: i + 1 }));
-      const res = await apiFetch('/api/admin/content/main-categories/reorder', {
-        method: 'POST',
-        body: JSON.stringify({ order: orderPayload })
-      });
-      if (res.ok) {
-        showToast('Main title order updated successfully! 📌');
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Failed to save title order.');
+  // Descendant cycle check: cannot drop a parent into its own descendant
+  if (dragged.type === 'sub') {
+    const isDescendant = (parentIdToCheck, candidateDescendantId) => {
+      if (!parentIdToCheck || !candidateDescendantId) return false;
+      const subs = window.formsAdminState.subcategories || [];
+      const children = subs.filter(s => String(s.parent_id) === String(parentIdToCheck));
+      for (const c of children) {
+        if (String(c.id) === String(candidateDescendantId)) return true;
+        if (isDescendant(c.id, candidateDescendantId)) return true;
       }
-    } catch (err) {
-      console.error('Reorder error:', err);
-      showToast('Error saving order to database.');
+      return false;
+    };
+    if (isDescendant(dragged.id, String(targetId))) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
     }
   }
 
-  window.handleMainDragEnd(e);
-};
-
-window.handleMainDragEnd = (e) => {
-  window.formsAdminState.draggedMainId = null;
-  document.querySelectorAll('.fm-main-card').forEach(c => {
-    c.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
-  });
-};
-
-// Subtitle Drag and Drop
-window.handleSubDragStart = (e, subId, mainId) => {
-  e.stopPropagation();
-  window.formsAdminState.draggedSubId = subId;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', subId);
-  const card = document.getElementById(`fm-sub-card-${subId}`);
-  if (card) {
-    card.classList.add('is-dragging');
-  }
-};
-
-window.handleSubDragOver = (e, targetSubId) => {
-  e.preventDefault();
-  e.stopPropagation();
   e.dataTransfer.dropEffect = 'move';
-  const targetCard = document.getElementById(`fm-sub-card-${targetSubId}`);
-  if (targetCard && window.formsAdminState.draggedSubId !== targetSubId) {
-    targetCard.classList.add('drag-over-top');
+
+  // Highlight drop target
+  const el = e.currentTarget;
+  if (el && el.classList) {
+    const rect = el.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    if (e.clientY < midY) {
+      el.classList.add('drag-over-top');
+      el.classList.remove('drag-over-bottom');
+    } else {
+      el.classList.add('drag-over-bottom');
+      el.classList.remove('drag-over-top');
+    }
   }
 };
 
-window.handleSubDragLeave = (e) => {
+window.handleItemDragLeave = (e) => {
+  e.stopPropagation();
   if (e.currentTarget && e.currentTarget.classList) {
-    e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+    e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-into');
   }
 };
 
-window.handleSubDrop = async (e, targetSubId, mainId) => {
+window.handleItemDrop = async (e, targetType, targetId, targetParentId, targetMainId, targetDepth) => {
   e.preventDefault();
   e.stopPropagation();
-  const draggedId = window.formsAdminState.draggedSubId;
-  if (!draggedId || draggedId === targetSubId) {
-    window.handleSubDragEnd(e);
+  const dragged = window.formsAdminState.draggedItem;
+  if (!dragged || dragged.id === String(targetId) || dragged.type !== targetType) {
+    window.handleItemDragEnd(e);
     return;
   }
 
-  const allSubs = [...window.formsAdminState.subcategories];
-  const mainSubs = allSubs.filter(s => s.main_category_id === mainId && (!s.parent_id || s.parent_id === ''));
+  const dropTop = e.currentTarget?.classList?.contains('drag-over-top');
+  window.handleItemDragEnd(e);
 
-  const fromIdx = mainSubs.findIndex(s => s.id === draggedId);
-  const toIdx = mainSubs.findIndex(s => s.id === targetSubId);
+  // A. Reordering Main Titles (Level 1)
+  if (dragged.type === 'main') {
+    const list = [...window.formsAdminState.mainCategories];
+    const fromIdx = list.findIndex(c => String(c.id) === dragged.id);
+    const toIdx = list.findIndex(c => String(c.id) === String(targetId));
+    if (fromIdx !== -1 && toIdx !== -1) {
+      const [moved] = list.splice(fromIdx, 1);
+      const insertAt = dropTop ? toIdx : toIdx + 1;
+      const finalIdx = insertAt > fromIdx ? insertAt - 1 : insertAt;
+      list.splice(finalIdx, 0, moved);
 
-  if (fromIdx !== -1 && toIdx !== -1) {
-    const [moved] = mainSubs.splice(fromIdx, 1);
-    mainSubs.splice(toIdx, 0, moved);
+      list.forEach((item, index) => { item.sort_order = index + 1; });
+      window.formsAdminState.mainCategories = list;
+      window.renderFormsHierarchyTree();
 
-    // Update sort_order for mainSubs
-    mainSubs.forEach((item, index) => {
-      item.sort_order = index + 1;
+      try {
+        const orderPayload = list.map((c, i) => ({ id: c.id, sortOrder: i + 1 }));
+        await apiFetch('/api/admin/content/main-categories/reorder', {
+          method: 'POST',
+          body: JSON.stringify({ order: orderPayload })
+        });
+        showToast('Main title order updated successfully! 📌');
+      } catch (err) {
+        showToast('Failed to save main title order.');
+      }
+    }
+    return;
+  }
+
+  // B. Reordering Subcategories (Level 2, 3, 4)
+  if (dragged.type === 'sub') {
+    const allSubs = [...window.formsAdminState.subcategories];
+    const draggedSub = allSubs.find(s => String(s.id) === dragged.id);
+    const targetSub = allSubs.find(s => String(s.id) === String(targetId));
+    if (!draggedSub || !targetSub) return;
+
+    const newParentId = targetSub.parent_id || null;
+    const newMainId = targetSub.main_category_id;
+
+    // Check if parent or main changed
+    const parentChanged = (String(draggedSub.parent_id || '') !== String(newParentId || '')) || (draggedSub.main_category_id !== newMainId);
+    draggedSub.parent_id = newParentId;
+    draggedSub.main_category_id = newMainId;
+
+    // Filter all siblings in the target parent group (excluding dragged item for splice)
+    const siblings = allSubs.filter(s => 
+      String(s.parent_id || '') === String(newParentId || '') && 
+      s.main_category_id === newMainId &&
+      String(s.id) !== dragged.id
+    );
+
+    // Find insertion index relative to target
+    const targetSiblingIdx = siblings.findIndex(s => String(s.id) === String(targetId));
+    const insertIdx = targetSiblingIdx === -1 ? siblings.length : (dropTop ? targetSiblingIdx : targetSiblingIdx + 1);
+    siblings.splice(insertIdx, 0, draggedSub);
+
+    // Update sort_order for all siblings in this group
+    siblings.forEach((s, idx) => {
+      s.sort_order = idx + 1;
     });
 
+    window.formsAdminState.subcategories = allSubs;
     window.renderFormsHierarchyTree();
 
-    // Persist to backend database
     try {
-      const orderPayload = mainSubs.map((s, i) => ({ id: s.id, sortOrder: i + 1 }));
+      const orderPayload = siblings.map(s => ({
+        id: s.id,
+        sortOrder: s.sort_order,
+        parentId: s.parent_id || null,
+        mainCategoryId: s.main_category_id
+      }));
+
       const res = await apiFetch('/api/admin/content/subcategories/reorder', {
         method: 'POST',
         body: JSON.stringify({ order: orderPayload })
       });
+
       if (res.ok) {
-        showToast('Sub-title order updated successfully! 📌');
+        showToast(parentChanged ? 'Title moved and reordered successfully! 📌' : 'Title order updated successfully! 📌');
       } else {
-        const err = await res.json();
-        showToast(err.error || 'Failed to save sub-title order.');
+        const data = await res.json();
+        showToast(data.error || 'Failed to save title order.');
       }
     } catch (err) {
-      console.error('Reorder sub error:', err);
-      showToast('Error saving sub-title order.');
+      console.error('Error reordering subcategories:', err);
+      showToast('Error saving order to database.');
     }
   }
-
-  window.handleSubDragEnd(e);
 };
 
-window.handleSubDragEnd = (e) => {
-  window.formsAdminState.draggedSubId = null;
-  document.querySelectorAll('.fm-sub-card').forEach(c => {
-    c.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+window.handleItemDragEnd = (e) => {
+  if (e && e.stopPropagation) e.stopPropagation();
+  window.formsAdminState.draggedItem = null;
+  document.querySelectorAll('.is-dragging, .drag-over-top, .drag-over-bottom, .drag-over-into').forEach(el => {
+    el.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom', 'drag-over-into');
   });
 };
+
+// Backward-compatibility wrappers for any external callers
+window.handleMainDragStart = (e, catId) => window.handleItemDragStart(e, 'main', catId, null, catId, 0);
+window.handleMainDragOver = (e, catId) => window.handleItemDragOver(e, 'main', catId, null, catId, 0);
+window.handleMainDragLeave = (e) => window.handleItemDragLeave(e);
+window.handleMainDrop = (e, catId) => window.handleItemDrop(e, 'main', catId, null, catId, 0);
+window.handleMainDragEnd = (e) => window.handleItemDragEnd(e);
+
+window.handleSubDragStart = (e, subId, mainId) => window.handleItemDragStart(e, 'sub', subId, null, mainId, 1);
+window.handleSubDragOver = (e, targetSubId) => {
+  const sub = (window.formsAdminState.subcategories || []).find(s => s.id === targetSubId);
+  window.handleItemDragOver(e, 'sub', targetSubId, sub?.parent_id || null, sub?.main_category_id || '', 1);
+};
+window.handleSubDragLeave = (e) => window.handleItemDragLeave(e);
+window.handleSubDrop = (e, targetSubId, mainId) => {
+  const sub = (window.formsAdminState.subcategories || []).find(s => s.id === targetSubId);
+  window.handleItemDrop(e, 'sub', targetSubId, sub?.parent_id || null, sub?.main_category_id || mainId, 1);
+};
+window.handleSubDragEnd = (e) => window.handleItemDragEnd(e);
 
 // Up/Down button click fallbacks for Mobile and Touch
 window.moveMainCategoryOrder = async (catId, direction) => {
@@ -11876,27 +12051,40 @@ window.moveMainCategoryOrder = async (catId, direction) => {
   }
 };
 
-window.moveSubCategoryOrder = async (subId, direction, mainId) => {
+window.moveSubCategoryOrder = async (subId, direction) => {
   const allSubs = [...window.formsAdminState.subcategories];
-  const mainSubs = allSubs.filter(s => s.main_category_id === mainId && (!s.parent_id || s.parent_id === ''));
-  const idx = mainSubs.findIndex(s => s.id === subId);
+  const sub = allSubs.find(s => s.id === subId);
+  if (!sub) return;
+
+  const siblings = allSubs.filter(s => 
+    String(s.parent_id || '') === String(sub.parent_id || '') && 
+    s.main_category_id === sub.main_category_id
+  ).sort((a, b) => (Number(a.sort_order || 0) - Number(b.sort_order || 0)));
+
+  const idx = siblings.findIndex(s => s.id === subId);
   if (idx === -1) return;
   const targetIdx = idx + direction;
-  if (targetIdx < 0 || targetIdx >= mainSubs.length) return;
+  if (targetIdx < 0 || targetIdx >= siblings.length) return;
 
-  const [moved] = mainSubs.splice(idx, 1);
-  mainSubs.splice(targetIdx, 0, moved);
+  const [moved] = siblings.splice(idx, 1);
+  siblings.splice(targetIdx, 0, moved);
 
-  mainSubs.forEach((item, i) => { item.sort_order = i + 1; });
+  siblings.forEach((item, i) => { item.sort_order = i + 1; });
+  window.formsAdminState.subcategories = allSubs;
   window.renderFormsHierarchyTree();
 
   try {
-    const orderPayload = mainSubs.map((s, i) => ({ id: s.id, sortOrder: i + 1 }));
+    const orderPayload = siblings.map((s, i) => ({
+      id: s.id,
+      sortOrder: i + 1,
+      parentId: s.parent_id || null,
+      mainCategoryId: s.main_category_id
+    }));
     await apiFetch('/api/admin/content/subcategories/reorder', {
       method: 'POST',
       body: JSON.stringify({ order: orderPayload })
     });
-    showToast('Sub-title order updated! 📌');
+    showToast('Title order updated! 📌');
   } catch (err) {
     showToast('Error saving order.');
   }
@@ -12116,44 +12304,65 @@ window.executeDeleteMain = async (id, title) => {
 };
 
 // ============================================================================
-// SUB-TITLE & SUB-SUB-TITLE MODALS & HANDLERS
+// SUB-TITLE, SUB-SUB-TITLE & FOURTH-LEVEL TITLE MODALS & HANDLERS
 // ============================================================================
 
-window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
+window.openCreateSubCategoryModal = ({ mainId, parentId = null, editId = null, levelName = 'Sub-title' } = {}) => {
   const container = document.getElementById('forms-admin-modal-container');
   if (!container) return;
 
   const isEdit = Boolean(editId);
   const existing = isEdit ? window.formsAdminState.subcategories.find(s => s.id === editId) : null;
-  const mains = window.formsAdminState.mainCategories || [];
-  const popularEmojis = ['📌', '⭐', '📖', '🔖', '✍️', '🎧', '💬', '🌸', '⚡', '💎', '🌟', '☕', '🔥', '📝'];
+  const mId = existing ? existing.main_category_id : mainId;
+  const pId = existing ? existing.parent_id : parentId;
+
+  const mainCat = window.formsAdminState.mainCategories.find(c => c.id === mId);
+  
+  // Resolve parent chain for breadcrumb display
+  const parentChain = [];
+  if (pId) {
+    let cur = window.formsAdminState.subcategories.find(s => s.id === pId);
+    while (cur) {
+      parentChain.unshift(cur);
+      cur = cur.parent_id ? window.formsAdminState.subcategories.find(s => s.id === cur.parent_id) : null;
+    }
+  }
+
+  // Determine label dynamically based on depth
+  let autoLevelName = levelName;
+  if (!levelName || levelName === 'Sub-title') {
+    if (parentChain.length === 0) autoLevelName = 'Sub-title';
+    else if (parentChain.length === 1) autoLevelName = 'Sub-sub-title';
+    else autoLevelName = 'Sub-sub-sub-title';
+  }
+
+  const popularEmojis = ['📌', '⭐', '📖', '🔖', '✍️', '🎧', '💬', '🌸', '⚡', '💎', '🌟', '☕', '🔥', '📝', '🏷️', '📚', '🏆', '✨'];
 
   container.innerHTML = `
     <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
       <div class="fm-modal-box" onclick="event.stopPropagation()">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
-            ${isEdit ? 'Edit Sub-title' : 'Add New Sub-title'}
+            ${isEdit ? `Edit ${escapeHtml(autoLevelName)}` : `Add New ${escapeHtml(autoLevelName)}`}
           </h3>
           <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
         </div>
 
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Parent Main Title *</label>
-          <select id="modal-sub-main" class="form-input" style="width:100%; box-sizing:border-box;">
-            ${mains.map(m => `
-              <option value="${m.id}" ${(existing ? existing.main_category_id === m.id : preselectedMainId === m.id) ? 'selected' : ''}>
-                ${escapeHtml(m.title)}
-              </option>
-            `).join('')}
-          </select>
+        <!-- Hierarchy Location Path Info Box -->
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:13px; color:#475569;">
+          <div><strong>Main Title:</strong> ${escapeHtml(mainCat ? mainCat.title : mId)}</div>
+          ${parentChain.map((p, idx) => `
+            <div style="margin-top:4px; padding-left:${(idx + 1) * 8}px;">
+              ↳ <strong>${idx === 0 ? 'Sub-title' : (idx === 1 ? 'Sub-sub-title' : 'Parent')}:</strong> ${escapeHtml(p.title)}
+            </div>
+          `).join('')}
         </div>
 
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-title Title Name *</label>
+          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">${escapeHtml(autoLevelName)} Name *</label>
           <input type="text" id="modal-sub-title" class="form-input" 
                  value="${escapeQuotes(existing ? existing.title : '')}" 
-                 placeholder="e.g. நிலவை தொலைத்த வானம் - விமர்சனப்பகுதி" 
+                 placeholder="e.g. Episode Discussions, Chapter Review" 
                  style="width:100%; box-sizing:border-box;"
                  oninput="if(!'${isEdit}') window.autoFillSubSlug(this.value)">
         </div>
@@ -12178,7 +12387,7 @@ window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
           <input type="text" id="modal-sub-slug" class="form-input" 
                  value="${escapeQuotes(existing ? existing.id : '')}" 
                  ${isEdit ? 'readonly style="background:#F1F5F9; cursor:not-allowed; width:100%; box-sizing:border-box;"' : 'style="width:100%; box-sizing:border-box;"'}
-                 placeholder="e.g. nilavai-tholaitha-vaanam">
+                 placeholder="e.g. episode-discussions">
         </div>
 
         <div style="margin-bottom:20px;">
@@ -12191,8 +12400,8 @@ window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
 
         <div style="display:flex; justify-content:flex-end; gap:10px;">
           <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-          <button type="button" class="fm-btn-gold" onclick="window.submitSubForm('${existing ? existing.id : ''}')">
-            ${isEdit ? 'Save Changes' : 'Create Sub-title'}
+          <button type="button" class="fm-btn-gold" onclick="window.submitSubCategoryForm({ mainId: '${escapeQuotes(mId)}', parentId: ${pId ? `'${escapeQuotes(pId)}'` : 'null'}, editId: ${editId ? `'${escapeQuotes(editId)}'` : 'null'}, levelName: '${escapeQuotes(autoLevelName)}' })">
+            ${isEdit ? 'Save Changes' : `Create ${escapeHtml(autoLevelName)}`}
           </button>
         </div>
       </div>
@@ -12212,20 +12421,20 @@ window.autoFillSubSlug = (title) => {
   }
 };
 
-window.submitSubForm = async (editId = null) => {
-  const mainCategoryId = document.getElementById('modal-sub-main')?.value;
+window.submitSubCategoryForm = async ({ mainId, parentId = null, editId = null, levelName = 'Title' } = {}) => {
   const title = document.getElementById('modal-sub-title')?.value.trim();
   const icon = document.getElementById('modal-sub-icon')?.value.trim() || '📌';
   const slug = document.getElementById('modal-sub-slug')?.value.trim();
   const status = document.getElementById('modal-sub-status')?.value || 'published';
 
-  if (!mainCategoryId || !title) {
-    showToast('Please enter parent title and subtitle name.');
+  if (!title) {
+    showToast(`Please enter a ${levelName.toLowerCase()} name.`);
     return;
   }
 
   const payload = {
-    mainCategoryId,
+    mainCategoryId: mainId,
+    parentId: parentId || null,
     title,
     icon,
     status,
@@ -12249,126 +12458,42 @@ window.submitSubForm = async (editId = null) => {
 
     const data = await res.json();
     if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to save Sub-title.');
+      showToast(data.error || `Failed to save ${levelName.toLowerCase()}.`);
       return;
     }
 
-    showToast(editId ? 'Sub-title updated! 📌' : 'Sub-title created! 📌');
+    showToast(editId ? `${levelName} updated! 📌` : `${levelName} created! 📌`);
     window.closeFormsAdminModal();
+    // Auto expand parent so new item is visible immediately
+    if (parentId) window.formsAdminState.expandedSubIds.add(String(parentId));
+    if (mainId) window.formsAdminState.expandedMainIds.add(String(mainId));
     await window.loadFormsAdminData();
   } catch (err) {
-    console.error('Error submitting sub form:', err);
-    showToast('Network error saving sub-title.');
+    console.error('Error submitting sub category form:', err);
+    showToast('Network error saving title.');
   }
 };
 
-/**
- * Add / Edit Sub-sub-title Modal
- */
+// Aliases for backward compatibility
+window.openCreateSubModal = (preselectedMainId = null, editId = null) => {
+  window.openCreateSubCategoryModal({ mainId: preselectedMainId, parentId: null, editId, levelName: 'Sub-title' });
+};
+
 window.openCreateSubSubModal = (mainId, parentSubId, editId = null) => {
-  const container = document.getElementById('forms-admin-modal-container');
-  if (!container) return;
-
-  const isEdit = Boolean(editId);
-  const existing = isEdit ? window.formsAdminState.subcategories.find(s => s.id === editId) : null;
-  const parentSub = window.formsAdminState.subcategories.find(s => s.id === parentSubId);
-  const mainCat = window.formsAdminState.mainCategories.find(c => c.id === mainId);
-
-  container.innerHTML = `
-    <div class="admin-modal-backdrop" onclick="window.closeFormsAdminModal(event)" style="position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
-      <div class="fm-modal-box" onclick="event.stopPropagation()">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-          <h3 style="font-family:'Playfair Display',serif; font-size:1.35rem; color:#0B1F33; margin:0;">
-            ${isEdit ? 'Edit Sub-sub-title' : 'Add New Sub-sub-title'}
-          </h3>
-          <button type="button" onclick="window.closeFormsAdminModal()" style="border:none; background:none; font-size:22px; cursor:pointer; color:#94A3B8;">&times;</button>
-        </div>
-
-        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:13px; color:#475569;">
-          <div><strong>Main Title:</strong> ${escapeHtml(mainCat ? mainCat.title : mainId)}</div>
-          <div style="margin-top:4px;"><strong>Parent Sub-title:</strong> ${escapeHtml(parentSub ? parentSub.title : parentSubId)}</div>
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Sub-sub-title Name *</label>
-          <input type="text" id="modal-subsub-title" class="form-input" 
-                 value="${escapeQuotes(existing ? existing.title : '')}" 
-                 placeholder="e.g. Episode 01 Discussions, Chapter 1 Review" 
-                 style="width:100%; box-sizing:border-box;">
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Icon / Emoji</label>
-          <input type="text" id="modal-subsub-icon" class="form-input" 
-                 value="${escapeQuotes(existing ? (existing.icon || '🔖') : '🔖')}" 
-                 style="width:80px; text-align:center; font-size:18px; box-sizing:border-box;">
-        </div>
-
-        <div style="margin-bottom:20px;">
-          <label style="font-size:12px; font-weight:700; color:#0B1F33; display:block; margin-bottom:4px;">Status</label>
-          <select id="modal-subsub-status" class="form-input" style="width:100%; box-sizing:border-box;">
-            <option value="published" ${existing && (existing.status === 'published' || !existing.is_disabled) ? 'selected' : ''}>Active (Published)</option>
-            <option value="disabled" ${existing && (existing.status === 'disabled' || existing.is_disabled) ? 'selected' : ''}>Disabled (Hidden)</option>
-          </select>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="window.closeFormsAdminModal()">Cancel</button>
-          <button type="button" class="fm-btn-gold" onclick="window.submitSubSubForm('${escapeQuotes(mainId)}', '${escapeQuotes(parentSubId)}', '${existing ? existing.id : ''}')">
-            ${isEdit ? 'Save Changes' : 'Create Sub-sub-title'}
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
+  window.openCreateSubCategoryModal({ mainId, parentId: parentSubId, editId, levelName: 'Sub-sub-title' });
 };
 
-window.submitSubSubForm = async (mainId, parentSubId, editId = null) => {
-  const title = document.getElementById('modal-subsub-title')?.value.trim();
-  const icon = document.getElementById('modal-subsub-icon')?.value.trim() || '🔖';
-  const status = document.getElementById('modal-subsub-status')?.value || 'published';
+window.openCreateSubSubSubModal = (mainId, parentSubId, editId = null) => {
+  window.openCreateSubCategoryModal({ mainId, parentId: parentSubId, editId, levelName: 'Sub-sub-sub-title' });
+};
 
-  if (!title) {
-    showToast('Please enter a sub-sub-title name.');
-    return;
-  }
+window.submitSubForm = (editId = null) => {
+  const mainCategoryId = document.getElementById('modal-sub-main')?.value;
+  window.submitSubCategoryForm({ mainId: mainCategoryId, parentId: null, editId, levelName: 'Sub-title' });
+};
 
-  const payload = {
-    mainCategoryId: mainId,
-    parentId: parentSubId,
-    title,
-    icon,
-    status,
-    is_disabled: status === 'disabled' ? 1 : 0
-  };
-
-  try {
-    let res;
-    if (editId) {
-      res = await apiFetch(`/api/admin/content/subcategories/${encodeURIComponent(editId)}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload)
-      });
-    } else {
-      payload.id = `part-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      res = await apiFetch('/api/admin/content/subcategories', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-    }
-
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to save sub-sub-title.');
-      return;
-    }
-
-    showToast(editId ? 'Sub-sub-title updated!' : 'Sub-sub-title created!');
-    window.closeFormsAdminModal();
-    await window.loadFormsAdminData();
-  } catch (err) {
-    showToast('Error saving sub-sub-title.');
-  }
+window.submitSubSubForm = (mainId, parentSubId, editId = null) => {
+  window.submitSubCategoryForm({ mainId, parentId: parentSubId, editId, levelName: 'Sub-sub-title' });
 };
 
 window.toggleSubCategoryStatus = async (id, currentDis) => {
@@ -12379,7 +12504,7 @@ window.toggleSubCategoryStatus = async (id, currentDis) => {
       body: JSON.stringify({ isDisabled: newDis, status: newDis ? 'disabled' : 'published' })
     });
     if (res.ok) {
-      showToast(newDis ? 'Sub-title disabled.' : 'Sub-title enabled!');
+      showToast(newDis ? 'Title disabled.' : 'Title enabled!');
       await window.loadFormsAdminData();
     }
   } catch (err) {
@@ -12401,8 +12526,8 @@ window.promptDeleteSub = (id, title, childCount = 0) => {
           </h3>
           <p style="font-size:13px; color:#64748B; margin:0; line-height:1.5;">
             ${childCount > 0 
-              ? `<strong style="color:#DC2626;">Warning:</strong> This sub-title contains ${childCount} sub-sub-titles. Deleting it will permanently remove all child titles.`
-              : 'Are you sure you want to permanently delete this sub-title?'}
+              ? `<strong style="color:#DC2626;">Warning:</strong> This section contains ${childCount} nested title(s). Deleting it will permanently remove all child titles.`
+              : 'Are you sure you want to permanently delete this title?'}
           </p>
         </div>
 
@@ -12439,15 +12564,15 @@ window.executeDeleteSub = async (id, title) => {
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      showToast(data.error || 'Failed to delete subcategory.');
+      showToast(data.error || 'Failed to delete title.');
       return;
     }
 
-    showToast('Sub-title deleted successfully! 🗑️');
+    showToast('Title deleted successfully! 🗑️');
     window.closeFormsAdminModal();
     await window.loadFormsAdminData();
   } catch (err) {
-    showToast('Error deleting sub-title.');
+    showToast('Error deleting title.');
   }
 };
 

@@ -388,7 +388,7 @@ export async function getMemberDetails(memberId) {
       a.is_reading, a.current_novel_id, a.current_chapter_num, a.reading_duration_seconds,
       a.last_read_novel_id, a.last_read_chapter_num, a.last_read_at, a.last_read_duration_seconds,
       (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions_count,
-      (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comments_count,
+      (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) + (SELECT COUNT(*) FROM content_comments cc WHERE cc.user_id = u.id) AS comments_count,
       (SELECT COUNT(*) FROM likes l WHERE l.user_id = u.id) AS likes_count
     FROM users u
     LEFT JOIN profiles p ON u.id = p.user_id
@@ -399,33 +399,7 @@ export async function getMemberDetails(memberId) {
   if (!row) return null;
 
   let currentReadingNovel = null;
-  if (row.current_novel_id) {
-    const novel = await queryOne('SELECT title, cover FROM novels WHERE id = ?;', [row.current_novel_id]);
-    if (novel) {
-      currentReadingNovel = {
-        id: row.current_novel_id,
-        title: novel.title,
-        cover: novel.cover,
-        chapterNum: row.current_chapter_num,
-        durationSeconds: row.reading_duration_seconds || 0
-      };
-    }
-  }
-
   let lastReadNovel = null;
-  if (row.last_read_novel_id) {
-    const novel = await queryOne('SELECT title, cover FROM novels WHERE id = ?;', [row.last_read_novel_id]);
-    if (novel) {
-      lastReadNovel = {
-        id: row.last_read_novel_id,
-        title: novel.title,
-        cover: novel.cover,
-        chapterNum: row.last_read_chapter_num,
-        lastReadAt: row.last_read_at,
-        durationSeconds: row.last_read_duration_seconds || 0
-      };
-    }
-  }
 
   // Retrieve security audit history for this specific member
   const auditLogs = await query(`
@@ -1168,8 +1142,8 @@ export async function permanentlyDeleteMember({
     await conn.query('DELETE FROM profiles WHERE user_id = ?;', [numMemberId]);
     await conn.query('DELETE FROM activity_status WHERE user_id = ?;', [numMemberId]);
     await conn.query('DELETE FROM push_subscriptions WHERE user_id = ?;', [numMemberId]);
-    await conn.query('DELETE FROM reading_progress WHERE user_id = ?;', [numMemberId]);
-    await conn.query('DELETE FROM reading_sessions WHERE user_id = ?;', [numMemberId]);
+    await conn.query('DELETE FROM comments WHERE user_id = ?;', [numMemberId]);
+    await conn.query('DELETE FROM content_comments WHERE user_id = ?;', [numMemberId]);
     await conn.query('DELETE FROM notification_preferences WHERE user_id = ?;', [numMemberId]);
     await conn.query('DELETE FROM chat_settings WHERE user_id = ?;', [numMemberId]);
     await conn.query('DELETE FROM chat_locks WHERE user_id = ? OR target_user_id = ?;', [numMemberId, numMemberId]);

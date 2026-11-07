@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { apiMiddleware } from './api.js';
 import { getDb, loadEnv, testDbConnection } from './db.js';
-import { checkAndPublishDueEpisodes, runAutomatedPublishingScheduler } from './scheduler.js';
+import { runAutomatedPublishingScheduler } from './scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');

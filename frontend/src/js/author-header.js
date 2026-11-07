@@ -10,8 +10,6 @@ const PUBLIC_NAV_HTML = `
   <a href="#forms" class="nav-link" data-nav="forms">
     Forms <span class="nav-link-badge">New</span>
   </a>
-  <a href="#audio" class="nav-link" data-nav="audio">Audio Novels</a>
-  <a href="#novels?category=Ongoing" class="nav-link" data-nav="whatsnew">What's New</a>
   <a href="#members" class="nav-link" data-nav="members">Members</a>
   <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="nav-link">Pratilipi</a>
   <a href="#contact" class="nav-link" data-nav="contact">Contact</a>
@@ -202,14 +200,15 @@ function getAdminNavHtml(hash) {
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'novels', label: 'Novels', aliases: ['novel-create', 'novels'] },
-    { id: 'audio', label: 'Audio' },
-    { id: 'episodes', label: 'Episodes' },
-    { id: 'stories', label: 'Stories' },
-    { id: 'forms', label: 'Forms & Content' },
-    { id: 'scheduler', label: 'Scheduler' },
+    { id: 'editor', label: 'Write Novel' },
+    { id: 'novels', label: 'Novel Management', aliases: ['published-novels'] },
+    { id: 'forms', label: 'Form Management' },
     { id: 'writers', label: 'Writers' },
-    { id: 'settings', label: 'Settings' }
+    { id: 'submissions', label: 'Submissions' },
+    { id: 'members', label: 'Members' },
+    { id: 'chat-history', label: 'Chat History' },
+    { id: 'settings', label: 'Settings' },
+    { id: 'trash', label: 'Trash' }
   ];
 
   return tabs.map(t => {
@@ -234,12 +233,14 @@ function getWriterNavHtml(hash) {
 
   const tabs = [
     { id: 'overview', label: 'Dashboard' },
-    { id: 'novels', label: 'My Novels' },
-    { id: 'episodes', label: 'Episodes' },
-    { id: 'editor', label: 'Writing Editor' },
+    { id: 'editor', label: 'Write Novel' },
+    { id: 'novels', label: 'Novel Management', aliases: ['published-novels'] },
+    { id: 'assignments', label: 'My Assignments' },
     { id: 'submissions', label: 'Submissions' },
-    { id: 'guidelines', label: 'Guidelines' },
-    { id: 'profile', label: 'Profile' }
+    { id: 'schedule', label: 'Schedule' },
+    { id: 'notifications', label: 'Notifications' },
+    { id: 'profile', label: 'Profile' },
+    { id: 'trash', label: 'Recycle Bin' }
   ];
 
   return tabs.map(t => {

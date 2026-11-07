@@ -138,6 +138,7 @@ import { apiFetch } from './errors.js';
 import { showToast } from './reader.js';
 import { ADMIN_ICONS } from './admin.js';
 import { updateHeaderUserArea } from './auth.js';
+import { renderNovelContentWritingPage, renderNovelManagementPage } from './novel-system.js';
 
 // Global Writer State
 export const writerState = {
@@ -251,12 +252,14 @@ export async function renderWriterDashboard(container, requestedTab) {
 
   const TAB_TITLES = {
     overview: 'Overview',
-    novels: 'My Novels',
-    write: 'Write Novel',
-    episodes: 'Manage Episodes',
-    editor: 'Writing Editor',
-    'published-novels': 'Published Novel Management',
+    editor: 'Novel Content Writing',
+    novels: 'Novel Management',
+    'published-novels': 'Novel Management',
+    write: 'Novel Content Writing',
+    assignments: 'My Assignments',
+    schedule: 'Publication Schedule',
     status: 'Publishing Status',
+    notifications: 'Notifications',
     trash: 'Recycle Bin',
     profile: 'Profile & Password'
   };
@@ -324,6 +327,24 @@ export async function renderWriterDashboard(container, requestedTab) {
               </span>
             </button>
 
+            <!-- 2. Novel Content Writing -->
+            <button type="button" class="writer-nav-btn ${(writerState.activeTab === 'editor' || writerState.activeTab === 'write') ? 'active' : ''}" 
+                    onclick="switchWriterTab('editor', { novelId: null })">
+              <span class="writer-nav-btn-content">
+                ${ADMIN_ICONS.feather || ADMIN_ICONS.edit}
+                <span>Novel Content Writing</span>
+              </span>
+            </button>
+
+            <!-- 3. Novel Management -->
+            <button type="button" class="writer-nav-btn ${(writerState.activeTab === 'novels' || writerState.activeTab === 'published-novels') ? 'active' : ''}" 
+                    onclick="switchWriterTab('novels')">
+              <span class="writer-nav-btn-content">
+                ${ADMIN_ICONS.book}
+                <span>Novel Management</span>
+              </span>
+            </button>
+
             <!-- 2. My Assignments -->
             <button type="button" class="writer-nav-btn ${writerState.activeTab === 'assignments' ? 'active' : ''}" 
                     onclick="switchWriterTab('assignments')">
@@ -334,75 +355,7 @@ export async function renderWriterDashboard(container, requestedTab) {
               <span class="writer-nav-pill" id="wnav-assignments-count" style="background:#EDE9FE; color:#5B21B6;">${writerState.assignmentsCount || 0}</span>
             </button>
 
-            <!-- 3. My Novels (if permitted) -->
-            ${(!writerState.permissions || writerState.permissions.canNovels) ? `
-              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'novels' ? 'active' : ''}" 
-                      onclick="switchWriterTab('novels')">
-                <span class="writer-nav-btn-content">
-                  ${ADMIN_ICONS.book}
-                  <span>My Novels</span>
-                </span>
-                <span class="writer-nav-pill" id="wnav-novels-count">${writerState.novels.length}</span>
-              </button>
-            ` : ''}
-
-            <!-- 4. My Short Stories (if permitted) -->
-            ${(writerState.permissions && writerState.permissions.canShortStories) ? `
-              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'short-stories' ? 'active' : ''}" 
-                      onclick="switchWriterTab('short-stories')">
-                <span class="writer-nav-btn-content">
-                  ${ADMIN_ICONS.feather || ADMIN_ICONS.book}
-                  <span>My Short Stories</span>
-                </span>
-                <span class="writer-nav-pill" id="wnav-stories-count">${writerState.shortStories?.length || 0}</span>
-              </button>
-            ` : ''}
-
-            <!-- 5. My Audio Novels (if permitted) -->
-            ${(writerState.permissions && writerState.permissions.canAudioNovels) ? `
-              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'audio-novels' ? 'active' : ''}" 
-                      onclick="switchWriterTab('audio-novels')">
-                <span class="writer-nav-btn-content">
-                  ${ADMIN_ICONS.headphones || ADMIN_ICONS.book}
-                  <span>My Audio Novels</span>
-                </span>
-                <span class="writer-nav-pill" id="wnav-audio-count">${writerState.audioNovels?.length || 0}</span>
-              </button>
-            ` : ''}
-
-            <!-- Novel Content Writing -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'editor' ? 'active' : ''}" 
-                    onclick="switchWriterTab('editor')">
-              <span class="writer-nav-btn-content">
-                ${ADMIN_ICONS.edit}
-                <span>Novel Writing</span>
-              </span>
-            </button>
-
-            <!-- Published Novel Management -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'published-novels' ? 'active' : ''}" 
-                    onclick="switchWriterTab('published-novels')">
-              <span class="writer-nav-btn-content">
-                <span>📚</span>
-                <span>Published Novels</span>
-              </span>
-              <span class="writer-nav-pill" id="wnav-published-count">-</span>
-            </button>
-
-            <!-- 6. Manage Episodes (if permitted) -->
-            ${(!writerState.permissions || writerState.permissions.canEpisodes) ? `
-              <button type="button" class="writer-nav-btn ${writerState.activeTab === 'episodes' ? 'active' : ''}" 
-                      onclick="switchWriterTab('episodes')">
-                <span class="writer-nav-btn-content">
-                  ${ADMIN_ICONS.episodes}
-                  <span>Manage Episodes</span>
-                </span>
-                <span class="writer-nav-pill" id="wnav-episodes-count">${writerState.stats?.episodesCount || 0}</span>
-              </button>
-            ` : ''}
-
-            <!-- 7. Publication Schedule -->
-            <button type="button" class="writer-nav-btn ${writerState.activeTab === 'schedule' ? 'active' : ''}" 
+<button type="button" class="writer-nav-btn ${writerState.activeTab === 'schedule' ? 'active' : ''}" 
                     onclick="switchWriterTab('schedule')">
               <span class="writer-nav-btn-content">
                 ${ADMIN_ICONS.clock}
@@ -423,6 +376,17 @@ export async function renderWriterDashboard(container, requestedTab) {
               ` : (writerState.pendingSubmissionsCount > 0 ? `
                 <span class="writer-nav-pill" style="background:#FEF3C7; color:#92400E;">${writerState.pendingSubmissionsCount}</span>
               ` : '')}
+            </button>
+
+                        <!-- Direct Messages -->
+            <button type="button" class="writer-nav-btn" onclick="window.location.hash='#messages';" title="Direct Messages">
+              <span class="writer-nav-btn-content">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>Direct Messages</span>
+              </span>
+              <span class="writer-nav-pill" id="wnav-messages-count" style="background:#50E386; color:#0F172A; font-weight:700; display:none;">0</span>
             </button>
 
             <!-- 9. Notifications -->
@@ -500,6 +464,11 @@ export async function renderWriterDashboard(container, requestedTab) {
       return;
     }
     writerState.editorDirty = false;
+    if (params.novelId !== undefined) {
+      writerState.editingNovelId = params.novelId;
+    } else if (tab === 'editor' && !params.preserveNovelId) {
+      writerState.editingNovelId = null;
+    }
 
     writerState.activeTab = tab;
     if (window.history && window.history.replaceState) {
@@ -573,20 +542,13 @@ function renderActiveWriterTab(params = {}) {
     case 'overview':
       renderWriterOverview(canvas);
       break;
-    case 'novels':
-      renderWriterNovels(canvas);
-      break;
-    case 'write':
-      renderWriterCreateNovel(canvas, params.novelId);
-      break;
-    case 'episodes':
-      renderWriterEpisodes(canvas, params.novelId);
-      break;
     case 'editor':
-      renderWriterEditor(canvas, params.episodeId, params.novelId, params.parentId);
+    case 'write':
+      renderNovelContentWritingPage(canvas, { isWriter: true, novelId: writerState.editingNovelId });
       break;
+    case 'novels':
     case 'published-novels':
-      renderWriterPublishedNovels(canvas);
+      renderNovelManagementPage(canvas, { isWriter: true });
       break;
     case 'status':
       renderWriterStatus(canvas);
@@ -652,12 +614,12 @@ async function renderWriterOverview(canvas) {
     <div class="writer-header-bar">
       <div>
         <h1 class="writer-header-title">Writer Dashboard</h1>
-        <p class="writer-header-sub">Manage your novels and drafts.</p>
+        <p class="writer-header-sub">Manage your assignments, drafts, and submissions.</p>
       </div>
       <div class="writer-header-actions">
-        <button type="button" class="btn btn-gold" onclick="switchWriterTab('write')">
-          ${ADMIN_ICONS.edit}
-          <span>+ Write Novel</span>
+        <button type="button" class="btn btn-gold" onclick="switchWriterTab('assignments')">
+          ${ADMIN_ICONS.feather || ADMIN_ICONS.edit}
+          <span>View Assignments</span>
         </button>
       </div>
     </div>
@@ -729,81 +691,6 @@ async function renderWriterOverview(canvas) {
         </div>
       </div>
     ` : ''}
-
-    <!-- Recent Novels Section (Compact, Clean, Distraction-free) -->
-    <div class="writer-card">
-      <div class="writer-card-header">
-        <h2 class="writer-card-title">Recent Novels</h2>
-        ${writerState.novels.length > 0 ? `
-          <button type="button" class="btn btn-outline" style="font-size:12.5px; padding:4px 10px;" onclick="switchWriterTab('novels')">
-            View All (${writerState.novels.length}) »
-          </button>
-        ` : ''}
-      </div>
-
-      ${writerState.novels.length === 0 ? `
-        <div class="writer-empty-state">
-          <div class="writer-empty-icon">📖</div>
-          <h3 class="writer-empty-title">No novels created yet</h3>
-          <p class="writer-empty-desc">Begin your writing journey by creating your first novel.</p>
-          <button type="button" class="btn btn-gold" onclick="switchWriterTab('write')">
-            + Write Novel
-          </button>
-        </div>
-      ` : `
-        <div class="writer-table-wrap">
-          <table class="writer-table">
-            <thead>
-              <tr>
-                <th style="width:60px;">Cover</th>
-                <th>Novel Title</th>
-                <th style="text-align:center;">Status</th>
-                <th style="text-align:center;">Episodes</th>
-                <th style="text-align:right;">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${writerState.novels.slice(0, 5).map(n => `
-                <tr>
-                  <td>
-                    <img src="${escapeHtml(n.cover || '/default-cover.jpg')}" alt="${escapeHtml(n.title)}" 
-                         style="width:36px; height:50px; object-fit:cover; border-radius:4px; border:1px solid #E2E8F0;">
-                  </td>
-                  <td>
-                    <div style="font-weight:600; color:#0B1F33; font-size:14px;">${escapeHtml(n.title)}</div>
-                    <div style="font-size:12px; color:#64748B;">${escapeHtml(n.genre || 'Novel')}</div>
-                  </td>
-                  <td style="text-align:center;">
-                    <span class="writer-badge ${n.visibility === 'public' ? 'published' : (n.visibility === 'submitted' ? 'review' : 'draft')}">
-                      ${n.visibility === 'public' ? 'Published' : (n.visibility === 'submitted' ? 'Under Review' : 'Draft')}
-                    </span>
-                  </td>
-                  <td style="text-align:center; font-weight:600; color:#0B1F33;">
-                    ${n.chapters_count || n.chaptersCount || 0}
-                  </td>
-                  <td style="text-align:right;">
-                    <div style="display:inline-flex; gap:8px;">
-                      <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 10px;" 
-                              onclick="switchWriterTab('write', { novelId: '${n.id}' })">
-                        Edit
-                      </button>
-                      <button type="button" class="btn btn-gold" style="font-size:12px; padding:5px 10px;" 
-                              onclick="switchWriterTab('episodes', { novelId: '${n.id}' })">
-                        Episodes
-                      </button>
-                      <button type="button" class="btn btn-outline" style="font-size:12px; padding:5px 8px; color:#DC2626; border-color:#FCA5A5;" 
-                              onclick="deleteWriterNovel('${n.id}', '${escapeHtml(n.title)}')" title="Move to Recycle Bin">
-                        ${ADMIN_ICONS.trash}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `}
-    </div>
   `;
 }
 

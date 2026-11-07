@@ -222,8 +222,6 @@
         <a href="#forms" class="nav-link" data-nav="forms">
           Forms <span class="nav-link-badge">New</span>
         </a>
-        <a href="#audio" class="nav-link">Audio Novels</a>
-        <a href="#novels?category=Ongoing" class="nav-link">What's New</a>
         <a href="#members" class="nav-link">Members</a>
         <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="nav-link">Pratilipi</a>
         <a href="#contact" class="nav-link">Contact</a>
@@ -265,7 +263,7 @@
 
         <!-- Private Chat / Messages Icon -->
         <div style="position:relative;">
-          <button class="action-btn" id="header-messages-btn" onclick="openMessagesDrawer()" title="Messages & Chat" aria-label="Messages & Chat">
+          <button class="action-btn" id="header-messages-btn" onclick="navigateToDirectMessages()" title="Direct Messages" aria-label="Direct Messages">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -294,12 +292,10 @@
 
       <nav class="drawer-nav">
         <a href="#forms" class="drawer-nav-item" data-nav="home" onclick="closeMobileDrawer()">Home</a>
-        <a href="#messages" class="drawer-nav-item" id="drawer-messages-item" onclick="closeMobileDrawer(); openMessagesDrawer(); return false;">
-          <span>✉️ Messages</span>
+        <a href="#messages" class="drawer-nav-item" id="drawer-messages-item" onclick="closeMobileDrawer(); navigateToDirectMessages(); return false;">
+          <span>✉️ Direct Messages</span>
           <span class="action-badge" id="drawer-inbox-badge" style="display:none; margin-left:auto;">0</span>
         </a>
-        <a href="#audio" class="drawer-nav-item" onclick="closeMobileDrawer()">Audio Novels</a>
-        <a href="#novels" class="drawer-nav-item" onclick="closeMobileDrawer()">Novel Library</a>
         <a href="#forms" class="drawer-nav-item" data-nav="forms" onclick="closeMobileDrawer()">Forms</a>
         <a href="#members" class="drawer-nav-item" onclick="closeMobileDrawer()">Members</a>
         <a href="#contact" class="drawer-nav-item" onclick="closeMobileDrawer()">Contact</a>
@@ -362,10 +358,43 @@
     </div>
   </footer>
 
-  <!-- Private Messaging Drawer (WhatsApp Desktop Suite) -->
-  <div class="messages-backdrop" id="messages-backdrop" onclick="closeMessagesDrawer()"></div>
-  <div class="messages-drawer" id="messages-drawer">
-    <div class="messages-body" id="messages-body-container"></div>
+  <!-- Direct Message Composer Modal (Reference Design) -->
+  <div class="dm-modal-overlay" id="dm-composer-modal" onclick="if(event.target === this) closeDirectMessageComposerModal();">
+    <div class="dm-composer-card">
+      <div class="dm-composer-header">
+        <div class="dm-composer-title">
+          <span>✉️</span>
+          <span>Start direct message</span>
+        </div>
+        <button type="button" class="dm-composer-close-btn" onclick="closeDirectMessageComposerModal()" aria-label="Close modal">✕</button>
+      </div>
+      <div class="dm-composer-body" id="dm-composer-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Direct Messaging Image Lightbox -->
+  <div class="dm-lightbox-overlay" id="dm-image-lightbox" style="display:none;" onclick="closeChatImageLightbox()">
+    <button type="button" class="dm-lightbox-close" onclick="closeChatImageLightbox()" aria-label="Close image">✕</button>
+    <img id="dm-lightbox-img" class="dm-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+  </div>
+
+  <!-- Direct Messaging Link Dialog -->
+  <div class="dm-link-modal" id="dm-link-modal" style="display:none;" onclick="if(event.target === this) closeDmLinkDialog();">
+    <div class="dm-link-card">
+      <div style="font-weight:700; font-size:15px; margin-bottom:12px; color:#0F172A;">Insert Link</div>
+      <div class="dm-field-group">
+        <label class="dm-field-label">Link Text</label>
+        <input type="text" id="dm-link-text-input" class="dm-title-input" placeholder="Text to display">
+      </div>
+      <div class="dm-field-group" style="margin-top:10px;">
+        <label class="dm-field-label">URL</label>
+        <input type="url" id="dm-link-url-input" class="dm-title-input" placeholder="https://example.com">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button type="button" class="dm-voice-btn discard-btn" onclick="closeDmLinkDialog()">Cancel</button>
+        <button type="button" class="dm-submit-btn" style="width:auto; padding:8px 16px; font-size:13px;" onclick="confirmDmLink()">Insert</button>
+      </div>
+    </div>
   </div>
 
   <!-- Global Search Modal -->
@@ -374,13 +403,12 @@
       <div class="search-input-wrap">
         <span style="font-size:20px; color:var(--color-gold-warm);">🔍</span>
         <input type="text" id="search-input" class="search-input-field" 
-               placeholder="Search novels, chapters, discussions, or members...">
+               placeholder="Search discussions, articles, or members...">
         <button class="modal-close-btn" onclick="closeSearchModal()">✕</button>
       </div>
 
       <div class="search-filter-pills">
         <button class="search-pill active" data-filter="all" onclick="setSearchFilter('all')">All</button>
-        <button class="search-pill" data-filter="novels" onclick="setSearchFilter('novels')">Novels</button>
         <button class="search-pill" data-filter="topics" onclick="setSearchFilter('topics')">Discussions</button>
         <button class="search-pill" data-filter="members" onclick="setSearchFilter('members')">Members</button>
       </div>

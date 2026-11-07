@@ -1,7 +1,7 @@
 // Global Search Controller with Dynamic SQL Data Querying
 
 import { t } from './i18n.js';
-import { getNovelsList, getForumTopics, getMembersList } from './content-service.js';
+import { getForumTopics, getMembersList } from './content-service.js';
 
 let activeSearchFilter = 'all';
 let cachedSearchNovels = [];

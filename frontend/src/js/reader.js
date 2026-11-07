@@ -1,6 +1,27 @@
 import { startReadingSession, heartbeatReadingSession, pauseOrStopReadingSession } from './content-service.js';
 
-// Reader Functionality: Font scaling, Light/Sepia/Dark modes, Scroll progress, Bookmarks
+// Reader Functionality: Font scaling, Light/Sepia/Dark modes, Scroll progress, Bookmarks, Reactions, Share Modal
+
+export const EMOJI_LABELS = {
+  '❤️': 'Love',
+  '👍': 'Like',
+  '👏': 'Clap',
+  '😂': 'Laugh',
+  '😮': 'Surprise',
+  '😍': 'Adore',
+  '😢': 'Sad'
+};
+
+export function formatAuthorRoleBadge(role) {
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'admin' || r === 'administrator') {
+    return '<span class="forms-role-badge role-badge-admin" style="font-size:11px; font-weight:700; background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:12px; border:1px solid #FCD34D;">👑 Admin</span>';
+  }
+  if (r === 'writer' || r === 'author') {
+    return '<span class="forms-role-badge role-badge-writer" style="font-size:11px; font-weight:700; background:#EDE9FE; color:#5B21B6; padding:2px 8px; border-radius:12px; border:1px solid #DDD6FE;">✍️ Writer</span>';
+  }
+  return '<span class="forms-role-badge role-badge-member" style="font-size:11px; font-weight:700; background:#E0F2FE; color:#0369A1; padding:2px 8px; border-radius:12px; border:1px solid #BAE6FD;">👤 Member</span>';
+}
 
 export function initReader() {
   const currentMode = localStorage.getItem('rp_reader_mode') || 'light';
@@ -27,6 +48,110 @@ export function initReader() {
     }
     localStorage.setItem('rp_font_size', savedFontSize.toString());
     applyFontSize(savedFontSize);
+    const display = document.getElementById('reader-font-size-display');
+    if (display) {
+      display.textContent = `${Math.round(savedFontSize * 16)}px`;
+    }
+  };
+
+  window.toggleReaderPreferencesModal = (show) => {
+    let drawer = document.getElementById('reader-prefs-drawer');
+    if (!drawer) {
+      drawer = document.createElement('div');
+      drawer.id = 'reader-prefs-drawer';
+      drawer.className = 'reader-prefs-backdrop';
+      drawer.onclick = (e) => {
+        if (e.target === drawer) window.toggleReaderPreferencesModal(false);
+      };
+      const curMode = localStorage.getItem('rp_reader_mode') || 'light';
+      const curFont = localStorage.getItem('rp_reader_font') || 'tamil';
+      const curLh = parseFloat(localStorage.getItem('rp_reader_line_height') || '1.95');
+      drawer.innerHTML = `
+        <div class="reader-prefs-card" onclick="event.stopPropagation()">
+          <div class="reader-prefs-header">
+            <h4 class="reader-prefs-title"><span>⚙️</span> Reading Preferences</h4>
+            <button type="button" class="reader-tool-btn" onclick="window.toggleReaderPreferencesModal(false)" style="padding:4px 8px;">✕</button>
+          </div>
+          <div class="reader-prefs-body">
+            <!-- Reading Theme -->
+            <div class="reader-prefs-row">
+              <label class="reader-prefs-label">Reading Theme</label>
+              <div class="reader-prefs-options">
+                <button type="button" class="reader-pill-btn ${curMode === 'light' ? 'active' : ''}" data-mode-btn="light" onclick="setReaderMode('light')">☀️ Light</button>
+                <button type="button" class="reader-pill-btn ${curMode === 'sepia' ? 'active' : ''}" data-mode-btn="sepia" onclick="setReaderMode('sepia')">📜 Sepia</button>
+                <button type="button" class="reader-pill-btn ${curMode === 'dark' ? 'active' : ''}" data-mode-btn="dark" onclick="setReaderMode('dark')">🌙 Dark</button>
+              </div>
+            </div>
+
+            <!-- Font Family -->
+            <div class="reader-prefs-row">
+              <label class="reader-prefs-label">Font Family</label>
+              <div class="reader-prefs-options">
+                <button type="button" class="reader-pill-btn ${curFont === 'tamil' ? 'active' : ''}" data-font-btn="tamil" onclick="setReaderFontFamily('tamil')">தமிழ் Mukta</button>
+                <button type="button" class="reader-pill-btn ${curFont === 'serif' ? 'active' : ''}" data-font-btn="serif" onclick="setReaderFontFamily('serif')">Garamond Serif</button>
+                <button type="button" class="reader-pill-btn ${curFont === 'sans' ? 'active' : ''}" data-font-btn="sans" onclick="setReaderFontFamily('sans')">Clean Sans</button>
+                <button type="button" class="reader-pill-btn ${curFont === 'book' ? 'active' : ''}" data-font-btn="book" onclick="setReaderFontFamily('book')">Georgia Book</button>
+              </div>
+            </div>
+
+            <!-- Line Spacing -->
+            <div class="reader-prefs-row">
+              <label class="reader-prefs-label">Line Spacing</label>
+              <div class="reader-prefs-options">
+                <button type="button" class="reader-pill-btn ${curLh === 1.75 ? 'active' : ''}" data-lh-btn="1.75" onclick="setReaderLineHeight(1.75)">Compact</button>
+                <button type="button" class="reader-pill-btn ${curLh === 1.95 ? 'active' : ''}" data-lh-btn="1.95" onclick="setReaderLineHeight(1.95)">Relaxed</button>
+                <button type="button" class="reader-pill-btn ${curLh === 2.15 ? 'active' : ''}" data-lh-btn="2.15" onclick="setReaderLineHeight(2.15)">Generous</button>
+              </div>
+            </div>
+
+            <!-- Font Size -->
+            <div class="reader-prefs-row">
+              <label class="reader-prefs-label">Font Size</label>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <button type="button" class="reader-pill-btn" onclick="adjustFontSize(-0.08)">A− Smaller</button>
+                <button type="button" class="reader-pill-btn" onclick="adjustFontSize(0)">Default</button>
+                <button type="button" class="reader-pill-btn" onclick="adjustFontSize(0.08)">A+ Larger</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(drawer);
+    }
+    if (drawer) {
+      drawer.style.display = show ? 'flex' : 'none';
+      if (show) drawer.classList.add('open');
+      else drawer.classList.remove('open');
+    }
+  };
+
+  window.toggleChapterJumpModal = (show) => {
+    const modal = document.getElementById('chapter-jump-modal');
+    if (modal) {
+      modal.style.display = show ? 'flex' : 'none';
+      if (show) modal.classList.add('open');
+      else modal.classList.remove('open');
+    }
+  };
+
+  window.setReaderFontFamily = (font) => {
+    localStorage.setItem('rp_reader_font', font);
+    let fontFamilyVal = "var(--font-tamil, 'Mukta Malar', 'Noto Serif Tamil', Georgia, serif)";
+    if (font === 'serif') fontFamilyVal = "'Cormorant Garamond', Georgia, serif";
+    else if (font === 'sans') fontFamilyVal = "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif";
+    else if (font === 'book') fontFamilyVal = "Georgia, Cambria, serif";
+    applyFontFamily(fontFamilyVal);
+    document.querySelectorAll('[data-font-btn]').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-font-btn') === font);
+    });
+  };
+
+  window.setReaderLineHeight = (height) => {
+    localStorage.setItem('rp_reader_line_height', height);
+    applyLineHeight(height);
+    document.querySelectorAll('[data-lh-btn]').forEach(b => {
+      b.classList.toggle('active', parseFloat(b.getAttribute('data-lh-btn')) === parseFloat(height));
+    });
   };
 
   window.bookmarkChapter = (novelId, chNum) => {
@@ -39,17 +164,282 @@ export function initReader() {
     showToast(`Chapter ${chNum} bookmarked! ✨`);
   };
 
+  // ==========================================================================
+  // Single Share Button & Clean Share Modal Engine
+  // ==========================================================================
   window.shareChapter = (type, title) => {
-    const url = window.location.href;
-    if (type === 'whatsapp') {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(title + ' - ' + url)}`, '_blank');
-    } else if (type === 'facebook') {
-      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-    } else if (type === 'copy') {
-      navigator.clipboard.writeText(url).then(() => {
-        showToast('Link copied to clipboard! 📋');
-      });
+    if (!type || type === 'modal') {
+      window.openReaderShareModal({ title });
+    } else {
+      window.executeReaderShare(type, title, window.location.href);
     }
+  };
+
+  window.openReaderShareModal = (options = {}) => {
+    const title = options.title || document.title || 'Rudhra Prarthana Novels';
+    const rawUrl = options.url || window.location.href;
+    const url = rawUrl.split('#')[0] + window.location.hash;
+
+    let modal = document.getElementById('reader-share-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'reader-share-modal';
+      modal.className = 'reader-share-modal-backdrop';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      document.body.appendChild(modal);
+    }
+
+    const safeTitle = (title || 'Rudhra Prarthana Novel').replace(/"/g, '&quot;');
+    const safeUrl = url.replace(/"/g, '&quot;');
+
+    modal.innerHTML = `
+      <div class="reader-share-card" onclick="event.stopPropagation()">
+        <div class="reader-share-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">🔗</span>
+            <h3 style="margin:0; font-size:16.5px; font-weight:700; color:var(--reader-heading, #0B1F33);">Share Novel</h3>
+          </div>
+          <button type="button" class="reader-share-close-btn" onclick="window.closeReaderShareModal()" aria-label="Close share dialog">✕</button>
+        </div>
+        <div class="reader-share-body">
+          <div class="reader-share-title-preview" title="${safeTitle}">${safeTitle}</div>
+          
+          <div class="reader-share-grid">
+            <button type="button" class="reader-share-target-btn whatsapp" onclick="window.executeReaderShare('whatsapp', '${safeTitle}', '${safeUrl}')">
+              <span class="share-icon">💬</span>
+              <span class="share-name">WhatsApp</span>
+            </button>
+            <button type="button" class="reader-share-target-btn facebook" onclick="window.executeReaderShare('facebook', '${safeTitle}', '${safeUrl}')">
+              <span class="share-icon">📘</span>
+              <span class="share-name">Facebook</span>
+            </button>
+            <button type="button" class="reader-share-target-btn instagram" onclick="window.executeReaderShare('instagram', '${safeTitle}', '${safeUrl}')">
+              <span class="share-icon">📷</span>
+              <span class="share-name">Instagram</span>
+            </button>
+            ${navigator.share ? `
+              <button type="button" class="reader-share-target-btn native-share" onclick="window.executeReaderShare('native', '${safeTitle}', '${safeUrl}')">
+                <span class="share-icon">🌐</span>
+                <span class="share-name">More Apps</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="reader-share-copy-box">
+            <input type="text" readonly id="reader-share-url-input" value="${safeUrl}" class="reader-share-input" onclick="this.select()">
+            <button type="button" class="reader-copy-btn" id="reader-copy-link-btn" onclick="window.executeReaderShare('copy', '${safeTitle}', '${safeUrl}')">
+              <span>📋</span> Copy Link
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    modal.onclick = (e) => {
+      if (e.target === modal) window.closeReaderShareModal();
+    };
+
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => modal.classList.add('open'));
+  };
+
+  window.closeReaderShareModal = () => {
+    const modal = document.getElementById('reader-share-modal');
+    if (modal) {
+      modal.classList.remove('open');
+      setTimeout(() => {
+        if (modal) modal.style.display = 'none';
+      }, 200);
+    }
+  };
+
+  window.executeReaderShare = async (platform, title, url) => {
+    const shareUrl = url || window.location.href;
+    const shareText = title ? `${title} - ${shareUrl}` : shareUrl;
+
+    if (platform === 'whatsapp') {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
+    } else if (platform === 'facebook') {
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
+    } else if (platform === 'instagram') {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text: shareText, url: shareUrl });
+          return;
+        } catch (e) {
+          if (e.name !== 'AbortError') console.warn('Share error:', e);
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast('Link copied to clipboard! 📸 Paste into Instagram story or message.');
+      } catch {
+        showToast('Link copied! 📋');
+      }
+    } else if (platform === 'native') {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text: shareText, url: shareUrl });
+        } catch (e) {
+          if (e.name !== 'AbortError') console.warn('Native share error:', e);
+        }
+      }
+    } else if (platform === 'copy') {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        const copyBtn = document.getElementById('reader-copy-link-btn');
+        if (copyBtn) {
+          copyBtn.innerHTML = '<span>✅</span> Copied!';
+          setTimeout(() => {
+            if (copyBtn) copyBtn.innerHTML = '<span>📋</span> Copy Link';
+          }, 2000);
+        }
+        showToast('Link copied to clipboard! 📋');
+      } catch {
+        showToast('Link copied to clipboard! 📋');
+      }
+    }
+  };
+
+  // ==========================================================================
+  // Reader 7-Emoji Reaction & Like System
+  // ==========================================================================
+  window.initReaderReactions = async (targetId, targetType = 'content') => {
+    if (!targetId) return;
+    try {
+      const token = localStorage.getItem('rp_auth_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(`/api/reactions?targetType=${encodeURIComponent(targetType)}&targetId=${encodeURIComponent(targetId)}`, { headers });
+      const data = await res.json();
+      if (data && data.success) {
+        window.updateReaderReactionDisplay(data);
+      }
+    } catch (e) {
+      console.warn('[Reader Reactions] Failed to load reactions:', e);
+    }
+  };
+
+  window.toggleReaderEmojiPopup = (event, forceState) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const popup = document.getElementById('reader-emoji-popup');
+    if (!popup) return;
+
+    const isOpen = popup.style.display !== 'none' && popup.classList.contains('open');
+    const nextState = forceState !== undefined ? forceState : !isOpen;
+
+    if (nextState) {
+      popup.style.display = 'block';
+      requestAnimationFrame(() => popup.classList.add('open'));
+
+      const outsideHandler = (e) => {
+        if (!popup.contains(e.target) && !e.target.closest('#reader-main-like-btn')) {
+          window.toggleReaderEmojiPopup(null, false);
+          document.removeEventListener('click', outsideHandler);
+          document.removeEventListener('touchstart', outsideHandler);
+        }
+      };
+      setTimeout(() => {
+        document.addEventListener('click', outsideHandler);
+        document.addEventListener('touchstart', outsideHandler, { passive: true });
+      }, 50);
+    } else {
+      popup.classList.remove('open');
+      setTimeout(() => {
+        if (!popup.classList.contains('open')) {
+          popup.style.display = 'none';
+        }
+      }, 150);
+    }
+  };
+
+  window.handleReaderReaction = async (emoji, targetId, targetType = 'content') => {
+    const container = document.getElementById('reader-like-container');
+    const resolvedId = targetId || (container ? container.getAttribute('data-target-id') : null);
+    const resolvedType = targetType || (container ? container.getAttribute('data-target-type') : 'content');
+
+    if (!resolvedId) return;
+
+    const token = localStorage.getItem('rp_auth_token');
+    if (!token) {
+      window.toggleReaderEmojiPopup(null, false);
+      showToast('Please log in to react to this novel ✨');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/reactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          targetType: resolvedType,
+          targetId: String(resolvedId),
+          emoji
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save reaction');
+      }
+
+      window.updateReaderReactionDisplay(data);
+      window.toggleReaderEmojiPopup(null, false);
+
+      if (data.userReaction === emoji) {
+        showToast(`Reacted with ${emoji} ${EMOJI_LABELS[emoji] || ''}! ✨`);
+      } else {
+        showToast('Reaction updated');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error saving reaction');
+    }
+  };
+
+  window.updateReaderReactionDisplay = (data) => {
+    const btn = document.getElementById('reader-main-like-btn');
+    const icon = document.getElementById('reader-main-like-icon');
+    const label = document.getElementById('reader-main-like-label');
+    const count = document.getElementById('reader-main-like-count');
+    if (!btn || !icon || !label || !count) return;
+
+    const total = Number(data.total || 0);
+    const userReaction = data.userReaction || null;
+
+    if (total > 0) {
+      count.textContent = total;
+      count.style.display = 'inline-flex';
+    } else {
+      count.textContent = '0';
+      count.style.display = 'none';
+    }
+
+    if (userReaction) {
+      btn.classList.add('user-reacted');
+      icon.textContent = userReaction;
+      label.textContent = EMOJI_LABELS[userReaction] || 'Liked';
+      btn.setAttribute('data-user-reaction', userReaction);
+    } else {
+      btn.classList.remove('user-reacted');
+      icon.textContent = '👍';
+      label.textContent = 'Like';
+      btn.removeAttribute('data-user-reaction');
+    }
+
+    // Update active highlight on 7 emoji buttons inside popup
+    document.querySelectorAll('.reader-emoji-item').forEach(el => {
+      const e = el.getAttribute('data-emoji');
+      if (e === userReaction) {
+        el.classList.add('active');
+      } else {
+        el.classList.remove('active');
+      }
+    });
   };
 }
 
@@ -75,6 +465,24 @@ export function applyFontSize(size) {
   const readerPage = document.querySelector('.reader-page');
   if (readerPage) {
     readerPage.style.setProperty('--reader-font-size', `${size}rem`);
+  }
+}
+
+export function applyFontFamily(font) {
+  if (!font) return;
+  document.documentElement.style.setProperty('--reader-font-family', font);
+  const readerPage = document.querySelector('.reader-page');
+  if (readerPage) {
+    readerPage.style.setProperty('--reader-font-family', font);
+  }
+}
+
+export function applyLineHeight(height) {
+  if (!height) return;
+  document.documentElement.style.setProperty('--reader-line-height', height);
+  const readerPage = document.querySelector('.reader-page');
+  if (readerPage) {
+    readerPage.style.setProperty('--reader-line-height', height);
   }
 }
 
@@ -181,7 +589,6 @@ export function setupReadingSessionTracker(novelId, chapterNum) {
   readingTrackerInterval = setInterval(() => {
     if (!currentTrackingSession) return;
 
-    // If tab is hidden or user has been completely idle for more than 120 seconds, pause accumulating time
     const isTabHidden = document.hidden;
     const idleSeconds = (Date.now() - lastUserActivityTime) / 1000;
 
@@ -200,7 +607,7 @@ export function setupReadingSessionTracker(novelId, chapterNum) {
     ).catch(() => {});
   }, 25000);
 
-  // 4. Tab visibility change (pause when tab hidden, resume when tab visible)
+  // 4. Tab visibility change
   const onVisibilityChange = () => {
     if (document.hidden) {
       if (currentTrackingSession) {
@@ -259,4 +666,8 @@ export function stopReadingSessionTracker() {
     pauseOrStopReadingSession(currentTrackingSession.novelId, currentTrackingSession.chapterNum).catch(() => {});
     currentTrackingSession = null;
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.formatAuthorRoleBadge = formatAuthorRoleBadge;
 }

@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://desert-sherman-like-ours.trycloudflare.com/api/$1"
+      "destination": "https://equipped-checking-predicted-relax.trycloudflare.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://desert-sherman-like-ours.trycloudflare.com/uploads/$1"
+      "destination": "https://equipped-checking-predicted-relax.trycloudflare.com/uploads/$1"
     },
     {
       "source": "/((?!assets/).*)",

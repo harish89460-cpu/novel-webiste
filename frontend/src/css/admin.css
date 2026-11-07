@@ -4455,6 +4455,122 @@ body.admin-view .site-header {
   color: #1E293B;
 }
 
+/* Level 3 Sub-sub-title Card & Collapsible Body */
+.fm-subsub-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.fm-subsub-card:last-child {
+  margin-bottom: 0;
+}
+
+.fm-subsub-card:hover {
+  border-color: #CBD5E1;
+}
+
+.fm-subsub-card.is-dragging,
+.fm-subsub-row.is-dragging,
+.fm-subsubsub-row.is-dragging {
+  opacity: 0.5;
+  border: 2px dashed #F59E0B !important;
+}
+
+.fm-subsub-card.drag-over-top,
+.fm-subsub-row.drag-over-top,
+.fm-subsubsub-row.drag-over-top {
+  border-top: 2px solid #F59E0B !important;
+}
+
+.fm-subsub-card.drag-over-bottom,
+.fm-subsub-row.drag-over-bottom,
+.fm-subsubsub-row.drag-over-bottom {
+  border-bottom: 2px solid #F59E0B !important;
+}
+
+.fm-subsub-body {
+  background: #F8FAFC;
+  padding: 8px 12px 10px;
+  border-top: 1px solid #F1F5F9;
+}
+
+.fm-subsub-empty-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #FFFFFF;
+  border: 1px dashed #CBD5E1;
+  border-radius: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Level 4 Sub-sub-sub-title Row */
+.fm-subsubsubs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fm-subsubsub-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-left: 3px solid #C89B3C;
+  border-radius: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+  transition: all 0.15s ease;
+}
+
+.fm-subsubsub-row:hover {
+  border-color: #CBD5E1;
+  background: #FFFDF9;
+}
+
+.fm-subsubsub-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fm-subsubsub-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  word-break: break-word;
+}
+
+.fm-btn-gold-xs {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fm-btn-gold-xs:hover {
+  background: #FDE68A;
+  color: #78350F;
+}
+
 /* Modals */
 .fm-modal-box {
   background: #FFFFFF;
@@ -5346,3 +5462,233 @@ button.btn-loading *,
     display: none;
   }
 }
+
+/* =========================================================================
+   NOVEL CONTENT WRITING & NOVEL MANAGEMENT SYSTEM
+   ========================================================================= */
+
+.novel-writer-container {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1E293B;
+}
+
+.novel-editor-toolbar {
+  position: sticky;
+  top: 70px;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+
+.novel-editor-toolbar .toolbar-btn {
+  transition: all 0.15s ease-in-out;
+}
+
+.novel-editor-toolbar .toolbar-btn:hover {
+  background: #F1F5F9 !important;
+  border-color: #94A3B8 !important;
+  color: #0F172A !important;
+}
+
+.novel-editor-toolbar .toolbar-btn:active {
+  transform: scale(0.97);
+}
+
+.novel-editor-surface-wrap {
+  position: relative;
+  transition: box-shadow 0.2s ease;
+}
+
+.novel-editor-surface-wrap:focus-within {
+  box-shadow: 0 0 0 2px rgba(200, 155, 60, 0.25), 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+#novel-editor-surface:empty:before {
+  content: "Start writing your novel content here... (Use the toolbar above to style headings, quotes, bold, links, etc.)";
+  color: #94A3B8;
+  font-style: italic;
+  pointer-events: none;
+}
+
+#novel-editor-surface img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 14px 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+#novel-editor-surface a {
+  color: #2563EB;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+#novel-editor-surface blockquote {
+  border-left: 4px solid #C89B3C;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #475569;
+  font-style: italic;
+  background: #FFFDF8;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-radius: 0 6px 6px 0;
+}
+
+#novel-editor-surface h1, 
+#novel-editor-surface h2, 
+#novel-editor-surface h3 {
+  color: #0B1F33;
+  font-family: 'Playfair Display', serif;
+  margin-top: 18px;
+  margin-bottom: 10px;
+}
+
+/* Status badging */
+.novel-save-badge {
+  transition: all 0.2s ease;
+}
+
+/* Management table responsive styles */
+@media (max-width: 768px) {
+  .novel-top-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .novel-top-action-bar > div {
+    justify-content: space-between;
+  }
+  .novel-editor-toolbar {
+    top: 60px;
+  }
+  .novel-editor-surface-wrap {
+    padding: 18px 16px !important;
+  }
+}
+
+
+/* ==========================================================================
+   Novel Writing & Management Responsive Rules
+   ========================================================================== */
+@media (max-width: 768px) {
+  .novel-writing-container {
+    padding: 12px 8px !important;
+  }
+  .novel-top-action-bar {
+    padding: 10px 12px !important;
+    gap: 10px !important;
+  }
+  .novel-top-action-bar button,
+  .novel-top-action-bar a {
+    font-size: 12.5px !important;
+    padding: 6px 10px !important;
+  }
+  .novel-editor-toolbar {
+    padding: 6px 8px !important;
+    gap: 4px !important;
+    overflow-x: auto;
+    flex-wrap: wrap;
+  }
+  .novel-editor-toolbar select {
+    max-width: 120px !important;
+    font-size: 12px !important;
+  }
+  .novel-editor-toolbar .toolbar-btn {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 12px !important;
+  }
+  .novel-editor-surface {
+    padding: 16px 12px !important;
+    font-size: 1rem !important;
+  }
+  .novel-mg-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .novel-mg-filters {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .novel-mg-filters input,
+  .novel-mg-filters select {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .novel-top-action-bar > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+  .novel-top-action-bar > div:last-child button,
+  .novel-top-action-bar > div:last-child a {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+  }
+  .novel-editor-toolbar select {
+    max-width: 95px !important;
+  }
+}
+
+/* ============================================================================
+   ADMIN DYNAMIC UPDATE PANELS RESPONSIVE STYLES
+   ============================================================================ */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.panel-drag-card {
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panel-drag-card:hover {
+  border-color: #CBD5E1 !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05) !important;
+  transform: translateY(-1px);
+}
+
+.panel-drag-card.dragging {
+  opacity: 0.45;
+  background-color: #FEF3C7 !important;
+  border: 1.5px dashed #B88635 !important;
+}
+
+.btn-move-panel:hover:not(:disabled) {
+  background: #E2E8F0 !important;
+  color: #0B1F33 !important;
+}
+
+.custom-panel-row:hover {
+  box-shadow: 0 4px 12px rgba(11, 31, 51, 0.06);
+}
+
+@media (max-width: 992px) {
+  .update-panels-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .update-panels-admin-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .update-panels-admin-header button {
+    width: 100% !important;
+    justify-content: center;
+  }
+}
+

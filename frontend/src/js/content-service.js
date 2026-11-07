@@ -11,78 +11,72 @@ export function clearHomepageCache() {
 }
 
 /**
- * Fetch dynamic homepage content from the MySQL API
- */
-export async function getHomepageContent(forceRefresh = false) {
-  if (cachedHomepageData && !forceRefresh) {
-    return cachedHomepageData;
-  }
-
-  try {
-    const res = await apiFetch('/api/novels/homepage');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && (data.orderedSections || data.sections)) {
-        cachedHomepageData = data;
-        return data;
-      }
-    }
-  } catch (err) {
-    console.warn('[Content-Service] Error fetching homepage from SQL backend:', err.message);
-  }
-
-  // Graceful fallback structure if network/server is interrupted
-  return {
-    success: false,
-    sections: {
-      featured: { title: 'Featured Ongoing Novels', subtitle: 'Currently Releasing', visible: true, novels: [] },
-      continueReading: { title: 'Continue Reading', subtitle: 'Pick Up Where You Left Off', visible: true, novels: [] },
-      audio: { title: 'Audio Novels', subtitle: 'Listen & Enjoy', visible: true, novels: [] },
-      trending: { title: 'Trending Novels', subtitle: 'Reader Favorites', visible: true, novels: [] },
-      completed: { title: 'Completed Novels', subtitle: 'Completed Works', visible: true, novels: [] }
-    }
-  };
-}
-
-/**
- * Fetch novels list from the MySQL API
+ * Fetch novels list from the content hierarchy and articles
  */
 export async function getNovelsList(filters = {}) {
   try {
-    const params = new URLSearchParams();
-    if (filters.status) params.set('status', filters.status);
-    if (filters.category) params.set('category', filters.category);
-    if (filters.all) params.set('all', 'true');
-
-    const res = await apiFetch(`/api/novels?${params.toString()}`);
+    const res = await apiFetch('/api/content/hierarchy');
     if (res.ok) {
       const data = await res.json();
-      if (data.novels && Array.isArray(data.novels)) {
-        return data.novels;
+      if (data.success && Array.isArray(data.hierarchy)) {
+        const novels = [];
+        for (const cat of data.hierarchy) {
+          for (const sub of (cat.subcategories || [])) {
+            for (const art of (sub.articles || [])) {
+              novels.push({
+                id: art.id,
+                title: art.title,
+                cover: art.coverImage || '/images/logo.png',
+                author: art.authorName || 'Rudhra Prarthana',
+                category: cat.title,
+                genre: sub.title,
+                views: art.viewsCount || 0,
+                commentsCount: art.commentsCount || 0,
+                readLink: '#thread?id=' + encodeURIComponent(art.uniqueSlug || art.id)
+              });
+            }
+          }
+        }
+        return novels;
       }
     }
   } catch (err) {
     console.warn('[Content-Service] Error fetching novels list:', err.message);
   }
-
   return [];
 }
 
 /**
- * Get single novel by ID from the MySQL API (includes full chapters list)
+ * Get single novel/story by ID (includes articles and chapters)
  */
 export async function getNovelById(id) {
   if (!id) return null;
   try {
-    const res = await apiFetch(`/api/novels/${encodeURIComponent(id)}`);
+    const res = await apiFetch('/api/content/articles/' + encodeURIComponent(id));
     if (res.ok) {
       const data = await res.json();
-      if (data.novel) return data.novel;
+      if (data.success && data.article) {
+        const art = data.article;
+        return {
+          id: art.id,
+          title: art.title,
+          cover: art.coverImage || '/images/logo.png',
+          author: art.authorName || 'Rudhra Prarthana',
+          category: art.mainCategoryTitle || 'Novel',
+          chapters: (art.children || []).map(ch => ({
+            id: ch.id,
+            num: ch.id,
+            chapterNum: ch.id,
+            episodeNumber: ch.id,
+            title: ch.title,
+            publishedAt: ch.publishedAt
+          }))
+        };
+      }
     }
   } catch (err) {
-    console.warn(`[Content-Service] Error fetching novel ${id}:`, err.message);
+    console.warn('[Content-Service] Error fetching novel by ID:', err.message);
   }
-
   return null;
 }
 
@@ -373,36 +367,14 @@ export async function updateNotificationPreferences(preferences) {
  * Fetch reading progress for a novel
  */
 export async function getReadingProgress(novelId = null) {
-  try {
-    const url = novelId 
-      ? `/api/user/reading-progress?novel=${encodeURIComponent(novelId)}`
-      : '/api/user/reading-progress';
-    const res = await apiFetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      return data.progress || null;
-    }
-  } catch (err) {
-    console.warn('[Content-Service] Error fetching reading progress:', err.message);
-  }
-
-  return null;
+  return [];
 }
 
 /**
  * Save reading progress for a novel chapter
  */
 export async function saveReadingProgress(novelId, chapterNum, percentage = 100) {
-  try {
-    const res = await apiFetch('/api/user/reading-progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ novelId, chapterNum, percentage })
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: true };
 }
 
 /**
@@ -441,23 +413,6 @@ export async function toggleLike(targetType, targetId) {
  * Fetch published audio novels list for readers
  */
 export async function getAudioNovelsList(filters = {}) {
-  try {
-    const params = new URLSearchParams();
-    if (filters.search) params.set('search', filters.search);
-    if (filters.language) params.set('language', filters.language);
-    if (filters.novelId) params.set('novelId', filters.novelId);
-    if (filters.sort) params.set('sort', filters.sort);
-
-    const res = await apiFetch(`/api/audio-novels?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.audioNovels)) {
-        return data.audioNovels;
-      }
-    }
-  } catch (err) {
-    console.warn('[Content-Service] Error fetching audio novels list:', err.message);
-  }
   return [];
 }
 
@@ -465,18 +420,6 @@ export async function getAudioNovelsList(filters = {}) {
  * Fetch a single audio novel by ID or slug with multi-part episodes
  */
 export async function getAudioNovelDetail(idOrSlug) {
-  if (!idOrSlug) return null;
-  try {
-    const res = await apiFetch(`/api/audio-novels/${encodeURIComponent(idOrSlug)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.audioNovel) {
-        return data.audioNovel;
-      }
-    }
-  } catch (err) {
-    console.warn(`[Content-Service] Error fetching audio novel ${idOrSlug}:`, err.message);
-  }
   return null;
 }
 
@@ -484,23 +427,6 @@ export async function getAudioNovelDetail(idOrSlug) {
  * Fetch admin list of all audio novels (drafts + published)
  */
 export async function getAdminAudioNovels(filters = {}) {
-  try {
-    const params = new URLSearchParams();
-    if (filters.search) params.set('search', filters.search);
-    if (filters.language) params.set('language', filters.language);
-    if (filters.novelId) params.set('novelId', filters.novelId);
-    if (filters.sort) params.set('sort', filters.sort);
-
-    const res = await apiFetch(`/api/admin/audio-novels?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.audioNovels)) {
-        return data.audioNovels;
-      }
-    }
-  } catch (err) {
-    console.warn('[Content-Service] Error fetching admin audio novels:', err.message);
-  }
   return [];
 }
 
@@ -508,46 +434,21 @@ export async function getAdminAudioNovels(filters = {}) {
  * Create an audio novel (admin)
  */
 export async function createAdminAudioNovel(audioData) {
-  try {
-    const res = await apiFetch('/api/admin/audio-novels', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(audioData)
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: false, error: 'Audio Novels module removed' };
 }
 
 /**
  * Update an audio novel (admin)
  */
 export async function updateAdminAudioNovel(id, audioData) {
-  try {
-    const res = await apiFetch(`/api/admin/audio-novels/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(audioData)
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: false, error: 'Audio Novels module removed' };
 }
 
 /**
  * Delete an audio novel (admin)
  */
 export async function deleteAdminAudioNovel(id) {
-  try {
-    const res = await apiFetch(`/api/admin/audio-novels/${encodeURIComponent(id)}`, {
-      method: 'DELETE'
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: false, error: 'Audio Novels module removed' };
 }
 
 /**
@@ -653,62 +554,26 @@ export async function getForumLiveStats() {
  * Start or resume a verified reading session for the logged-in member
  */
 export async function startReadingSession(novelId, chapterNum, tabId = null) {
-  try {
-    const res = await apiFetch('/api/reading/session/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ novelId, chapterNum, tabId })
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: true };
 }
 
 /**
  * Send heartbeat for active reading session
  */
 export async function heartbeatReadingSession(novelId, chapterNum, tabId = null, secondsElapsed = 25) {
-  try {
-    const res = await apiFetch('/api/reading/session/heartbeat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ novelId, chapterNum, tabId, secondsElapsed })
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: true };
 }
 
 /**
  * Pause or stop a reading session
  */
 export async function pauseOrStopReadingSession(novelId = null, chapterNum = null) {
-  try {
-    const res = await apiFetch('/api/reading/session/pause', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ novelId, chapterNum })
-    });
-    return await res.json();
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { success: true };
 }
 
 /**
  * Fetch a member's reading activity (privacy protected)
  */
 export async function getMemberReadingActivity(memberIdOrUsername) {
-  try {
-    const res = await apiFetch(`/api/members/${encodeURIComponent(memberIdOrUsername)}/reading-activity`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.activity || null;
-    }
-  } catch (err) {
-    console.warn('[Content-Service] Failed to fetch member reading activity:', err.message);
-  }
-  return null;
+  return { readingTimeFormatted: '0 min', lastReadNovel: null };
 }

@@ -1,14 +1,12 @@
 import { moveToTrash } from './trash.js';
-import { getPublicShortStories } from './short-stories.js';
-import { checkAndPublishDueNovels } from './scheduler.js';
-import { transliterateTamil } from './novels.js';
-// Forms, Novel Content, and Reading Management Layer for Rudhra Prarthana Novels
-// Implements 3-Level Hierarchy: Main Title -> Sub Title -> Content Title -> Reading Content
+// Forms, Threads, and Content Management Layer for Rudhra Prarthana Novels
+// Implements 3-Level Hierarchy: Main Category -> Sub Category -> Content Articles
 // With dedicated reading pages, comments, and fine-grained individual member access control
 
 import { query, queryOne, getDb } from './db.js';
 import { recordAdminAudit } from './admin-members.js';
 import { createNotification } from './notifications.js';
+import { checkAndPublishDueArticles } from './scheduler.js';
 
 /**
  * Check if a given user is an authorized administrator or editor
@@ -35,20 +33,12 @@ export function isUserWriter(user) {
  */
 export function generateSlug(text) {
   if (!text || typeof text !== 'string') return `item-${Date.now().toString(36)}`;
-  const transliterated = transliterateTamil(text.trim());
-  let slug = transliterated
+  let slug = text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
     .replace(/-{2,}/g, '-');
-  if (!slug) {
-    slug = text
-      .toLowerCase()
-      .trim()
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      .replace(/^-+|-+$/gu, '')
-      .replace(/-{2,}/g, '-');
-  }
   if (!slug) {
     slug = `item-${Date.now().toString(36)}`;
   }
@@ -125,7 +115,7 @@ export async function checkAccessRestriction({ targetType, targetId, userId }) {
  * Main Titles -> Sub Titles -> Content Titles
  */
 export async function getContentHierarchy(currentUser = null) {
-  await checkAndPublishDueNovels().catch(() => {});
+  await checkAndPublishDueArticles().catch(() => {});
   const isAdmin = isUserAdmin(currentUser);
   const userId = currentUser ? currentUser.id : null;
 
@@ -145,13 +135,13 @@ export async function getContentHierarchy(currentUser = null) {
 
   // 3. Fetch Content Articles (Content Titles)
   const articlesQuery = isAdmin
-    ? `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
+    ? `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id,
               title, summary, cover_image, author_id, author_name, status, is_published,
               is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
               published_at, scheduled_at, created_at, updated_at
        FROM content_articles 
        ORDER BY sort_order ASC, published_at DESC, id DESC;`
-    : `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
+    : `SELECT id, unique_slug, main_category_id, sub_category_id, parent_id,
               title, summary, cover_image, author_id, author_name, status, is_published,
               is_disabled, visibility, access_permission, views_count, comments_count, sort_order,
               published_at, scheduled_at, created_at, updated_at
@@ -160,23 +150,6 @@ export async function getContentHierarchy(currentUser = null) {
        ORDER BY sort_order ASC, published_at DESC, id DESC;`;
   
   const allArticles = await query(articlesQuery);
-
-  // 3.5. Fetch discussion comments counts for review/subcategories
-  const subCommentsMap = new Map();
-  try {
-    const subCommentCounts = await query(`
-      SELECT novel_id, COUNT(*) AS count 
-      FROM comments 
-      WHERE novel_id LIKE 'review_sub_%'
-      GROUP BY novel_id;
-    `);
-    for (const row of subCommentCounts) {
-      const subId = row.novel_id.replace(/^review_sub_/, '');
-      subCommentsMap.set(subId, Number(row.count || 0));
-    }
-  } catch (err) {
-    console.warn('Failed to query subcategory discussion comments:', err.message);
-  }
 
   // 4. Fetch Active Access Rules to filter for non-admin readers
   let userRestrictions = [];
@@ -192,60 +165,6 @@ export async function getContentHierarchy(currentUser = null) {
     if (isAdmin) return false;
     return userRestrictions.some(r => r.target_type === type && String(r.target_id) === String(id));
   };
-
-  // 5. Fetch Novels with latest published episodes for Ongoing / Completed / Audio categories
-  const novelsWithEpisodes = await query(`
-    SELECT n.id, n.title, n.author, n.category, n.status, n.badge, n.cover, n.description,
-           n.chapters_count, n.views, n.rating, n.updated_date, n.is_audio, n.audio_voice, n.audio_duration,
-           n.content_type, n.visibility, n.author_id, n.scheduled_at, n.is_published,
-           (SELECT COUNT(*) FROM comments c WHERE c.novel_id = n.id) as comments_count,
-           (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.status = 'published') as total_episodes,
-           (
-             SELECT c.title 
-             FROM chapters c 
-             WHERE c.novel_id = n.id AND c.status = 'published'
-             ORDER BY c.sort_order DESC, c.id DESC LIMIT 1
-           ) as latest_episode_title,
-           (
-             SELECT COALESCE(c.episode_number, c.chapter_num) 
-             FROM chapters c 
-             WHERE c.novel_id = n.id AND c.status = 'published'
-             ORDER BY c.sort_order DESC, c.id DESC LIMIT 1
-           ) as latest_episode_num,
-           (
-             SELECT c.published_at 
-             FROM chapters c 
-             WHERE c.novel_id = n.id AND c.status = 'published'
-             ORDER BY c.sort_order DESC, c.id DESC LIMIT 1
-           ) as latest_published_at
-    FROM novels n
-    WHERE n.is_published = 1 AND n.status != 'Draft'
-    ORDER BY latest_published_at DESC, n.sort_order ASC, n.id ASC;
-  `);
-
-  let userAllowedNovelIds = new Set();
-  if (!isAdmin && userId) {
-    const rules = await query(`
-      SELECT target_id FROM content_access_rules 
-      WHERE target_type IN ('novel', 'audio_novel', 'short_story') 
-        AND user_id = ? AND rule_type = 'allow'
-        AND (expires_at IS NULL OR expires_at > NOW());
-    `, [userId]);
-    rules.forEach(r => userAllowedNovelIds.add(String(r.target_id)));
-  }
-
-  const visibleNovels = novelsWithEpisodes.filter(n => {
-    if (isAdmin) return true;
-    if (userId && Number(n.author_id) === Number(userId)) return true;
-    if (!n.is_published || n.status === 'Draft' || n.visibility === 'draft') return false;
-    if (n.status === 'Scheduled' && n.scheduled_at && new Date(n.scheduled_at) > new Date()) return false;
-    const vis = (n.visibility || 'public').toLowerCase();
-    if (vis === 'public') return true;
-    if (vis === 'private' || vis === 'admin_only') return false;
-    if (vis === 'members' || vis === 'all_members') return Boolean(userId);
-    if (vis === 'selected_members') return userAllowedNovelIds.has(String(n.id));
-    return true;
-  });
 
   // Assemble the hierarchy
   const hierarchy = [];
@@ -341,7 +260,7 @@ export async function getContentHierarchy(currentUser = null) {
         });
 
         const sortedSubArticles = [...accessibleArticles].sort((a, b) => new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0));
-        const subDiscussionComments = subCommentsMap.get(sub.id) || 0;
+        const subDiscussionComments = 0;
 
         const childItems = childSubs.reduce((sum, c) => sum + (c.stats?.totalItems || 0), 0);
         const childComments = childSubs.reduce((sum, c) => sum + (c.stats?.totalComments || 0), 0);
@@ -400,151 +319,8 @@ export async function getContentHierarchy(currentUser = null) {
     });
     mainItem.articles = buildContentTree(accessibleCategoryArticles, null);
 
-    // Special category novel integration:
-    // Ongoing Novels
-    if (mainCat.id === 'ongoing-novels') {
-      const ongoingNovels = visibleNovels.filter(n => n.status === 'Ongoing' || (n.category && n.category.toLowerCase().includes('ongoing')));
-      mainItem.novels = ongoingNovels.map(n => ({
-        id: n.id,
-        title: n.title,
-        author: n.author,
-        category: n.category,
-        cover: n.cover,
-        views: n.views || '0',
-        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-        commentsCount: Number(n.comments_count || 0),
-        latestEpisodeTitle: n.latest_episode_title || 'Episode 01',
-        latestEpisodeNum: n.latest_episode_num || '1',
-        updatedDate: n.latest_published_at ? new Date(n.latest_published_at).toLocaleDateString() : (n.updated_date || 'Recent'),
-        link: `#novel?id=${encodeURIComponent(n.id)}`,
-        readLink: `#reader?novel=${encodeURIComponent(n.id)}&ch=${encodeURIComponent(n.latest_episode_num || '1')}`
-      }));
-    }
-
-    // Completed Novels
-    if (mainCat.id === 'completed-novels') {
-      const completedNovels = visibleNovels.filter(n => n.status === 'Completed' || (n.category && n.category.toLowerCase().includes('completed')));
-      mainItem.novels = completedNovels.map(n => ({
-        id: n.id,
-        title: n.title,
-        author: n.author,
-        category: n.category,
-        cover: n.cover,
-        views: n.views || '0',
-        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-        commentsCount: Number(n.comments_count || 0),
-        latestEpisodeTitle: n.latest_episode_title || 'Full Novel',
-        latestEpisodeNum: n.latest_episode_num || '1',
-        updatedDate: n.updated_date || 'Completed',
-        link: `#novel?id=${encodeURIComponent(n.id)}`,
-        readLink: `#reader?novel=${encodeURIComponent(n.id)}&ch=1`
-      }));
-    }
-
-    // Short Stories
-    if (mainCat.id === 'short-stories' || mainCat.id === 'Short stories' || (mainCat.id && mainCat.id.toLowerCase().replace(/[\s_]+/g, '-') === 'short-stories')) {
-      try {
-        const publicStories = await getPublicShortStories();
-        if (publicStories && publicStories.length > 0) {
-          mainItem.novels = publicStories.map(s => ({
-            id: s.slug || String(s.id),
-            rawId: s.id,
-            title: s.title,
-            author: s.author,
-            genre: s.genre,
-            cover: s.coverImage || '/default-cover.jpg',
-            views: Number(s.viewsCount || 0).toLocaleString(),
-            viewsCount: Number(s.viewsCount || 0),
-            commentsCount: Number(s.commentsCount || 0),
-            latestEpisodeTitle: s.genre || 'Short Story',
-            latestEpisodeNum: '1',
-            updatedDate: s.publishedAt ? new Date(s.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent',
-            link: `#story?id=${encodeURIComponent(s.slug || s.id)}`,
-            readLink: `#story?id=${encodeURIComponent(s.slug || s.id)}`
-          }));
-        } else {
-          const shortNovels = visibleNovels.filter(n => (n.category && n.category.toLowerCase().includes('short')));
-          mainItem.novels = shortNovels.map(n => ({
-            id: n.id,
-            title: n.title,
-            author: n.author,
-            cover: n.cover,
-            views: n.views || '0',
-            viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-            commentsCount: Number(n.comments_count || 0),
-            latestEpisodeTitle: n.latest_episode_title || 'Story Collection',
-            latestEpisodeNum: n.latest_episode_num || '1',
-            updatedDate: n.updated_date || 'Collection',
-            link: `#novel?id=${encodeURIComponent(n.id)}`,
-            readLink: `#reader?novel=${encodeURIComponent(n.id)}&ch=1`
-          }));
-        }
-      } catch (err) {
-        console.error('Error fetching short stories for hierarchy:', err.message);
-      }
-    }
-
-    // Audio Novels
-    if (mainCat.id === 'audio-novels') {
-      const audioNovels = visibleNovels.filter(n => Boolean(n.is_audio) || (n.category && n.category.toLowerCase().includes('audio')));
-      mainItem.novels = audioNovels.map(n => ({
-        id: n.id,
-        title: n.title,
-        author: n.author,
-        voice: n.audio_voice || n.author,
-        duration: n.audio_duration || 'Full Audio',
-        cover: n.cover,
-        chaptersCount: Number(n.chapters_count || 0),
-        episodesCount: Number(n.total_episodes || n.chapters_count || 0),
-        views: n.views || '0',
-        viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-        commentsCount: Number(n.comments_count || 0),
-        latestEpisodeTitle: n.latest_episode_title || 'Audio Episode',
-        latestEpisodeNum: n.latest_episode_num || '1',
-        latestPublishedAt: n.latest_published_at,
-        updatedDate: n.updated_date,
-        link: `#audio?novel=${encodeURIComponent(n.id)}`,
-        readLink: `#audio?novel=${encodeURIComponent(n.id)}`
-      }));
-    }
-
-    // Dynamic Matching for Custom Content Categories
-    if (!['ongoing-novels', 'completed-novels', 'short-stories', 'audio-novels', 'general', 'review-junction', 'tea-time'].includes(mainCat.id)) {
-      const customNovels = visibleNovels.filter(n => 
-        (n.category && n.category.toLowerCase() === mainCat.title.toLowerCase()) || 
-        (n.content_type && n.content_type.toLowerCase() === mainCat.id.toLowerCase())
-      );
-      if (customNovels.length > 0) {
-        mainItem.novels = customNovels.map(n => ({
-          id: n.id,
-          title: n.title,
-          author: n.author,
-          category: n.category,
-          cover: n.cover,
-          views: n.views || '0',
-          viewsCount: parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0,
-          commentsCount: Number(n.comments_count || 0),
-          latestEpisodeTitle: n.latest_episode_title || 'Episode 01',
-          latestEpisodeNum: n.latest_episode_num || '1',
-          updatedDate: n.latest_published_at ? new Date(n.latest_published_at).toLocaleDateString() : (n.updated_date || 'Recent'),
-          link: n.is_audio ? `#audio?novel=${encodeURIComponent(n.id)}` : `#novel?id=${encodeURIComponent(n.id)}`,
-          readLink: n.is_audio ? `#audio?novel=${encodeURIComponent(n.id)}` : `#reader?novel=${encodeURIComponent(n.id)}&ch=${encodeURIComponent(n.latest_episode_num || '1')}`
-        }));
-      }
-    }
-
     // Precalculate category-level statistics
-    if (mainItem.novels.length > 0) {
-      mainItem.stats = {
-        totalItems: mainItem.novels.length,
-        totalComments: mainItem.novels.reduce((sum, n) => sum + Number(n.commentsCount || 0), 0),
-        totalViews: mainItem.novels.reduce((sum, n) => sum + Number(n.viewsCount || 0), 0),
-        latestTitle: mainItem.novels[0]?.latestEpisodeTitle ? `${mainItem.novels[0].title} — ${mainItem.novels[0].latestEpisodeTitle}` : (mainItem.novels[0]?.title || null),
-        latestNovelTitle: mainItem.novels[0]?.title || null,
-        latestLink: mainItem.novels[0]?.readLink || mainItem.novels[0]?.link || null,
-        latestDate: mainItem.novels[0]?.latestPublishedAt || mainItem.novels[0]?.updatedDate || null
-      };
-    } else if (hasMainChildren) {
+    if (hasMainChildren) {
       const directArticles = mainItem.articles || [];
       const directLatest = directArticles[0] || null;
       const totalCatItems = mainItem.subcategories.reduce((sum, s) => sum + (s.stats?.totalItems || 0), 0) + directArticles.length;
@@ -615,6 +391,35 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
     return { success: false, error: 'The requested reading content does not exist or has been removed.', code: 'NOT_FOUND' };
   }
 
+  // 1.5. Resolve complete hierarchical breadcrumbs chain
+  const breadcrumbs = [];
+  if (article.main_category_id) {
+    breadcrumbs.push({
+      id: article.main_category_id,
+      title: article.main_category_title || 'General',
+      isMain: true,
+      isDisabled: Boolean(article.main_is_disabled || article.main_status === 'disabled')
+    });
+  }
+  if (article.sub_category_id) {
+    const chain = [];
+    let curId = article.sub_category_id;
+    while (curId) {
+      const sRow = await queryOne(`SELECT id, title, parent_id, is_disabled, status FROM content_subcategories WHERE id = ?;`, [curId]);
+      if (!sRow) break;
+      chain.unshift(sRow);
+      curId = sRow.parent_id;
+    }
+    for (const item of chain) {
+      breadcrumbs.push({
+        id: item.id,
+        title: item.title,
+        isMain: false,
+        isDisabled: Boolean(item.is_disabled || item.status === 'disabled')
+      });
+    }
+  }
+
   // 2. Access checks for non-administrators
   if (!isAdmin) {
     // Draft / Unpublished check
@@ -635,19 +440,13 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
       };
     }
 
-    if (article.sub_is_disabled || article.sub_status === 'disabled') {
-      return { 
-        success: false, 
-        error: 'The parent section has been temporarily disabled by an administrator.', 
-        code: 'DISABLED' 
-      };
-    }
-
-    if (article.main_is_disabled || article.main_status === 'disabled') {
-      return { 
-        success: false, 
-        error: 'The parent category has been temporarily disabled by an administrator.', 
-        code: 'DISABLED' 
+    // Check if any ancestor category/section is disabled
+    const disabledAncestor = breadcrumbs.find(b => b.isDisabled);
+    if (disabledAncestor) {
+      return {
+        success: false,
+        error: `The parent ${disabledAncestor.isMain ? 'category' : 'section'} "${disabledAncestor.title}" has been temporarily disabled by an administrator.`,
+        code: 'DISABLED'
       };
     }
 
@@ -776,57 +575,7 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
     isCurrent: s.id === article.id
   }));
 
-  // Resolve linked novel and episode content if novelLink or novelId is attached
-  let resolvedNovelId = article.novel_id;
-  let resolvedChapterNum = article.chapter_num;
-
-  if (!resolvedNovelId && article.novel_link) {
-    const novelMatch = article.novel_link.match(/[?&]novel=([^&]+)/i) || article.novel_link.match(/[?&]id=([^&]+)/i);
-    if (novelMatch) resolvedNovelId = decodeURIComponent(novelMatch[1]);
-    const chMatch = article.novel_link.match(/[?&]ch=([^&#\s]+)/i) || article.novel_link.match(/[?&]chapter=([^&#\s]+)/i);
-    if (chMatch) resolvedChapterNum = decodeURIComponent(chMatch[1]);
-  }
-
-  let linkedNovel = null;
-  let linkedChapter = null;
-
-  if (resolvedNovelId) {
-    try {
-      linkedNovel = await queryOne(
-        `SELECT id, title, author, author_id, cover, description, genre, status FROM novels WHERE id = ? LIMIT 1;`,
-        [resolvedNovelId]
-      );
-
-      if (linkedNovel) {
-        if (resolvedChapterNum) {
-          linkedChapter = await queryOne(`
-            SELECT id, novel_id, chapter_num, episode_number, title, title_ta, content, word_count, read_time, release_date, published_at, status 
-            FROM chapters 
-            WHERE novel_id = ? AND (chapter_num = ? OR episode_number = ?)
-            LIMIT 1;
-          `, [linkedNovel.id, String(resolvedChapterNum), String(resolvedChapterNum)]);
-        }
-        if (!linkedChapter) {
-          linkedChapter = await queryOne(`
-            SELECT id, novel_id, chapter_num, episode_number, title, title_ta, content, word_count, read_time, release_date, published_at, status 
-            FROM chapters 
-            WHERE novel_id = ?
-            ORDER BY sort_order ASC, id ASC
-            LIMIT 1;
-          `, [linkedNovel.id]);
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to resolve linked novel/chapter:', e.message);
-    }
-  }
-
-  formatted.linkedNovel = linkedNovel;
-  formatted.linkedChapter = linkedChapter;
-  formatted.novelLink = article.novel_link || null;
-  formatted.novelId = resolvedNovelId || null;
-  formatted.chapterNum = resolvedChapterNum || null;
-
+  formatted.breadcrumbs = breadcrumbs;
   return { success: true, article: formatted };
 }
 
@@ -842,9 +591,6 @@ function formatArticle(row) {
     parentSubCategoryId: row.parent_sub_category_id || null,
     parentSubCategoryTitle: row.parent_sub_category_title || null,
     parentId: row.parent_id ? Number(row.parent_id) : null,
-    novelId: row.novel_id || null,
-    novelLink: row.novel_link || null,
-    chapterNum: row.chapter_num || null,
     title: row.title,
     content: row.content || '',
     summary: row.summary || '',
@@ -1289,11 +1035,10 @@ export async function deleteMainCategory({ id, confirmTitle, adminId = 2 }) {
 /**
  * Create a new Sub Title under a Main Title
  */
-export async function createSubCategory({ id, mainCategoryId, main_category_id, parentId, parent_id, title, description, icon = '📌', sortOrder = 0, sort_order = 0, novelId = null, novel_id = null, adminId = 2 }) {
+export async function createSubCategory({ id, mainCategoryId, main_category_id, parentId, parent_id, title, description, icon = '📌', sortOrder = 0, sort_order = 0, adminId = 2 }) {
   const mId = mainCategoryId || main_category_id;
   const pId = parentId || parent_id || null;
   const sOrder = sortOrder !== undefined ? sortOrder : (sort_order !== undefined ? sort_order : 0);
-  const nId = novelId || novel_id || null;
 
   if (!mId || !title || !title.trim()) {
     return { success: false, error: 'Parent main category and sub title are required.' };
@@ -1311,9 +1056,9 @@ export async function createSubCategory({ id, mainCategoryId, main_category_id, 
   }
 
   await query(`
-    INSERT INTO content_subcategories (id, main_category_id, parent_id, title, description, icon, novel_id, sort_order, status, is_active, is_disabled)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', 1, 0);
-  `, [cleanId, mId, pId, cleanTitle, description || '', icon, nId, Number(sOrder)]);
+    INSERT INTO content_subcategories (id, main_category_id, parent_id, title, description, icon, sort_order, status, is_active, is_disabled)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'published', 1, 0);
+  `, [cleanId, mId, pId, cleanTitle, description || '', icon, Number(sOrder)]);
 
   await recordAdminAudit({
     adminId,
@@ -1330,35 +1075,74 @@ export async function createSubCategory({ id, mainCategoryId, main_category_id, 
 /**
  * Update Sub Title
  */
-export async function updateSubCategory({ id, mainCategoryId, parentId, parent_id, title, description, icon, sortOrder, sort_order, adminId = 2 }) {
+export async function updateSubCategory({
+  id,
+  mainCategoryId,
+  main_category_id,
+  parentId,
+  parent_id,
+  title,
+  description,
+  icon,
+  sortOrder,
+  sort_order,
+  status,
+  is_disabled,
+  isDisabled,
+  adminId = 2
+}) {
   const sub = await queryOne(`SELECT * FROM content_subcategories WHERE id = ?;`, [id]);
   if (!sub) return { success: false, error: 'Subcategory not found.' };
 
+  const mId = mainCategoryId || main_category_id || sub.main_category_id;
   const pId = parentId !== undefined ? parentId : (parent_id !== undefined ? parent_id : sub.parent_id);
   const sOrder = sortOrder !== undefined ? sortOrder : (sort_order !== undefined ? sort_order : sub.sort_order);
 
+  let newStatus = status;
+  let newDisabled = is_disabled !== undefined ? is_disabled : (isDisabled !== undefined ? (isDisabled ? 1 : 0) : undefined);
+  if (newStatus !== undefined && newDisabled === undefined) {
+    newDisabled = newStatus === 'disabled' ? 1 : 0;
+  } else if (newDisabled !== undefined && newStatus === undefined) {
+    newStatus = newDisabled ? 'disabled' : 'published';
+  }
+
   await query(`
     UPDATE content_subcategories
-    SET main_category_id = COALESCE(?, main_category_id),
+    SET main_category_id = ?,
         parent_id = ?,
         title = COALESCE(?, title),
         description = COALESCE(?, description),
         icon = COALESCE(?, icon),
-        sort_order = COALESCE(?, sort_order)
+        sort_order = COALESCE(?, sort_order),
+        status = COALESCE(?, status),
+        is_disabled = COALESCE(?, is_disabled),
+        is_active = CASE WHEN COALESCE(?, is_disabled) = 1 THEN 0 ELSE 1 END
     WHERE id = ?;
   `, [
-    mainCategoryId || null,
-    pId,
+    mId || null,
+    pId || null,
     title ? title.trim() : null,
     description !== undefined ? description : null,
     icon || null,
     sOrder !== undefined ? Number(sOrder) : null,
+    newStatus || null,
+    newDisabled !== undefined ? Number(newDisabled) : null,
+    newDisabled !== undefined ? Number(newDisabled) : null,
     id
   ]);
 
-  // If moved to another main category, update children articles
-  if (mainCategoryId && mainCategoryId !== sub.main_category_id) {
-    await query(`UPDATE content_articles SET main_category_id = ? WHERE sub_category_id = ?;`, [mainCategoryId, id]);
+  // If moved to another main category, update all descendant articles and child subcategories
+  if (mId && mId !== sub.main_category_id) {
+    await query(`UPDATE content_articles SET main_category_id = ? WHERE sub_category_id = ?;`, [mId, id]);
+    async function updateDescendantMain(pSubId) {
+      const children = await query('SELECT id FROM content_subcategories WHERE parent_id = ?;', [pSubId]);
+      for (const c of children) {
+        await query('UPDATE content_subcategories SET main_category_id = ? WHERE id = ?;', [mId, c.id]);
+        await query('UPDATE content_articles SET main_category_id = ? WHERE sub_category_id = ?;', [mId, c.id]);
+        await updateDescendantMain(c.id);
+      }
+    }
+    await updateDescendantMain(id);
   }
 
   await recordAdminAudit({
@@ -1367,14 +1151,14 @@ export async function updateSubCategory({ id, mainCategoryId, parentId, parent_i
     targetUserId: null,
     ipAddress: null,
     userAgent: null,
-    details: `Updated subcategory "${id}"`
+    details: `Updated subcategory "${id}" (Parent: ${pId || 'none'}, Main: ${mId})`
   });
 
   return { success: true, message: 'Subcategory updated successfully!' };
 }
 
 /**
- * Reorder Sub Categories (Bulk Sort Order update)
+ * Reorder Sub Categories (Bulk Sort Order & Hierarchy update)
  */
 export async function reorderSubCategories(orderList, adminId = 2) {
   if (!Array.isArray(orderList) || orderList.length === 0) {
@@ -1387,9 +1171,21 @@ export async function reorderSubCategories(orderList, adminId = 2) {
     const orderNum = typeof item === 'object' && item.sortOrder !== undefined
       ? Number(item.sortOrder)
       : (typeof item === 'object' && item.sort_order !== undefined ? Number(item.sort_order) : (i + 1));
+    const pId = typeof item === 'object' ? (item.parentId !== undefined ? item.parentId : item.parent_id) : undefined;
+    const mId = typeof item === 'object' ? (item.mainCategoryId || item.main_category_id) : undefined;
     
     if (subId) {
-      await query('UPDATE content_subcategories SET sort_order = ? WHERE id = ?;', [orderNum, subId]);
+      if (pId !== undefined && mId) {
+        await query('UPDATE content_subcategories SET sort_order = ?, parent_id = ?, main_category_id = ? WHERE id = ?;', [orderNum, pId || null, mId, subId]);
+        await query('UPDATE content_articles SET main_category_id = ? WHERE sub_category_id = ?;', [mId, subId]);
+      } else if (pId !== undefined) {
+        await query('UPDATE content_subcategories SET sort_order = ?, parent_id = ? WHERE id = ?;', [orderNum, pId || null, subId]);
+      } else if (mId) {
+        await query('UPDATE content_subcategories SET sort_order = ?, main_category_id = ? WHERE id = ?;', [orderNum, mId, subId]);
+        await query('UPDATE content_articles SET main_category_id = ? WHERE sub_category_id = ?;', [mId, subId]);
+      } else {
+        await query('UPDATE content_subcategories SET sort_order = ? WHERE id = ?;', [orderNum, subId]);
+      }
     }
   }
 
@@ -1399,7 +1195,7 @@ export async function reorderSubCategories(orderList, adminId = 2) {
     targetUserId: null,
     ipAddress: null,
     userAgent: null,
-    details: `Updated display order for ${orderList.length} subcategories.`
+    details: `Updated display order and relationships for ${orderList.length} subcategories.`
   });
 
   const updatedSubs = await query('SELECT * FROM content_subcategories ORDER BY sort_order ASC, title ASC;');
@@ -1457,9 +1253,18 @@ export async function deleteSubCategory({ id, confirmTitle, adminId = 2 }) {
   try {
     await conn.beginTransaction();
 
-    // Check for child subcategories (sub-sub-titles)
-    const [childRows] = await conn.query(`SELECT * FROM content_subcategories WHERE parent_id = ?;`, [id]);
-    const childIds = (childRows || []).map(c => c.id);
+    // Check for all child subcategories recursively (sub-sub-titles, sub-sub-sub-titles, etc.)
+    async function getAllDescendantSubs(parentIds) {
+      if (!parentIds || parentIds.length === 0) return [];
+      const [rows] = await conn.query(`SELECT * FROM content_subcategories WHERE parent_id IN (?);`, [parentIds]);
+      if (!rows || rows.length === 0) return [];
+      const deeper = await getAllDescendantSubs(rows.map(r => r.id));
+      return [...rows, ...deeper];
+    }
+
+    const allDescendantRows = await getAllDescendantSubs([id]);
+    const childIds = allDescendantRows.map(c => c.id);
+    const allIdsToDelete = [id, ...childIds];
     const mainCat = await queryOne(`SELECT title FROM forum_categories WHERE id = ?;`, [sub.main_category_id]);
 
     // Save full snapshot to Trash before removal
@@ -1473,26 +1278,21 @@ export async function deleteSubCategory({ id, confirmTitle, adminId = 2 }) {
         originalLocation: mainCat ? `Main Title: ${mainCat.title}` : `Main ID: ${sub.main_category_id}`,
         itemData: {
           subcategory: sub,
-          childSubcategories: childRows || []
+          childSubcategories: allDescendantRows || []
         }
       });
     } catch (trashErr) {
       console.warn('Could not move subcategory to trash:', trashErr.message);
     }
 
-    if (childIds.length > 0) {
-      for (const cId of childIds) {
-        await conn.query(`DELETE FROM content_access_rules WHERE target_type = 'sub' AND target_id = ?;`, [cId]);
-        await conn.query(`DELETE FROM content_articles WHERE sub_category_id = ?;`, [cId]);
-      }
-      await conn.query(`DELETE FROM content_subcategories WHERE parent_id = ?;`, [id]);
+    for (const targetId of allIdsToDelete) {
+      await conn.query(`DELETE FROM content_access_rules WHERE target_type = 'sub' AND target_id = ?;`, [targetId]);
+      await conn.query(`DELETE FROM content_articles WHERE sub_category_id = ?;`, [targetId]);
     }
 
-    // Delete access rules
-    await conn.query(`DELETE FROM content_access_rules WHERE target_type = 'sub' AND target_id = ?;`, [id]);
-    // Delete articles under this subcategory
-    await conn.query(`DELETE FROM content_articles WHERE sub_category_id = ?;`, [id]);
-    // Delete subcategory
+    if (childIds.length > 0) {
+      await conn.query(`DELETE FROM content_subcategories WHERE id IN (?);`, [childIds]);
+    }
     await conn.query(`DELETE FROM content_subcategories WHERE id = ?;`, [id]);
 
     await conn.commit();
@@ -1503,7 +1303,7 @@ export async function deleteSubCategory({ id, confirmTitle, adminId = 2 }) {
       targetUserId: null,
       ipAddress: null,
       userAgent: null,
-      details: `Deleted subcategory "${sub.title}" (ID: ${id}, purged ${childIds.length} children)`
+      details: `Deleted subcategory "${sub.title}" (ID: ${id}, purged ${childIds.length} descendant titles)`
     });
 
     return { success: true, message: `Subcategory "${sub.title}" deleted successfully.` };
@@ -1529,12 +1329,6 @@ export async function createContentArticle({
   sub_category_id,
   parentId = null,
   parent_id = null,
-  novelId = null,
-  novel_id = null,
-  novelLink = null,
-  novel_link = null,
-  chapterNum = null,
-  chapter_num = null,
   title,
   uniqueSlug,
   unique_slug,
@@ -1569,22 +1363,6 @@ export async function createContentArticle({
   const accPerm = accessPermission || access_permission || 'admin_only';
   const schedAt = scheduledAt || scheduled_at || null;
 
-  let nLink = novelLink || novel_link || null;
-  let nId = novelId || novel_id || null;
-  let chNum = chapterNum || chapter_num || null;
-
-  if (nLink) {
-    nLink = String(nLink).trim();
-    const novelMatch = nLink.match(/[?&]novel=([^&#\s]+)/i) || nLink.match(/[?&]id=([^&#\s]+)/i);
-    if (novelMatch && !nId) {
-      nId = decodeURIComponent(novelMatch[1]);
-    }
-    const chMatch = nLink.match(/[?&]ch=([^&#\s]+)/i) || nLink.match(/[?&]chapter=([^&#\s]+)/i);
-    if (chMatch && !chNum) {
-      chNum = decodeURIComponent(chMatch[1]);
-    }
-  }
-
   const cleanSubId = (sId && String(sId).trim() !== '' && String(sId) !== String(mId)) ? String(sId).trim() : null;
 
   if (!mId || !title || !title.trim()) {
@@ -1614,12 +1392,12 @@ export async function createContentArticle({
 
   const result = await query(`
     INSERT INTO content_articles (
-      unique_slug, main_category_id, sub_category_id, parent_id, novel_id, novel_link, chapter_num,
+      unique_slug, main_category_id, sub_category_id, parent_id,
       title, content, summary, cover_image, author_id, author_name, status, visibility, access_permission,
       is_published, is_disabled, sort_order, published_at, scheduled_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
   `, [
-    cleanSlug, mId, cleanSubId, pId, nId, nLink, chNum,
+    cleanSlug, mId, cleanSubId, pId,
     cleanTitle, content || '', summary || '', cImage, aId, aName, status, visibility, accPerm,
     isPublished, isDisabled, Number(sOrder), schedAt
   ]);
@@ -1685,7 +1463,7 @@ export async function createContentArticle({
   return { 
     success: true, 
     id: result.insertId, 
-    article: { id: result.insertId, uniqueSlug: cleanSlug, unique_slug: cleanSlug, slug: cleanSlug, parent_id: pId, title: cleanTitle, novel_link: nLink },
+    article: { id: result.insertId, uniqueSlug: cleanSlug, unique_slug: cleanSlug, slug: cleanSlug, parent_id: pId, title: cleanTitle },
     slug: cleanSlug, 
     message: 'Content created successfully!' 
   };
@@ -1838,8 +1616,7 @@ export async function deleteContentArticle({ id, confirmTitle, adminId = 2 }) {
 
   // Delete access rules for this content
   await query(`DELETE FROM content_access_rules WHERE target_type IN ('content', 'article') AND (target_id = ? OR target_id = ?);`, [String(id), String(art.unique_slug)]);
-  // Delete comments in comments table and content_comments
-  await query(`DELETE FROM comments WHERE novel_id = ?;`, [`content_${id}`]);
+  // Delete comments in content_comments
   await query(`DELETE FROM content_comments WHERE content_id = ?;`, [id]);
   // Delete article
   await query(`DELETE FROM content_articles WHERE id = ?;`, [id]);

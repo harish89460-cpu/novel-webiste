@@ -3,7 +3,7 @@
 
 import dns from 'node:dns';
 import { query, queryOne } from './db.js';
-import { generateNovelSlug } from './novels.js';
+function generateNovelSlug(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
 import { createNotification } from './notifications.js';
 
 function resolveNotificationLinkAndContext(novelId, chapterNum, novelTitle = null) {
@@ -218,15 +218,7 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
   } catch {}
 
   const genSlug = generateNovelSlug(cleanNovelId);
-  const novelRow = await queryOne(
-    `SELECT id FROM novels 
-     WHERE id = ? 
-        OR LOWER(id) = LOWER(?) 
-        OR title = ? 
-        OR (id = ? AND ? != '')
-     LIMIT 1`,
-    [cleanNovelId, cleanNovelId, cleanNovelId, genSlug, genSlug]
-  );
+  const novelRow = null;
   const targetNovelId = novelRow ? novelRow.id : cleanNovelId;
 
   // Determine if this is a novel-level query (chapterNum is 0, '', null, or 'novel')
@@ -332,17 +324,7 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
     cleanNovelId = decodeURIComponent(cleanNovelId);
   } catch {}
 
-  const genSlug = generateNovelSlug(cleanNovelId);
-  const novelRow = await queryOne(
-    `SELECT id FROM novels 
-     WHERE id = ? 
-        OR LOWER(id) = LOWER(?) 
-        OR title = ? 
-        OR (id = ? AND ? != '')
-     LIMIT 1`,
-    [cleanNovelId, cleanNovelId, cleanNovelId, genSlug, genSlug]
-  );
-  let targetNovelId = novelRow ? novelRow.id : cleanNovelId;
+  const targetNovelId = cleanNovelId;
 
   // Determine chapter number: novel-level comments normalized to '0'
   const chRaw = chapterNum !== undefined ? String(chapterNum).trim() : '0';
@@ -385,7 +367,7 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
       const parentRow = await queryOne(`
         SELECT c.id, c.user_id, c.novel_id, c.chapter_num, n.title AS novel_title
         FROM comments c
-        LEFT JOIN novels n ON c.novel_id = n.id
+        LEFT JOIN content_articles n ON (c.novel_id = CAST(n.id AS CHAR) OR c.novel_id = n.unique_slug)
         WHERE c.id = ?;
       `, [resolvedParentId]);
 
@@ -444,7 +426,7 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
           }
         }
       } else {
-        const novelInfo = await queryOne('SELECT id, title, author, author_id FROM novels WHERE id = ?;', [targetNovelId]);
+        const novelInfo = null;
         if (novelInfo) {
           let recipientAuthorId = novelInfo.author_id;
           if (!recipientAuthorId) {
@@ -609,7 +591,7 @@ export async function toggleCommentLike({ commentId, userId }) {
       const commentRow = await queryOne(`
         SELECT c.id, c.user_id, c.novel_id, c.chapter_num, c.content, n.title AS novel_title
         FROM comments c
-        LEFT JOIN novels n ON c.novel_id = n.id
+        LEFT JOIN content_articles n ON (c.novel_id = CAST(n.id AS CHAR) OR c.novel_id = n.unique_slug)
         WHERE c.id = ?;
       `, [commentId]);
 
@@ -742,7 +724,7 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
         const commentRow = await queryOne(`
           SELECT c.id, c.user_id, c.novel_id, c.chapter_num, n.title AS novel_title
           FROM comments c
-          LEFT JOIN novels n ON c.novel_id = n.id
+          LEFT JOIN content_articles n ON (c.novel_id = CAST(n.id AS CHAR) OR c.novel_id = n.unique_slug)
           WHERE c.id = ?;
         `, [targetId]);
 
@@ -774,12 +756,7 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
         const novelIdParam = parts[0];
         const chNumParam = parts[1] || '1';
 
-        const chRow = await queryOne(`
-          SELECT c.id, c.novel_id, c.chapter_num, c.title AS chapter_title, n.title AS novel_title, n.author_id
-          FROM chapters c
-          JOIN novels n ON c.novel_id = n.id
-          WHERE c.id = ? OR (c.novel_id = ? AND (c.chapter_num = ? OR c.episode_number = ?));
-        `, [targetId, novelIdParam, chNumParam, chNumParam]);
+        const chRow = await queryOne('SELECT a.id, a.title AS chapter_title, a.author_id FROM content_articles a WHERE a.id = ? OR a.unique_slug = ?;', [targetId, String(targetId)]);
 
         const recipientAuthorId = chRow?.author_id || 2;
         if (chRow && Number(recipientAuthorId) !== Number(userId)) {

@@ -28,7 +28,7 @@ import {
   getGuestSessionId,
   getForumLiveStats
 } from './content-service.js';
-import { initReader, applyReaderMode, applyFontSize, showToast, setupReadingSessionTracker, stopReadingSessionTracker } from './reader.js';
+import { initReader, applyReaderMode, applyFontSize, applyFontFamily, applyLineHeight, showToast, setupReadingSessionTracker, stopReadingSessionTracker, formatAuthorRoleBadge } from './reader.js';
 import { initForum, renderReactionButtons } from './forum.js';
 import { initMessaging, updateUnreadMessageBadge } from './messaging.js';
 import { initNotifications } from './notifications.js';
@@ -51,6 +51,7 @@ import {
   apiFetch
 } from './errors.js';
 import { renderReactionsWidget, renderCommentsWidget } from './comments.js';
+import { renderLatestProfilePostsPanelHtml, loadLatestProfilePosts } from './profile-posts.js';
 import { SITE_DATA } from './data.js';
 
 export function initApp() {
@@ -234,12 +235,24 @@ export async function renderAppView() {
         window.location.hash = '#admin-login';
       }
     } else if (hash.startsWith('#reader')) {
+      const urlParams = new URLSearchParams(hash.split('?')[1] || '');
+      const novelId = urlParams.get('novel') || urlParams.get('id');
+      if (novelId) {
+        window.location.hash = `#thread?id=${encodeURIComponent(novelId)}`;
+        return;
+      }
       await renderReaderView(main, hash);
     } else if (hash.startsWith('#audio?') || hash.startsWith('#audio-player?')) {
       await renderAudioPlayerView(main, hash);
     } else if (hash.startsWith('#audio') || hash.startsWith('#audio-novels')) {
       await renderAudioNovelsView(main, hash);
     } else if (hash.startsWith('#novel?')) {
+      const urlParams = new URLSearchParams(hash.split('?')[1] || '');
+      const novelId = urlParams.get('id');
+      if (novelId) {
+        window.location.hash = `#thread?id=${encodeURIComponent(novelId)}`;
+        return;
+      }
       await renderNovelDetailView(main, hash);
     } else if (hash.startsWith('#novels')) {
       await renderNovelLibraryView(main, hash);
@@ -284,12 +297,9 @@ export async function renderAppView() {
     } else if (hash.startsWith('#copyright')) {
       renderCopyrightView(main);
     } else if (hash.startsWith('#messages') || hash.startsWith('#chat')) {
-      const params = hash.includes('?') ? new URLSearchParams(hash.split('?')[1]) : null;
-      const targetParam = params?.get('user') || params?.get('id') || null;
-      if (typeof window.openMessagesDrawer === 'function') {
-        window.openMessagesDrawer(targetParam ? Number(targetParam) : null);
-      }
-      if (!main.children.length) {
+      if (typeof window.renderDirectMessagesView === 'function') {
+        await window.renderDirectMessagesView(main, hash);
+      } else {
         await renderForumView(main, '#forms');
       }
 
@@ -302,12 +312,39 @@ export async function renderAppView() {
     }
   } catch (err) {
     console.error('[Route Rendering Error]', hash, err);
-    if (err && err.isNetworkError) {
+    const isNetwork = Boolean(
+      err && (
+        err.isNetworkError ||
+        err.isTimeout ||
+        err.name === 'AbortError' ||
+        err.name === 'TypeError' ||
+        err.status === 0 ||
+        err.status === 408 ||
+        err.status === 502 ||
+        err.status === 503 ||
+        err.status === 504 ||
+        (err.status >= 520 && err.status <= 530) ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('NetworkError') ||
+        err.message?.includes('Network Connection Error') ||
+        err.message?.includes('Load failed') ||
+        err.message?.includes('NAME_NOT_RESOLVED') ||
+        err.message?.includes('DNS') ||
+        err.message?.includes('Unexpected token') ||
+        (typeof navigator !== 'undefined' && !navigator.onLine)
+      )
+    );
+    if (isNetwork) {
       renderNetworkError(main, () => renderAppView());
     } else if (err && err.status === 403) {
       renderAccessDenied(main, hash);
     } else {
-      renderServerError(main, () => renderAppView());
+      if (hash && hash !== '#forms' && hash !== '#' && hash !== '#home') {
+        console.warn('[Route Graceful Fallback to #forms]', hash, err);
+        window.location.hash = '#forms';
+      } else {
+        renderServerError(main, () => renderAppView());
+      }
     }
   } finally {
     finishRouteProgress();
@@ -1069,34 +1106,26 @@ async function renderReaderView(container, hash) {
     </div>
 
     <div class="reader-page mode-${currentMode}" data-reader-theme="${currentMode}">
-      <!-- Floating Reader Controls Toolbar -->
-      <div class="reader-toolbar">
-        <div class="reader-toolbar-group">
-          <button class="reader-tool-btn" onclick="adjustFontSize(-0.08)" title="Smaller">A−</button>
-          <button class="reader-tool-btn reader-tool-btn-reset" onclick="adjustFontSize(0)" title="Reset">Reset</button>
-          <button class="reader-tool-btn" onclick="adjustFontSize(0.08)" title="Larger">A+</button>
-        </div>
 
-        <div class="reader-toolbar-group">
-          <button class="mode-pill mode-pill-light ${currentMode === 'light' ? 'active' : ''}" data-mode="light" onclick="setReaderMode('light')">${t('reader_mode_light')}</button>
-          <button class="mode-pill mode-pill-sepia ${currentMode === 'sepia' ? 'active' : ''}" data-mode="sepia" onclick="setReaderMode('sepia')">${t('reader_mode_sepia')}</button>
-          <button class="mode-pill mode-pill-dark ${currentMode === 'dark' ? 'active' : ''}" data-mode="dark" onclick="setReaderMode('dark')">${t('reader_mode_dark')}</button>
-        </div>
-      </div>
 
       <div class="reader-container">
         <!-- Chapter Header -->
         <div class="reader-header">
           <a href="#novel?id=${novel.id}" class="reader-novel-crumb">« ${novel.title}</a>
           <h1 class="reader-chapter-title">${access.title || chapter.title}</h1>
-          <div class="reader-meta-bar">
-            <span>✍️ ${novel.author || 'Rudhra Prarthana'}</span>
-            <span>•</span>
-            <span>📅 ${chapter.date}</span>
-            <span>•</span>
-            <span>⏱ ${chapter.readTime}</span>
-            <span>•</span>
-            <span style="color:var(--color-gold-warm);">🔒 Protected Reading</span>
+          <div class="reader-meta-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span>${(typeof formatAuthorRoleBadge === 'function' ? formatAuthorRoleBadge(novel.authorRole || (novel.author === 'Rudhra Prarthana' ? 'admin' : 'writer')) : '')} <strong>${escapeHtml(novel.author || 'Rudhra Prarthana')}</strong></span>
+              <span>•</span>
+              <span>📅 ${chapter.date}</span>
+              <span>•</span>
+              <span>⏱ ${chapter.readTime}</span>
+              <span>•</span>
+              <span style="color:var(--color-gold-warm);">🔒 Protected Reading</span>
+            </div>
+            <button type="button" class="reader-pref-chip-btn" onclick="toggleReaderPreferencesModal(true)" title="Reader Preferences">
+              <span>⚙️</span> Preferences
+            </button>
           </div>
         </div>
 
@@ -1112,49 +1141,71 @@ async function renderReaderView(container, hash) {
           <span class="chapter-end-line"></span>
         </div>
 
-        <!-- Chapter Navigation Footbar -->
-        <div class="reader-footer-nav">
-          <div class="reader-nav-buttons">
-            <button class="reader-nav-btn" ${!prevCh ? 'disabled' : ''} 
-                    onclick="if('${prevCh}') window.location.hash='#reader?novel=${novel.id}&ch=${encodeURIComponent(prevCh)}'">
-              ⬅ ${t('reader_prev')}
-            </button>
+        <!-- Reader Reaction & Like Section with Share on the right -->
+        <div class="reader-reaction-section">
+          <div class="reader-actions-row">
+            <div class="reader-like-container" id="reader-like-container" data-target-id="${novel.id}" data-target-type="content">
+              <!-- 7 Emoji Reaction Popup -->
+              <div class="reader-emoji-popup" id="reader-emoji-popup" style="display:none;" role="dialog" aria-label="Reaction Options">
+                <div class="reader-emoji-list">
+                  <button type="button" class="reader-emoji-item" data-emoji="❤️" onclick="handleReaderReaction('❤️', '${escapeQuotes(novel.id)}', 'content')" title="Love">
+                    <span class="reader-emoji-icon">❤️</span>
+                    <span class="reader-emoji-text">Love</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="👍" onclick="handleReaderReaction('👍', '${escapeQuotes(novel.id)}', 'content')" title="Like">
+                    <span class="reader-emoji-icon">👍</span>
+                    <span class="reader-emoji-text">Like</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="👏" onclick="handleReaderReaction('👏', '${escapeQuotes(novel.id)}', 'content')" title="Clap">
+                    <span class="reader-emoji-icon">👏</span>
+                    <span class="reader-emoji-text">Clap</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="😂" onclick="handleReaderReaction('😂', '${escapeQuotes(novel.id)}', 'content')" title="Laugh">
+                    <span class="reader-emoji-icon">😂</span>
+                    <span class="reader-emoji-text">Laugh</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="😮" onclick="handleReaderReaction('😮', '${escapeQuotes(novel.id)}', 'content')" title="Surprise">
+                    <span class="reader-emoji-icon">😮</span>
+                    <span class="reader-emoji-text">Surprise</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="😍" onclick="handleReaderReaction('😍', '${escapeQuotes(novel.id)}', 'content')" title="Adore">
+                    <span class="reader-emoji-icon">😍</span>
+                    <span class="reader-emoji-text">Adore</span>
+                  </button>
+                  <button type="button" class="reader-emoji-item" data-emoji="😢" onclick="handleReaderReaction('😢', '${escapeQuotes(novel.id)}', 'content')" title="Sad">
+                    <span class="reader-emoji-icon">😢</span>
+                    <span class="reader-emoji-text">Sad</span>
+                  </button>
+                </div>
+              </div>
 
-            <a href="#novel?id=${novel.id}" class="reader-nav-btn">
-              ☰ ${t('reader_all_chapters')}
-            </a>
-
-            <button class="reader-nav-btn" ${!nextCh ? 'disabled' : ''} 
-                    onclick="if('${nextCh}') window.location.hash='#reader?novel=${novel.id}&ch=${encodeURIComponent(nextCh)}'">
-              ${t('reader_next')} ➔
-            </button>
-          </div>
-
-          <!-- Sharing & Bookmark Bar -->
-          <div class="reader-actions-bar">
-            <button class="btn btn-gold btn-sm" onclick="bookmarkChapter('${escapeQuotes(novel.id)}', '${escapeQuotes(chNum)}')">
-              🔖 Bookmark Chapter
-            </button>
-
-            <div class="reader-share-group">
-              <span style="font-size:12px; color:var(--color-text-muted);">Share:</span>
-              <button class="share-btn whatsapp" onclick="shareChapter('whatsapp', '${escapeQuotes(chapter.title)}')">WhatsApp</button>
-              <button class="share-btn facebook" onclick="shareChapter('facebook', '${escapeQuotes(chapter.title)}')">Facebook</button>
-              <button class="share-btn" onclick="shareChapter('copy', '${escapeQuotes(chapter.title)}')">Copy Link</button>
+              <!-- Main Like Button -->
+              <button type="button" class="reader-main-like-btn" id="reader-main-like-btn" onclick="toggleReaderEmojiPopup(event)" title="Like this novel">
+                <span class="reader-main-like-icon" id="reader-main-like-icon">👍</span>
+                <span class="reader-main-like-label" id="reader-main-like-label">Like</span>
+                <span class="reader-main-like-count" id="reader-main-like-count" style="display:none;">0</span>
+              </button>
             </div>
+
+            <!-- Share Button (Near Like button, on the right side) -->
+            <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ title: '${escapeQuotes(chapter.title || novel.title)}' })" title="Share this novel">
+              <span class="reader-main-share-icon">🔗</span>
+              <span class="reader-main-share-label">Share</span>
+            </button>
           </div>
         </div>
-
-        <!-- Chapter Emoji Reactions & Comments Section -->
-        <div id="chapter-reactions-widget"></div>
         <div id="chapter-comments-widget"></div>
       </div>
     </div>
   `;
 
-  // Mount chapter reactions and comments dynamically
-  renderReactionsWidget('chapter-reactions-widget', 'content', `novel:${novel.id}:ch:${chNum}`);
+  // Mount chapter comments dynamically
   renderCommentsWidget('chapter-comments-widget', novel.id, chNum);
+
+  // Initialize Like button & 7 Emoji reactions
+  if (typeof window.initReaderReactions === 'function') {
+    window.initReaderReactions(novel.id, 'content');
+  }
 
   // Apply saved reader theme & font size to current novel reading view
   applyReaderMode(currentMode);
@@ -1190,10 +1241,15 @@ async function renderForumView(container, hash = '') {
   const token = localStorage.getItem('rp_auth_token');
   const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-  const [hierarchyData, sidebarData, liveStats] = await Promise.all([
+  const updatePanelsPromise = fetch(`/api/update-panels?category=${encodeURIComponent(currentCategoryId || '')}&sub=${encodeURIComponent(currentSubId || '')}`, { headers })
+    .then(r => r.json())
+    .catch(() => ({ panels: [], panelOrder: ['system_latest_updates', 'system_trending', 'system_profile_posts'] }));
+
+  const [hierarchyData, sidebarData, liveStats, updatePanelsData] = await Promise.all([
     fetch('/api/content/hierarchy', { headers }).then(r => r.json()).catch(() => ({ hierarchy: [] })),
     getSidebarPosts(),
-    getForumLiveStats()
+    getForumLiveStats(),
+    updatePanelsPromise
   ]);
 
   const hierarchy = Array.isArray(hierarchyData?.hierarchy) ? hierarchyData.hierarchy : [];
@@ -1246,7 +1302,8 @@ async function renderForumView(container, hash = '') {
     }
 
     if (currentSub) {
-      const hasChildren = Boolean((currentSub.children && currentSub.children.length > 0) || (currentSub.subcategories && currentSub.subcategories.length > 0));
+      const childrenList = currentSub.children || currentSub.subcategories || [];
+      const hasChildren = childrenList.length > 0;
       const isLeaf = !hasChildren;
       const subArticles = currentSub.articles || [];
 
@@ -1284,7 +1341,7 @@ async function renderForumView(container, hash = '') {
                 <div class="forms-subpage-meta">
                   <span class="forms-subpage-cat-tag">${escapeHtml(parentMain?.title || 'General')}${parentSub ? ` › ${escapeHtml(parentSub.title)}` : ''}</span>
                   <span>•</span>
-                  <span>${hasChildren ? `${currentSub.children.length} ${currentSub.children.length === 1 ? 'Section' : 'Sections'}` : `${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}`}</span>
+                  <span>${hasChildren ? `${childrenList.length} ${childrenList.length === 1 ? 'Section' : 'Sections'}` : `${subArticles.length} Content ${subArticles.length === 1 ? 'Title' : 'Titles'}`}</span>
                 </div>
               </div>
             </div>
@@ -1298,7 +1355,7 @@ async function renderForumView(container, hash = '') {
               <!-- Compact Aligned Summary Header Row -->
               <div class="forum-summary-bar">
                 <div class="forum-summary-stats">
-                  <span class="forum-summary-stat-item"><strong>${hasChildren ? currentSub.children.length : subArticles.length}</strong> ${hasChildren ? (currentSub.children.length === 1 ? 'Section' : 'Sections') : (subArticles.length === 1 ? 'Content Title' : 'Content Titles')}</span>
+                  <span class="forum-summary-stat-item"><strong>${hasChildren ? childrenList.length : subArticles.length}</strong> ${hasChildren ? (childrenList.length === 1 ? 'Section' : 'Sections') : (subArticles.length === 1 ? 'Content Title' : 'Content Titles')}</span>
                   <span>•</span>
                   <span class="forum-summary-stat-item"><strong>${currentSub.stats?.totalComments ?? subArticles.reduce((s, a) => s + Number(a.commentsCount || 0), 0)}</strong> Comments</span>
                   <span>•</span>
@@ -1319,7 +1376,7 @@ async function renderForumView(container, hash = '') {
               ${hasChildren ? `
                 <div style="margin-bottom:24px;">
                   <div style="font-size:12.5px; font-weight:700; color:#856404; text-transform:uppercase; letter-spacing:0.75px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                    <span>📂</span> Sections (${currentSub.children.length})
+                    <span>📂</span> Sections (${childrenList.length})
                   </div>
                   <div class="forum-table-card">
                     <div class="forum-table-header forum-table-header-articles">
@@ -1330,10 +1387,11 @@ async function renderForumView(container, hash = '') {
                       <div class="forum-table-col-right">Latest Activity</div>
                     </div>
                     <div class="forum-table-body">
-                      ${currentSub.children.map(child => {
+                      ${childrenList.map(child => {
                         const childLink = `#forms?sub=${encodeURIComponent(child.id)}`;
-                        const hasGrandChildren = Boolean(child.children && child.children.length > 0);
-                        const childNotes = hasGrandChildren ? child.children.length : (child.articles?.length || 0);
+                        const grandChildrenList = child.children || child.subcategories || [];
+                        const hasGrandChildren = grandChildrenList.length > 0;
+                        const childNotes = hasGrandChildren ? grandChildrenList.length : (child.articles?.length || 0);
                         const childComments = child.stats?.totalComments ?? (child.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
                         const childViews = child.stats?.totalViews ?? (child.articles || []).reduce((s, a) => s + Number(a.viewsCount || 0), 0);
                         return `
@@ -1344,11 +1402,11 @@ async function renderForumView(container, hash = '') {
                               </span>
                               <div class="forum-table-title-meta">
                                 <a href="${childLink}" class="forms-sub-title-link" title="Open ${escapeHtml(child.title)}">${escapeHtml(child.title)}</a>
-                                <span class="forum-table-tagline">${hasGrandChildren ? `Click to view ${child.children.length} ${child.children.length === 1 ? 'section' : 'sections'}` : `Click to view all ${childNotes} content titles`}</span>
+                                <span class="forum-table-tagline">${hasGrandChildren ? `Click to view ${grandChildrenList.length} ${grandChildrenList.length === 1 ? 'section' : 'sections'}` : `Click to view all ${childNotes} content titles`}</span>
                               </div>
                             </div>
                             <div class="forum-table-cell-author">
-                              <span class="forum-stat-pill">${hasGrandChildren ? '📁' : '📄'} ${hasGrandChildren ? `${child.children.length} ${child.children.length === 1 ? 'Section' : 'Sections'}` : `${childNotes} ${childNotes === 1 ? 'Title' : 'Titles'}`}</span>
+                              <span class="forum-stat-pill">${hasGrandChildren ? '📁' : '📄'} ${hasGrandChildren ? `${grandChildrenList.length} ${grandChildrenList.length === 1 ? 'Section' : 'Sections'}` : `${childNotes} ${childNotes === 1 ? 'Title' : 'Titles'}`}</span>
                             </div>
                             <div class="forum-table-cell-stat">
                               <span class="forum-stat-pill">💬 ${childComments}</span>
@@ -1545,79 +1603,16 @@ async function renderForumView(container, hash = '') {
               
             </div>
 
-            <!-- Sidebar Panels (Clean, without separate stats panel) -->
-            <aside class="forum-sidebar">
-              <!-- Latest Posts Panel -->
-              <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
-                <div class="forum-panel-header">
-                  <h3 id="sidebar-latest-posts-heading" class="forum-panel-title">
-                    <span>📝</span>
-                    <span>Latest Posts</span>
-                  </h3>
-                  <span class="forum-panel-badge">RECENT</span>
-                </div>
-                <div id="forum-latest-posts-list" class="forum-panel-list">
-                  ${renderSidebarPostItems(sidebarData?.latest)}
-                </div>
-              </section>
-
-              <!-- Trending Posts Panel -->
-              <section class="forum-panel" aria-labelledby="sidebar-trending-posts-heading">
-                <div class="forum-panel-header">
-                  <h3 id="sidebar-trending-posts-heading" class="forum-panel-title">
-                    <span>🔥</span>
-                    <span>Trending Posts</span>
-                  </h3>
-                  <span class="forum-panel-badge" style="background:rgba(217, 119, 6, 0.15); color:#B45309;">POPULAR</span>
-                </div>
-                <div id="forum-trending-posts-list" class="forum-panel-list">
-                  ${renderSidebarPostItems(sidebarData?.trending, { isTrending: true })}
-                </div>
-              </section>
-
-              <!-- Members Online Panel -->
-              <section class="forum-panel forum-presence-panel" aria-labelledby="sidebar-members-online-heading">
-                <div class="forum-panel-header">
-                  <h3 id="sidebar-members-online-heading" class="forum-panel-title">
-                    <span class="presence-live-indicator" aria-hidden="true">
-                      <span class="presence-pulse-dot"></span>
-                    </span>
-                    <span>Members Online</span>
-                  </h3>
-                  <span class="forum-panel-badge" id="presence-status-badge">LIVE</span>
-                </div>
-
-                <div class="presence-stats-grid" id="presence-stats-grid">
-                  <div class="presence-stat-card">
-                    <div class="presence-stat-num" id="presence-members-count">-</div>
-                    <div class="presence-stat-label">Members</div>
-                  </div>
-                  <div class="presence-stat-card">
-                    <div class="presence-stat-num" id="presence-guests-count">-</div>
-                    <div class="presence-stat-label">Guests</div>
-                  </div>
-                  <div class="presence-stat-card presence-stat-total">
-                    <div class="presence-stat-num" id="presence-total-count">-</div>
-                    <div class="presence-stat-label">Total Online</div>
-                  </div>
-                </div>
-
-                <div class="presence-members-block">
-                  <div class="presence-subhead">
-                    <span>Active Members</span>
-                    <span class="presence-subhead-count" id="presence-visible-count"></span>
-                  </div>
-                  <div id="forum-online-members-list" class="presence-members-list">
-                    <div class="presence-loading-skeleton">Loading active members...</div>
-                  </div>
-                </div>
-              </section>
-            </aside>
+            <!-- Dynamic Sidebar Panels (System Panels + Custom Category Update Panels in configured order) -->
+            ${renderDynamicForumSidebar(sidebarData, updatePanelsData)}
           </div>
         </div>
       `;
 
       loadForumMembersOnline();
+      if (typeof loadLatestProfilePosts === 'function') {
+        loadLatestProfilePosts();
+      }
       if (isLeaf) {
         initInlineThreadComposer(currentSub.id, parentMain?.id || currentSub.mainCategoryId || currentSub.main_category_id || '');
       }
@@ -2029,79 +2024,16 @@ async function renderForumView(container, hash = '') {
           </div>
         </div>
 
-        <!-- Sidebar Panels (Clean, without separate stats panel) -->
-        <aside class="forum-sidebar">
-          <!-- Latest Posts Panel -->
-          <section class="forum-panel" aria-labelledby="sidebar-latest-posts-heading">
-            <div class="forum-panel-header">
-              <h3 id="sidebar-latest-posts-heading" class="forum-panel-title">
-                <span>📝</span>
-                <span>Latest Posts</span>
-              </h3>
-              <span class="forum-panel-badge">RECENT</span>
-            </div>
-            <div id="forum-latest-posts-list" class="forum-panel-list">
-              ${renderSidebarPostItems(sidebarData?.latest)}
-            </div>
-          </section>
-
-          <!-- Trending Posts Panel -->
-          <section class="forum-panel" aria-labelledby="sidebar-trending-posts-heading">
-            <div class="forum-panel-header">
-              <h3 id="sidebar-trending-posts-heading" class="forum-panel-title">
-                <span>🔥</span>
-                <span>Trending Posts</span>
-              </h3>
-              <span class="forum-panel-badge" style="background:rgba(217, 119, 6, 0.15); color:#B45309;">POPULAR</span>
-            </div>
-            <div id="forum-trending-posts-list" class="forum-panel-list">
-              ${renderSidebarPostItems(sidebarData?.trending, { isTrending: true })}
-            </div>
-          </section>
-
-          <!-- Members Online Panel -->
-          <section class="forum-panel forum-presence-panel" aria-labelledby="sidebar-members-online-heading">
-            <div class="forum-panel-header">
-              <h3 id="sidebar-members-online-heading" class="forum-panel-title">
-                <span class="presence-live-indicator" aria-hidden="true">
-                  <span class="presence-pulse-dot"></span>
-                </span>
-                <span>Members Online</span>
-              </h3>
-              <span class="forum-panel-badge" id="presence-status-badge">LIVE</span>
-            </div>
-
-            <div class="presence-stats-grid" id="presence-stats-grid">
-              <div class="presence-stat-card">
-                <div class="presence-stat-num" id="presence-members-count">-</div>
-                <div class="presence-stat-label">Members</div>
-              </div>
-              <div class="presence-stat-card">
-                <div class="presence-stat-num" id="presence-guests-count">-</div>
-                <div class="presence-stat-label">Guests</div>
-              </div>
-              <div class="presence-stat-card presence-stat-total">
-                <div class="presence-stat-num" id="presence-total-count">-</div>
-                <div class="presence-stat-label">Total Online</div>
-              </div>
-            </div>
-
-            <div class="presence-members-block">
-              <div class="presence-subhead">
-                <span>Active Members</span>
-                <span class="presence-subhead-count" id="presence-visible-count"></span>
-              </div>
-              <div id="forum-online-members-list" class="presence-members-list">
-                <div class="presence-loading-skeleton">Loading active members...</div>
-              </div>
-            </div>
-          </section>
-        </aside>
+        <!-- Dynamic Sidebar Panels (System Panels + Custom Category Update Panels in configured order) -->
+        ${renderDynamicForumSidebar(sidebarData, updatePanelsData)}
       </div>
     </div>
   `;
 
   loadForumMembersOnline();
+  if (typeof loadLatestProfilePosts === 'function') {
+    loadLatestProfilePosts();
+  }
 
   // Initialize composer on category dedicated page ONLY if it is a leaf category
   if (currentCategoryId && isCurrentCategoryLeaf) {
@@ -2208,6 +2140,129 @@ function renderSidebarPostItems(posts, { isTrending = false } = {}) {
       </article>
     `;
   }).join('');
+}
+
+/**
+ * Render unified dynamic sidebar with persistent Admin-configured panel order
+ */
+function renderDynamicForumSidebar(sidebarData, updatePanelsData) {
+  const defaultOrder = ['system_latest_updates', 'system_trending', 'system_profile_posts'];
+  const panelOrder = Array.isArray(updatePanelsData?.panelOrder) && updatePanelsData.panelOrder.length > 0
+    ? updatePanelsData.panelOrder
+    : defaultOrder;
+
+  const customPanels = Array.isArray(updatePanelsData?.panels) ? updatePanelsData.panels : [];
+  const customMap = new Map();
+  customPanels.forEach(p => {
+    if (p && p.id) {
+      customMap.set(`custom_${p.id}`, p);
+      if (p.panelKey) customMap.set(p.panelKey, p);
+    }
+  });
+
+  const renderedPanels = [];
+
+  for (const key of panelOrder) {
+    if (key === 'system_latest_updates') {
+      renderedPanels.push(`
+        <!-- Latest Posts Panel -->
+        <section class="forum-panel forum-sidebar-panel" aria-labelledby="sidebar-latest-posts-heading" data-panel-key="system_latest_updates">
+          <div class="forum-panel-header">
+            <h3 id="sidebar-latest-posts-heading" class="forum-panel-title">
+              <span>📝</span>
+              <span>Latest Posts</span>
+            </h3>
+            <span class="forum-panel-badge">RECENT</span>
+          </div>
+          <div id="forum-latest-posts-list" class="forum-panel-list">
+            ${renderSidebarPostItems(sidebarData?.latest)}
+          </div>
+        </section>
+      `);
+    } else if (key === 'system_trending') {
+      renderedPanels.push(`
+        <!-- Trending Posts Panel -->
+        <section class="forum-panel forum-sidebar-panel" aria-labelledby="sidebar-trending-posts-heading" data-panel-key="system_trending">
+          <div class="forum-panel-header">
+            <h3 id="sidebar-trending-posts-heading" class="forum-panel-title">
+              <span>🔥</span>
+              <span>Trending Posts</span>
+            </h3>
+            <span class="forum-panel-badge" style="background:rgba(217, 119, 6, 0.15); color:#B45309;">POPULAR</span>
+          </div>
+          <div id="forum-trending-posts-list" class="forum-panel-list">
+            ${renderSidebarPostItems(sidebarData?.trending, { isTrending: true })}
+          </div>
+        </section>
+      `);
+    } else if (key === 'system_profile_posts') {
+      renderedPanels.push(renderLatestProfilePostsPanelHtml());
+    } else if (customMap.has(key)) {
+      const panel = customMap.get(key);
+      renderedPanels.push(`
+        <!-- Dynamic Update Panel: ${escapeHtml(panel.title)} -->
+        <section class="forum-panel dynamic-update-panel" aria-labelledby="sidebar-update-panel-${panel.id}-heading" data-panel-key="custom_${panel.id}">
+          <div class="forum-panel-header">
+            <h3 id="sidebar-update-panel-${panel.id}-heading" class="forum-panel-title">
+              <span>${escapeHtml(panel.icon || '📢')}</span>
+              <span>${escapeHtml(panel.title)}</span>
+            </h3>
+            <span class="forum-panel-badge" style="background:${escapeHtml(panel.badgeBg || 'rgba(217, 119, 6, 0.15)')}; color:${escapeHtml(panel.badgeColor || '#B45309')};">${escapeHtml(panel.badge || 'UPDATE')}</span>
+          </div>
+          <div class="forum-panel-list dynamic-update-content" style="padding:14px 16px; font-size:13.5px; line-height:1.65; color:#334155; white-space:pre-wrap; word-break:break-word;">
+            ${escapeHtml(panel.content)}
+          </div>
+        </section>
+      `);
+    }
+  }
+
+  // Always append Members Online Panel at the end of the sidebar
+  renderedPanels.push(`
+    <!-- Members Online Panel -->
+    <section class="forum-panel forum-presence-panel" aria-labelledby="sidebar-members-online-heading">
+      <div class="forum-panel-header">
+        <h3 id="sidebar-members-online-heading" class="forum-panel-title">
+          <span class="presence-live-indicator" aria-hidden="true">
+            <span class="presence-pulse-dot"></span>
+          </span>
+          <span>Members Online</span>
+        </h3>
+        <span class="forum-panel-badge" id="presence-status-badge">LIVE</span>
+      </div>
+
+      <div class="presence-stats-grid" id="presence-stats-grid">
+        <div class="presence-stat-card">
+          <div class="presence-stat-num" id="presence-members-count">-</div>
+          <div class="presence-stat-label">Members</div>
+        </div>
+        <div class="presence-stat-card">
+          <div class="presence-stat-num" id="presence-guests-count">-</div>
+          <div class="presence-stat-label">Guests</div>
+        </div>
+        <div class="presence-stat-card presence-stat-total">
+          <div class="presence-stat-num" id="presence-total-count">-</div>
+          <div class="presence-stat-label">Total Online</div>
+        </div>
+      </div>
+
+      <div class="presence-members-block">
+        <div class="presence-subhead">
+          <span>Active Members</span>
+          <span class="presence-subhead-count" id="presence-visible-count"></span>
+        </div>
+        <div id="forum-online-members-list" class="presence-members-list">
+          <div class="presence-loading-skeleton">Loading active members...</div>
+        </div>
+      </div>
+    </section>
+  `);
+
+  return `
+    <aside class="forum-sidebar">
+      ${renderedPanels.join('')}
+    </aside>
+  `;
 }
 
 async function loadForumSidebarPosts(forceRefresh = false) {
@@ -5622,22 +5677,7 @@ async function renderContentReadingView(container, hash) {
       </div>
 
       <div class="reader-page mode-${currentMode}" data-reader-theme="${currentMode}">
-        <!-- Floating Reader Controls Toolbar -->
-        <div class="reader-toolbar">
-          <div class="reader-toolbar-group">
-            <button class="reader-tool-btn" onclick="adjustFontSize(-0.08)" title="Smaller">A−</button>
-            <button class="reader-tool-btn reader-tool-btn-reset" onclick="adjustFontSize(0)" title="Reset">Reset</button>
-            <button class="reader-tool-btn" onclick="adjustFontSize(0.08)" title="Larger">A+</button>
-          </div>
-          <div class="reader-toolbar-group">
-            <button class="mode-pill ${currentMode === 'light' ? 'active' : ''}" data-mode="light" onclick="setReaderMode('light')">Light</button>
-            <button class="mode-pill ${currentMode === 'sepia' ? 'active' : ''}" data-mode="sepia" onclick="setReaderMode('sepia')">Sepia</button>
-            <button class="mode-pill ${currentMode === 'dark' ? 'active' : ''}" data-mode="dark" onclick="setReaderMode('dark')">Dark</button>
-          </div>
-          <div class="reader-toolbar-group">
-            <button class="reader-tool-btn" onclick="shareChapter('copy', '${escapeQuotes(art.title)}')" title="Share Link">🔗 Share</button>
-          </div>
-        </div>
+
 
         <div class="reader-container" style="max-width:840px; margin:0 auto; padding:20px 16px;">
           <!-- Breadcrumbs & Back Bar -->
@@ -5659,12 +5699,17 @@ async function renderContentReadingView(container, hash) {
             <span class="crumb-current">${escapeHtml(art.title)}</span>
           </nav>
 
-          <div class="content-reading-back-bar" style="margin-bottom:18px;">
+          <div class="content-reading-back-bar" style="margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <a href="${art.subCategoryId ? `#forms?sub=${encodeURIComponent(art.subCategoryId)}` : `#forms?category=${encodeURIComponent(art.mainCategoryId || '')}`}" class="content-back-btn">
               « Back to ${escapeHtml(art.subCategoryTitle || art.mainCategoryTitle || 'Forms')}
             </a>
-            <div style="font-size:12px; color:#64748B;">
-              Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+            <div class="reader-meta-right" style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <div style="font-size:12px; color:#64748B;">
+                Published: <strong>${new Date(art.publishedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+              </div>
+              <button type="button" class="reader-pref-chip-btn" onclick="toggleReaderPreferencesModal(true)" title="Reader Preferences">
+                <span>⚙️</span> Preferences
+              </button>
             </div>
           </div>
 
@@ -5685,9 +5730,7 @@ async function renderContentReadingView(container, hash) {
                 <div>
                   <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                     ${escapeHtml(art.authorName)}
-                    <span class="forms-role-badge" style="font-size:11px; background:${art.authorRole === 'admin' ? '#FEF3C7; color:#92400E;' : (art.authorRole === 'writer' ? '#EDE9FE; color:#5B21B6;' : '#E0F2FE; color:#0369A1;')}">
-                      ${art.authorRole === 'admin' ? '👑 Admin' : (art.authorRole === 'writer' ? '✍️ Author' : '👤 Member')}
-                    </span>
+                    ${(typeof formatAuthorRoleBadge === 'function' ? formatAuthorRoleBadge(art.authorRole) : (window.formatAuthorRoleBadge ? window.formatAuthorRoleBadge(art.authorRole) : ''))}
                   </div>
                   <div style="font-size:11.5px; color:#64748B;">Rudhra Prarthana Community</div>
                 </div>
@@ -5725,6 +5768,67 @@ async function renderContentReadingView(container, hash) {
             ${storyBody || '<p style="color:#64748B; font-style:italic;">No novel content available for this thread.</p>'}
           </article>
 
+          <!-- Decorative Chapter End Ornament -->
+          <div class="chapter-end-ornament">
+            <span class="chapter-end-line"></span>
+            <span>❦</span>
+            <span class="chapter-end-line"></span>
+          </div>
+
+          <!-- Reader Reaction & Like Section with Share on the right -->
+          <div class="reader-reaction-section">
+            <div class="reader-actions-row">
+              <div class="reader-like-container" id="reader-like-container" data-target-id="${art.id}" data-target-type="content">
+                <!-- 7 Emoji Reaction Popup -->
+                <div class="reader-emoji-popup" id="reader-emoji-popup" style="display:none;" role="dialog" aria-label="Reaction Options">
+                  <div class="reader-emoji-list">
+                    <button type="button" class="reader-emoji-item" data-emoji="❤️" onclick="handleReaderReaction('❤️', '${escapeQuotes(art.id)}', 'content')" title="Love">
+                      <span class="reader-emoji-icon">❤️</span>
+                      <span class="reader-emoji-text">Love</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="👍" onclick="handleReaderReaction('👍', '${escapeQuotes(art.id)}', 'content')" title="Like">
+                      <span class="reader-emoji-icon">👍</span>
+                      <span class="reader-emoji-text">Like</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="👏" onclick="handleReaderReaction('👏', '${escapeQuotes(art.id)}', 'content')" title="Clap">
+                      <span class="reader-emoji-icon">👏</span>
+                      <span class="reader-emoji-text">Clap</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="😂" onclick="handleReaderReaction('😂', '${escapeQuotes(art.id)}', 'content')" title="Laugh">
+                      <span class="reader-emoji-icon">😂</span>
+                      <span class="reader-emoji-text">Laugh</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="😮" onclick="handleReaderReaction('😮', '${escapeQuotes(art.id)}', 'content')" title="Surprise">
+                      <span class="reader-emoji-icon">😮</span>
+                      <span class="reader-emoji-text">Surprise</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="😍" onclick="handleReaderReaction('😍', '${escapeQuotes(art.id)}', 'content')" title="Adore">
+                      <span class="reader-emoji-icon">😍</span>
+                      <span class="reader-emoji-text">Adore</span>
+                    </button>
+                    <button type="button" class="reader-emoji-item" data-emoji="😢" onclick="handleReaderReaction('😢', '${escapeQuotes(art.id)}', 'content')" title="Sad">
+                      <span class="reader-emoji-icon">😢</span>
+                      <span class="reader-emoji-text">Sad</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Main Like Button -->
+                <button type="button" class="reader-main-like-btn" id="reader-main-like-btn" onclick="toggleReaderEmojiPopup(event)" title="Like this novel">
+                  <span class="reader-main-like-icon" id="reader-main-like-icon">👍</span>
+                  <span class="reader-main-like-label" id="reader-main-like-label">Like</span>
+                  <span class="reader-main-like-count" id="reader-main-like-count" style="display:none;">0</span>
+                </button>
+              </div>
+
+              <!-- Share Button (Near Like button, on the right side) -->
+              <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ title: '${escapeQuotes(art.title)}' })" title="Share this novel">
+                <span class="reader-main-share-icon">🔗</span>
+                <span class="reader-main-share-label">Share</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Comments & Reviews Section -->
           <section style="margin-top:40px; padding-top:24px; border-top:1px dashed #E2E8F0;">
             <h3 style="font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; margin:0 0 16px;">
@@ -5750,6 +5854,11 @@ async function renderContentReadingView(container, hash) {
 
     // Mount novel-style comments widget
     renderCommentsWidget('article-comments-widget', `content_${art.id}`, 0);
+
+    // Initialize Like button & 7 Emoji reactions
+    if (typeof window.initReaderReactions === 'function') {
+      window.initReaderReactions(art.id, 'content');
+    }
   } catch (err) {
     console.error('Error rendering content reading view:', err);
     container.innerHTML = `

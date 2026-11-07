@@ -273,28 +273,6 @@ export async function getSidebarPostsFromDb(limit = 7) {
     WHERE t.is_published = 1 AND t.visibility = 'public';
   `);
 
-  // 2.5 Short Stories
-  let shortStoryRows = [];
-  try {
-    shortStoryRows = await query(`
-      SELECT 
-        s.id,
-        s.slug,
-        s.title,
-        s.author,
-        s.genre,
-        s.views_count,
-        s.comments_count,
-        s.published_at,
-        s.updated_at,
-        s.created_at,
-        (SELECT c.created_at FROM short_story_comments c WHERE c.story_id = s.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_date,
-        (SELECT c.user_id FROM short_story_comments c WHERE c.story_id = s.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_user_id
-      FROM short_stories s
-      WHERE s.status = 'published' AND s.is_disabled = 0;
-    `);
-  } catch (err) {}
-
   // 2. Content Articles (General Notes, Announcements, Tea Time, Custom Articles)
   const articleRows = await query(`
     SELECT 
@@ -323,34 +301,10 @@ export async function getSidebarPostsFromDb(limit = 7) {
     WHERE a.is_published = 1 AND a.is_disabled = 0;
   `);
 
-  // 3. Novels & Stories (Written Novels and Audio Novels)
-  const novelRows = await query(`
-    SELECT
-      n.id,
-      n.title,
-      'novel' AS item_type,
-      n.category,
-      n.author,
-      n.views,
-      n.is_audio,
-      n.cover,
-      (SELECT COUNT(*) FROM comments WHERE novel_id = n.id) AS comments_count,
-      (SELECT c.created_at FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_date,
-      (SELECT c.user_id FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_user_id,
-      (SELECT c.chapter_num FROM comments c WHERE c.novel_id = n.id ORDER BY c.id DESC LIMIT 1) AS latest_comment_chapter,
-      (SELECT COALESCE(ch.published_at, ch.created_at) FROM chapters ch WHERE ch.novel_id = n.id AND ch.status = 'published' ORDER BY COALESCE(ch.published_at, ch.created_at) DESC LIMIT 1) AS latest_chapter_date,
-      (SELECT ch.chapter_num FROM chapters ch WHERE ch.novel_id = n.id AND ch.status = 'published' ORDER BY COALESCE(ch.published_at, ch.created_at) DESC LIMIT 1) AS latest_chapter_num,
-      n.created_at,
-      n.updated_at
-    FROM novels n
-    WHERE n.is_published = 1 AND n.visibility = 'public';
-  `);
-
   // Gather user profiles for accurate "Last updated by"
   const userIds = new Set();
   (topicRows || []).forEach(r => { if (r.last_user_id) userIds.add(r.last_user_id); if (r.author_id) userIds.add(r.author_id); });
   (articleRows || []).forEach(r => { if (r.last_user_id) userIds.add(r.last_user_id); if (r.author_id) userIds.add(r.author_id); });
-  (novelRows || []).forEach(r => { if (r.latest_comment_user_id) userIds.add(r.latest_comment_user_id); });
 
   const userMap = new Map();
   if (userIds.size > 0) {
@@ -377,11 +331,7 @@ export async function getSidebarPostsFromDb(limit = 7) {
     const lastActivity = t.latest_reply_date || t.last_reply_at || t.updated_at || t.created_at;
     const views = Number(t.views_count || 0);
     const replies = Number(t.replies_count || 0);
-
-    const resolvedNovelId = t.novel_id || resolveNovelIdFromTitle(t.title);
-    const link = resolvedNovelId 
-      ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${t.chapter_num ? '&ch=' + encodeURIComponent(t.chapter_num) : ''}#comments`
-      : `#topic?id=${encodeURIComponent(t.id)}`;
+    const link = `#topic?id=${encodeURIComponent(t.id)}`;
 
     items.push({
       id: `topic-${t.id}`,
@@ -397,33 +347,6 @@ export async function getSidebarPostsFromDb(limit = 7) {
       timeDisplay: formatRelativeTime(lastActivity),
       link,
       category: t.category_title || 'Discussion'
-    });
-  });
-
-  // Map Short Stories
-  (shortStoryRows || []).forEach(s => {
-    const commentUser = s.latest_comment_user_id ? userMap.get(s.latest_comment_user_id) : null;
-    const lastAuthorName = commentUser ? commentUser.display_name : s.author;
-    const lastAvatar = (commentUser && commentUser.avatar) || '/profile.png';
-    const lastActivity = s.latest_comment_date || s.published_at || s.updated_at || s.created_at;
-    const views = Number(s.views_count || 0);
-    const replies = Number(s.comments_count || 0);
-    const link = `#story?id=${encodeURIComponent(s.slug || s.id)}`;
-
-    items.push({
-      id: `story-${s.id}`,
-      rawId: s.id,
-      itemType: 'story',
-      title: s.title,
-      author: s.author,
-      lastAuthor: lastAuthorName,
-      avatar: lastAvatar,
-      replies,
-      views,
-      updatedAt: lastActivity,
-      timeDisplay: formatRelativeTime(lastActivity),
-      link,
-      category: s.genre || 'Short Story'
     });
   });
 
@@ -453,39 +376,6 @@ export async function getSidebarPostsFromDb(limit = 7) {
       link,
       category: a.sub_category_id ? a.sub_category_id.replace(/-/g, ' ') : 'General Notes'
     });
-  });
-
-  // Map Novels (avoid duplicate if a topic already exists for this exact novel)
-  (novelRows || []).forEach(n => {
-    const hasTopic = (topicRows || []).some(t => (t.novel_id === n.id) || (resolveNovelIdFromTitle(t.title) === n.id));
-    const commentUser = n.latest_comment_user_id ? userMap.get(n.latest_comment_user_id) : null;
-    const lastAuthorName = commentUser ? commentUser.display_name : n.author;
-    const lastAvatar = (commentUser && commentUser.avatar) || '/profile.png';
-    const lastActivity = n.latest_comment_date || n.latest_chapter_date || n.updated_at || n.created_at;
-    const views = parseInt(String(n.views || '0').replace(/,/g, ''), 10) || 0;
-    const replies = Number(n.comments_count || 0);
-
-    const link = n.is_audio 
-      ? `#audio?novel=${encodeURIComponent(n.id)}`
-      : `#novel?id=${encodeURIComponent(n.id)}${n.latest_chapter_num ? '&chapter=' + encodeURIComponent(n.latest_chapter_num) : ''}`;
-
-    if (!hasTopic) {
-      items.push({
-        id: `novel-${n.id}`,
-        rawId: n.id,
-        itemType: 'novel',
-        title: n.title,
-        author: n.author,
-        lastAuthor: lastAuthorName,
-        avatar: lastAvatar,
-        replies,
-        views,
-        updatedAt: lastActivity,
-        timeDisplay: formatRelativeTime(lastActivity),
-        link,
-        category: n.category || 'Novel'
-      });
-    }
   });
 
   // 1. Latest Posts: strictly sorted by latest activity timestamp, newest first
@@ -571,17 +461,13 @@ export async function getForumTopicsFromDb(categoryId = null, options = {}) {
   return (topics || []).map(t => {
     const rawExcerpt = (t.raw_content || '').replace(/<[^>]+>/g, '').trim();
     const cleanExcerpt = rawExcerpt.length > 140 ? rawExcerpt.substring(0, 140) + '...' : rawExcerpt;
-    const resolvedNovelId = t.novel_id || resolveNovelIdFromTitle(t.title);
-    const chParam = t.chapter_num ? `&ch=${t.chapter_num}` : '';
-    const novelLink = resolvedNovelId ? `#novel?id=${encodeURIComponent(resolvedNovelId)}${chParam}#comments` : `#topic?id=${t.id}`;
+    const topicLink = `#topic?id=${t.id}`;
     return {
       id: t.id,
       categoryId: t.category_id,
       categoryTitle: t.category_title,
-      novelId: resolvedNovelId,
-      chapterNum: t.chapter_num || null,
-      novelLink: novelLink,
       title: t.title,
+      link: topicLink,
       content: t.content || t.raw_content,
       image: t.image || null,
       isPinned: Boolean(t.is_pinned),
@@ -901,7 +787,7 @@ export async function createForumTopicInDb({ categoryId, title, authorId, conten
 export async function getForumCategoriesFromDb(includeInactive = false) {
   let sql = `
     SELECT 
-      c.id, c.title, c.description, c.icon, c.sort_order, c.is_active, c.color,
+      c.id, c.title, '' AS description, c.icon, c.sort_order, c.is_active, c.color,
       (SELECT COUNT(*) FROM forum_topics t WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS topics_count,
       (SELECT COUNT(*) FROM forum_posts p JOIN forum_topics t ON p.topic_id = t.id WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS posts_count,
       (SELECT COALESCE(SUM(t.replies_count), 0) FROM forum_topics t WHERE t.category_id = c.id AND t.is_published = 1 AND t.visibility = 'public') AS replies_count,
@@ -1126,37 +1012,10 @@ export async function deleteForumTopicInDb(topicId, permanent = false) {
  * Reading Progress Handlers
  */
 export async function getReadingProgressFromDb(userId, novelId = null) {
-  if (novelId) {
-    const row = await queryOne(`
-      SELECT p.*, n.title AS novel_title, n.chapters_count, c.title AS chapter_title
-      FROM reading_progress p
-      JOIN novels n ON p.novel_id = n.id
-      LEFT JOIN chapters c ON p.novel_id = c.novel_id AND p.chapter_num = c.chapter_num
-      WHERE p.user_id = ? AND p.novel_id = ?;
-    `, [userId, novelId]);
-    return row;
-  }
-
-  const rows = await query(`
-    SELECT p.*, n.title AS novel_title, n.cover AS novel_cover, n.chapters_count, c.title AS chapter_title
-    FROM reading_progress p
-    JOIN novels n ON p.novel_id = n.id
-    LEFT JOIN chapters c ON p.novel_id = c.novel_id AND p.chapter_num = c.chapter_num
-    WHERE p.user_id = ?
-    ORDER BY p.last_read_at DESC;
-  `, [userId]);
-  return rows;
+  return novelId ? null : [];
 }
 
 export async function saveReadingProgressToDb(userId, novelId, chapterNum, percentage = 100) {
-  await query(`
-    INSERT INTO reading_progress (user_id, novel_id, chapter_num, progress_percentage, last_read_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON DUPLICATE KEY UPDATE
-      chapter_num = VALUES(chapter_num),
-      progress_percentage = VALUES(progress_percentage),
-      last_read_at = CURRENT_TIMESTAMP;
-  `, [userId, novelId, chapterNum, percentage]);
   return { success: true };
 }
 
@@ -1215,38 +1074,6 @@ export async function toggleLikeInDb({ targetType, targetId, userId }) {
       INSERT INTO likes (target_type, target_id, user_id) 
       VALUES (?, ?, ?);
     `, [targetType, targetId, userId]);
-
-    // Like Notification for comments
-    if (targetType === 'comment') {
-      try {
-        const commentRow = await queryOne(`
-          SELECT c.id, c.user_id, c.novel_id, c.chapter_num, n.title AS novel_title
-          FROM comments c
-          LEFT JOIN novels n ON c.novel_id = n.id
-          WHERE c.id = ?;
-        `, [targetId]);
-
-        if (commentRow && commentRow.user_id && Number(commentRow.user_id) !== Number(userId)) {
-          const actorProfile = await queryOne(`
-            SELECT COALESCE(p.display_name, u.username) AS name
-            FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;
-          `, [userId]);
-
-          await createNotification({
-            userId: commentRow.user_id,
-            actorId: userId,
-            type: 'comment_like',
-            title: 'Liked your Comment',
-            message: `${actorProfile?.name || 'A reader'} liked your comment on ${commentRow.novel_title || 'Novel'}.`,
-            link: commentRow.chapter_num && commentRow.chapter_num !== '0' ? `#reader?novel=${commentRow.novel_id}&ch=${commentRow.chapter_num}` : `#novel-detail?id=${commentRow.novel_id}`,
-            entityType: 'comment',
-            entityId: targetId
-          });
-        }
-      } catch (err) {
-        console.warn('[Like Notification Error]:', err.message);
-      }
-    }
 
     const info = await getLikesFromDb({ targetType, targetId, userId });
     return { success: true, liked: true, ...info };

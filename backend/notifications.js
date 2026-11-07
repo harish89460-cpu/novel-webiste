@@ -355,21 +355,26 @@ export async function createNotification({
   }
 
   // Insert into notifications table
-  const res = await query(`
-    INSERT INTO notifications (user_id, actor_id, type, title, message, link, entity_type, entity_id, is_read, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP);
-  `, [
-    recipientId,
-    cleanActorId,
-    type,
-    title.trim(),
-    message.trim(),
-    link.trim(),
-    entityType || null,
-    entityId ? String(entityId) : null
-  ]);
-
-  const notifId = res.insertId;
+  let notifId = null;
+  try {
+    const res = await query(`
+      INSERT INTO notifications (user_id, actor_id, type, title, message, link, entity_type, entity_id, is_read, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP);
+    `, [
+      recipientId,
+      cleanActorId,
+      type,
+      title.trim(),
+      message.trim(),
+      link.trim(),
+      entityType || null,
+      entityId ? String(entityId) : null
+    ]);
+    notifId = res.insertId;
+  } catch (dbErr) {
+    console.warn('[Notifications] Failed to insert notification row:', dbErr.message);
+    return null;
+  }
 
   // Fetch actor details for rich client rendering
   let actorInfo = null;

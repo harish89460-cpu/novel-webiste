@@ -21,6 +21,30 @@ export function sanitizeMessageText(rawText) {
 }
 
 /**
+ * Sanitize rich-text HTML message content to allow safe formatting tags while blocking XSS
+ */
+export function sanitizeRichTextMessage(rawHtml) {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  let str = rawHtml.trim();
+
+  // Strip script tags and styles
+  str = str.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  str = str.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  str = str.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+  str = str.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
+  str = str.replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '');
+
+  // Strip javascript: and data: URIs in href/src
+  str = str.replace(/javascript\s*:/gi, 'blocked:');
+  str = str.replace(/data\s*:\s*text\/html/gi, 'blocked:');
+
+  // Strip inline event handlers (onclick, onload, onerror, etc.)
+  str = str.replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
+
+  return str;
+}
+
+/**
  * 1. Global Chat Availability Setting
  */
 export async function getUserChatSettings(userId) {
@@ -280,6 +304,246 @@ export async function getOrCreateConversation(userId, targetUserId) {
 }
 
 /**
+ * 5b. Create Direct Message Conversation with Multiple Recipients, Title, Locks & Invites
+ */
+export async function createDirectMessageConversation(senderId, {
+  recipients = [],
+  title = '',
+  content = '',
+  messageType = 'text',
+  attachmentUrl = null,
+  attachmentMeta = null,
+  allowInvite = true,
+  isLocked = false
+} = {}) {
+  const sId = Number(senderId);
+  const sender = await queryOne('SELECT id, username, role, status FROM users WHERE id = ?;', [sId]);
+  if (!sender || sender.status === 'blocked' || sender.status === 'pending_deletion') {
+    return { success: false, error: 'Your account is not active.' };
+  }
+
+  // Normalize recipients array
+  const rawRecipients = Array.isArray(recipients) ? recipients : [recipients];
+  const targetUserIds = [];
+
+  for (const item of rawRecipients) {
+    if (!item) continue;
+    let target = null;
+    if (typeof item === 'number' || (!isNaN(item) && String(item).trim() !== '' && !String(item).includes('@'))) {
+      target = await queryOne('SELECT id, username, role, status FROM users WHERE id = ?;', [Number(item)]);
+    }
+    if (!target && typeof item === 'string') {
+      const cleanName = item.replace(/^@/, '').trim();
+      target = await queryOne('SELECT id, username, role, status FROM users WHERE username = ? OR id = ?;', [cleanName, parseInt(cleanName, 10) || 0]);
+      if (!target) {
+        target = await queryOne(`
+          SELECT u.id, u.username, u.role, u.status
+          FROM profiles p
+          INNER JOIN users u ON u.id = p.user_id
+          WHERE p.display_name = ?
+          LIMIT 1;
+        `, [cleanName]);
+      }
+    }
+    if (target && target.id !== sId && !targetUserIds.includes(target.id)) {
+      if (target.status === 'blocked' || target.status === 'pending_deletion') {
+        return { success: false, error: `Recipient @${target.username} is unavailable.` };
+      }
+      const perm = await canUsersChat(sId, target.id);
+      if (!perm.allowed) {
+        return { success: false, error: `Cannot message @${target.username}: ${perm.error}` };
+      }
+      targetUserIds.push(target.id);
+    }
+  }
+
+  if (targetUserIds.length === 0) {
+    return { success: false, error: 'Please specify at least one valid recipient.' };
+  }
+
+  const cleanTitle = (title || '').trim().substring(0, 255);
+  const cleanAllowInvite = allowInvite !== false && allowInvite !== 0 && allowInvite !== 'false' ? 1 : 0;
+  const cleanIsLocked = isLocked === true || isLocked === 1 || isLocked === 'true' ? 1 : 0;
+
+  // Sanitize content
+  let safeContent = (content || '').trim();
+  if (safeContent) {
+    safeContent = sanitizeRichTextMessage(safeContent);
+  }
+
+  const pool = getDb();
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [convRes] = await conn.query(`
+      INSERT INTO conversations (title, allow_invite, created_by, is_locked, last_message_at)
+      VALUES (?, ?, ?, ?, NOW());
+    `, [cleanTitle || null, cleanAllowInvite, sId, cleanIsLocked]);
+
+    const convId = convRes.insertId;
+
+    // Insert participants: sender + all targets
+    const allParticipantIds = [sId, ...targetUserIds];
+    for (const uId of allParticipantIds) {
+      await conn.query(`
+        INSERT INTO conversation_participants (conversation_id, user_id, unread_count)
+        VALUES (?, ?, 0);
+      `, [convId, uId]);
+    }
+
+    let initialMessageId = null;
+
+    // If initial content or attachment is provided, insert message
+    if (safeContent || attachmentUrl) {
+      const [msgRes] = await conn.query(`
+        INSERT INTO messages (conversation_id, sender_id, content, message_type, attachment_url, attachment_meta, is_read)
+        VALUES (?, ?, ?, ?, ?, ?, 0);
+      `, [convId, sId, safeContent, messageType || 'text', attachmentUrl || null, attachmentMeta ? JSON.stringify(attachmentMeta) : null]);
+
+      initialMessageId = msgRes.insertId;
+
+      // Increment unread_count for all recipients
+      for (const tId of targetUserIds) {
+        await conn.query(`
+          UPDATE conversation_participants
+          SET unread_count = unread_count + 1
+          WHERE conversation_id = ? AND user_id = ?;
+        `, [convId, tId]);
+      }
+    }
+
+    await conn.commit();
+
+    // Broadcast SSE to all recipients
+    for (const tId of targetUserIds) {
+      sendSseToUser(tId, 'chat:new_conversation', {
+        conversationId: convId,
+        title: cleanTitle,
+        senderId: sId,
+        senderUsername: sender.username
+      });
+      if (initialMessageId) {
+        sendSseToUser(tId, 'chat:message', {
+          id: initialMessageId,
+          conversationId: convId,
+          senderId: sId,
+          content: safeContent,
+          messageType: messageType || 'text',
+          attachmentUrl: attachmentUrl || null,
+          attachmentMeta: attachmentMeta || null,
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+
+    return {
+      success: true,
+      id: convId,
+      conversationId: convId,
+      title: cleanTitle,
+      messageId: initialMessageId
+    };
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Chat] Error creating direct message conversation:', err);
+    return { success: false, error: err.message || 'Failed to create direct message conversation.' };
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * 5c. Invite New Participants to an Existing Direct Message Conversation
+ */
+export async function inviteParticipantsToConversation(conversationId, requesterId, newRecipients = []) {
+  const convId = Number(conversationId);
+  const rId = Number(requesterId);
+
+  const conv = await queryOne('SELECT * FROM conversations WHERE id = ?;', [convId]);
+  if (!conv) {
+    return { success: false, error: 'Conversation not found.' };
+  }
+
+  if (conv.is_locked) {
+    return { success: false, error: 'This direct message is locked. Invitations are disabled.', code: 'LOCKED' };
+  }
+
+  const requester = await queryOne('SELECT id, username, role FROM users WHERE id = ?;', [rId]);
+  const isAdmin = ['admin', 'administrator'].includes((requester?.role || '').toLowerCase());
+
+  // Check if requester is a participant
+  const requesterPart = await queryOne('SELECT * FROM conversation_participants WHERE conversation_id = ? AND user_id = ?;', [convId, rId]);
+  if (!requesterPart && !isAdmin) {
+    return { success: false, error: 'Unauthorized: You are not a participant in this conversation.', code: 'FORBIDDEN' };
+  }
+
+  // Check if allow_invite is enabled
+  if (!conv.allow_invite && conv.created_by !== rId && !isAdmin) {
+    return { success: false, error: 'Invitations are disabled for this direct message.', code: 'INVITES_DISABLED' };
+  }
+
+  const raw = Array.isArray(newRecipients) ? newRecipients : [newRecipients];
+  const toAdd = [];
+  const addedUsernames = [];
+
+  for (const item of raw) {
+    if (!item) continue;
+    let target = null;
+    if (typeof item === 'number' || (!isNaN(item) && String(item).trim() !== '' && !String(item).includes('@'))) {
+      target = await queryOne('SELECT id, username, status FROM users WHERE id = ?;', [Number(item)]);
+    }
+    if (!target && typeof item === 'string') {
+      const cleanName = item.replace(/^@/, '').trim();
+      target = await queryOne('SELECT id, username, status FROM users WHERE username = ?;', [cleanName]);
+    }
+    if (target && target.status !== 'blocked') {
+      // Check if already in conversation
+      const existing = await queryOne('SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?;', [convId, target.id]);
+      if (!existing && !toAdd.includes(target.id)) {
+        toAdd.push(target.id);
+        addedUsernames.push(target.username);
+      }
+    }
+  }
+
+  if (toAdd.length === 0) {
+    return { success: false, error: 'No new eligible users to invite.' };
+  }
+
+  for (const uid of toAdd) {
+    await query(`
+      INSERT INTO conversation_participants (conversation_id, user_id, unread_count, joined_at)
+      VALUES (?, ?, 0, NOW());
+    `, [convId, uid]);
+  }
+
+  // Insert system announcement message
+  const sysMsg = `${requester.username} invited ${addedUsernames.map(u => '@' + u).join(', ')} to the direct message.`;
+  await query(`
+    INSERT INTO messages (conversation_id, sender_id, content, message_type, is_read)
+    VALUES (?, ?, ?, 'system', 1);
+  `, [convId, rId, sysMsg]);
+
+  // Broadcast update to all participants
+  const allParts = await query('SELECT user_id FROM conversation_participants WHERE conversation_id = ?;', [convId]);
+  allParts.forEach(p => {
+    sendSseToUser(p.user_id, 'chat:participants_updated', {
+      conversationId: convId,
+      invitedBy: requester.username,
+      addedUsernames
+    });
+  });
+
+  return {
+    success: true,
+    addedCount: toAdd.length,
+    addedUsernames
+  };
+}
+
+/**
  * 6. Get User Conversations List (Sorted by Latest Activity)
  */
 export async function getUserConversations(userId) {
@@ -288,20 +552,15 @@ export async function getUserConversations(userId) {
   const rows = await query(`
     SELECT
       c.id AS conversation_id,
+      c.title AS conversation_title,
+      c.allow_invite AS conversation_allow_invite,
+      c.created_by AS conversation_created_by,
       c.last_message_at,
       c.is_locked AS conversation_is_locked,
       c.locked_by AS conversation_locked_by,
       c.locked_reason AS conversation_locked_reason,
       cp_me.unread_count,
       cp_me.last_read_at,
-      other.id AS other_user_id,
-      other.username AS other_username,
-      other.role AS other_role,
-      p.display_name AS other_display_name,
-      p.avatar AS other_avatar,
-      ast.is_online AS other_is_online,
-      ast.last_seen AS other_last_seen,
-      cs.is_chat_available AS other_is_chat_available,
       m.id AS last_message_id,
       m.sender_id AS last_message_sender_id,
       m.content AS last_message_content,
@@ -312,11 +571,6 @@ export async function getUserConversations(userId) {
       m.is_read AS last_message_is_read
     FROM conversation_participants cp_me
     INNER JOIN conversations c ON c.id = cp_me.conversation_id
-    LEFT JOIN conversation_participants cp_other ON cp_other.conversation_id = c.id AND cp_other.user_id != cp_me.user_id
-    LEFT JOIN users other ON other.id = cp_other.user_id
-    LEFT JOIN profiles p ON p.user_id = other.id
-    LEFT JOIN activity_status ast ON ast.user_id = other.id
-    LEFT JOIN chat_settings cs ON cs.user_id = other.id
     LEFT JOIN (
       SELECT m1.*
       FROM messages m1
@@ -330,11 +584,76 @@ export async function getUserConversations(userId) {
     ORDER BY c.last_message_at DESC, c.id DESC;
   `, [uId]);
 
-  // Fetch lock statuses for each otherUser in parallel
+  if (!rows || rows.length === 0) {
+    return { success: true, conversations: [] };
+  }
+
+  const convIds = rows.map(r => r.conversation_id);
+
+  // Fetch all participants for these conversations in a single batch query
+  const participantsRows = await query(`
+    SELECT
+      cp.conversation_id,
+      u.id AS user_id,
+      u.username,
+      u.role,
+      p.display_name,
+      p.avatar,
+      ast.is_online,
+      ast.last_seen,
+      cs.is_chat_available
+    FROM conversation_participants cp
+    INNER JOIN users u ON u.id = cp.user_id
+    LEFT JOIN profiles p ON p.user_id = u.id
+    LEFT JOIN activity_status ast ON ast.user_id = u.id
+    LEFT JOIN chat_settings cs ON cs.user_id = u.id
+    WHERE cp.conversation_id IN (?)
+    ORDER BY cp.joined_at ASC;
+  `, [convIds]);
+
+  const participantsMap = new Map();
+  for (const p of participantsRows) {
+    if (!participantsMap.has(p.conversation_id)) {
+      participantsMap.set(p.conversation_id, []);
+    }
+    participantsMap.get(p.conversation_id).push({
+      id: p.user_id,
+      username: p.username,
+      displayName: p.display_name || p.username || 'Member',
+      display_name: p.display_name || p.username || 'Member',
+      avatar: sanitizeAvatar(p.avatar),
+      role: p.role || 'reader',
+      isOnline: Boolean(p.is_online),
+      is_online: Boolean(p.is_online),
+      lastSeen: p.last_seen,
+      last_seen: p.last_seen,
+      isChatAvailable: p.is_chat_available !== 0,
+      is_chat_available: p.is_chat_available !== 0
+    });
+  }
+
+  // Build unified conversation objects
   const conversations = await Promise.all(rows.map(async r => {
-    const otherUserId = r.other_user_id || 0;
+    const allParts = participantsMap.get(r.conversation_id) || [];
+    const otherParts = allParts.filter(p => p.id !== uId);
+    const otherUser = otherParts[0] || (allParts[0] || {
+      id: 0,
+      username: 'Member',
+      displayName: 'Member',
+      display_name: 'Member',
+      avatar: '/profile.png',
+      role: 'reader',
+      isOnline: false,
+      is_online: false,
+      lastSeen: null,
+      last_seen: null,
+      isChatAvailable: true,
+      is_chat_available: true
+    });
+
+    const otherUserId = otherUser.id || 0;
     const lockStatus = otherUserId ? await getChatLockStatus(uId, otherUserId) : { isLocked: false, isLockedByMe: false, isLockedByThem: false };
-    const otherIsChatAvailable = r.other_is_chat_available !== 0;
+    const otherIsChatAvailable = otherUser.isChatAvailable !== false;
 
     let canSend = true;
     let blockReason = null;
@@ -342,33 +661,16 @@ export async function getUserConversations(userId) {
     if (r.conversation_is_locked) {
       canSend = false;
       blockReason = r.conversation_locked_reason || 'This conversation is locked.';
-    } else if (!otherIsChatAvailable) {
+    } else if (otherParts.length === 1 && !otherIsChatAvailable) {
       canSend = false;
       blockReason = 'This user is not accepting new messages.';
-    } else if (lockStatus.isLockedByThem) {
+    } else if (otherParts.length === 1 && lockStatus.isLockedByThem) {
       canSend = false;
       blockReason = 'This conversation is locked by the other participant.';
-    } else if (lockStatus.isLockedByMe) {
+    } else if (otherParts.length === 1 && lockStatus.isLockedByMe) {
       canSend = false;
       blockReason = 'You have locked this conversation.';
     }
-
-    const otherUserObj = {
-      id: r.other_user_id || 0,
-      username: r.other_username || 'Member',
-      displayName: r.other_display_name || r.other_username || 'Member',
-      display_name: r.other_display_name || r.other_username || 'Member',
-      avatar: sanitizeAvatar(r.other_avatar),
-      role: r.other_role || 'reader',
-      isOnline: Boolean(r.other_is_online),
-      is_online: Boolean(r.other_is_online),
-      lastSeen: r.other_last_seen,
-      last_seen: r.other_last_seen,
-      isChatAvailable: otherIsChatAvailable,
-      is_chat_available: otherIsChatAvailable,
-      isLockedByMe: lockStatus.isLockedByMe,
-      isLockedByThem: lockStatus.isLockedByThem
-    };
 
     let snippet = '';
     if (r.last_message_id) {
@@ -378,8 +680,10 @@ export async function getUserConversations(userId) {
         snippet = '📷 ' + (r.last_message_content || 'Photo');
       } else if (r.last_message_type === 'audio') {
         snippet = '🎙️ Voice message';
+      } else if (r.last_message_type === 'file') {
+        snippet = '📎 File attachment';
       } else {
-        snippet = r.last_message_content || '';
+        snippet = (r.last_message_content || '').replace(/<[^>]+>/g, '').trim() || '';
       }
     }
 
@@ -402,9 +706,19 @@ export async function getUserConversations(userId) {
       is_read: Boolean(r.last_message_is_read)
     } : null;
 
+    const derivedTitle = r.conversation_title
+      ? r.conversation_title
+      : (otherParts.map(p => p.displayName).join(', ') || 'Direct Message');
+
     return {
       id: r.conversation_id,
       conversationId: r.conversation_id,
+      title: derivedTitle,
+      conversationTitle: r.conversation_title,
+      allowInvite: Boolean(r.conversation_allow_invite),
+      allow_invite: Boolean(r.conversation_allow_invite),
+      createdBy: r.conversation_created_by,
+      created_by: r.conversation_created_by,
       isLocked: Boolean(r.conversation_is_locked),
       is_locked: Boolean(r.conversation_is_locked),
       lockedBy: r.conversation_locked_by,
@@ -415,8 +729,10 @@ export async function getUserConversations(userId) {
       last_message_at: r.last_message_at,
       unreadCount: Number(r.unread_count || 0),
       unread_count: Number(r.unread_count || 0),
-      otherUser: otherUserObj,
-      other_user: otherUserObj,
+      otherUser,
+      other_user: otherUser,
+      participants: allParts,
+      otherParticipants: otherParts,
       lastMessage: lastMsgObj,
       last_message: snippet,
       canSend,
@@ -448,39 +764,44 @@ export async function getConversationMessages(conversationId, userId, { limit = 
     return { success: false, error: 'Unauthorized: You are not a participant in this conversation.', code: 'FORBIDDEN' };
   }
 
-  // Conversation lock info
-  const convRow = await queryOne('SELECT is_locked, locked_by, locked_reason FROM conversations WHERE id = ?;', [convId]);
+  // Conversation lock info & metadata
+  const convRow = await queryOne('SELECT id, title, allow_invite, created_by, is_locked, locked_by, locked_reason FROM conversations WHERE id = ?;', [convId]);
   const isConvLocked = Boolean(convRow?.is_locked);
 
-  // Get other participant info
-  const otherRow = await queryOne(`
+  // Get all participants info
+  const partRows = await query(`
     SELECT
       u.id, u.username, u.role, u.status,
       p.display_name, p.avatar,
       ast.is_online, ast.last_seen,
-      cs.is_chat_available
+      cs.is_chat_available,
+      cp.unread_count, cp.joined_at
     FROM conversation_participants cp
     INNER JOIN users u ON u.id = cp.user_id
     LEFT JOIN profiles p ON p.user_id = u.id
     LEFT JOIN activity_status ast ON ast.user_id = u.id
     LEFT JOIN chat_settings cs ON cs.user_id = u.id
-    WHERE cp.conversation_id = ? AND cp.user_id != ?;
-  `, [convId, uId]);
+    WHERE cp.conversation_id = ?;
+  `, [convId]);
 
-  const otherUser = otherRow ? {
-    id: otherRow.id,
-    username: otherRow.username,
-    displayName: otherRow.display_name || otherRow.username,
-    display_name: otherRow.display_name || otherRow.username,
-    avatar: sanitizeAvatar(otherRow.avatar),
-    role: otherRow.role || 'reader',
-    isOnline: Boolean(otherRow.is_online),
-    is_online: Boolean(otherRow.is_online),
-    lastSeen: otherRow.last_seen,
-    last_seen: otherRow.last_seen,
-    isChatAvailable: otherRow.is_chat_available !== 0,
-    is_chat_available: otherRow.is_chat_available !== 0
-  } : {
+  const allParticipants = partRows.map(p => ({
+    id: p.id,
+    username: p.username,
+    displayName: p.display_name || p.username,
+    display_name: p.display_name || p.username,
+    avatar: sanitizeAvatar(p.avatar),
+    role: p.role || 'reader',
+    isOnline: Boolean(p.is_online),
+    is_online: Boolean(p.is_online),
+    lastSeen: p.last_seen,
+    last_seen: p.last_seen,
+    isChatAvailable: p.is_chat_available !== 0,
+    is_chat_available: p.is_chat_available !== 0,
+    isMe: p.id === uId
+  }));
+
+  const otherParticipants = allParticipants.filter(p => p.id !== uId);
+  const otherUser = otherParticipants[0] || {
     id: 0,
     username: 'Member',
     displayName: 'Member',
@@ -509,14 +830,14 @@ export async function getConversationMessages(conversationId, userId, { limit = 
     WHERE conversation_id = ? AND user_id = ?;
   `, [convId, uId]);
 
-  // Notify other user that their messages were read
-  if (otherUser && otherUser.id) {
-    sendSseToUser(otherUser.id, 'chat:read', {
+  // Notify other users that their messages were read
+  otherParticipants.forEach(op => {
+    sendSseToUser(op.id, 'chat:read', {
       conversationId: convId,
       readByUserId: uId,
       readAt: new Date().toISOString()
     });
-  }
+  });
 
   // Fetch messages
   let messagesQuery = `
@@ -622,9 +943,19 @@ export async function getConversationMessages(conversationId, userId, { limit = 
   // Update total badge
   const unreadTotal = await getTotalUnreadChatCount(uId);
 
+  const derivedTitle = convRow?.title
+    ? convRow.title
+    : (otherParticipants.map(p => p.displayName).join(', ') || 'Direct Message');
+
   const conversationObj = {
     id: convId,
     conversationId: convId,
+    title: derivedTitle,
+    conversationTitle: convRow?.title || null,
+    allowInvite: convRow?.allow_invite !== undefined ? Boolean(convRow.allow_invite) : true,
+    allow_invite: convRow?.allow_invite !== undefined ? Boolean(convRow.allow_invite) : true,
+    createdBy: convRow?.created_by || null,
+    created_by: convRow?.created_by || null,
     isLocked: isConvLocked,
     is_locked: isConvLocked,
     lockedBy: convRow?.locked_by || null,
@@ -633,6 +964,8 @@ export async function getConversationMessages(conversationId, userId, { limit = 
     locked_reason: convRow?.locked_reason || null,
     otherUser,
     other_user: otherUser,
+    participants: allParticipants,
+    otherParticipants,
     canSend,
     blockReason,
     lockStatus
@@ -643,8 +976,16 @@ export async function getConversationMessages(conversationId, userId, { limit = 
     id: convId,
     conversationId: convId,
     conversation: conversationObj,
+    title: derivedTitle,
+    conversationTitle: convRow?.title || null,
+    allowInvite: convRow?.allow_invite !== undefined ? Boolean(convRow.allow_invite) : true,
+    allow_invite: convRow?.allow_invite !== undefined ? Boolean(convRow.allow_invite) : true,
+    createdBy: convRow?.created_by || null,
+    created_by: convRow?.created_by || null,
     otherUser,
     other_user: otherUser,
+    participants: allParticipants,
+    otherParticipants,
     isLocked: isConvLocked,
     is_locked: isConvLocked,
     lockedBy: convRow?.locked_by || null,
@@ -681,18 +1022,26 @@ export async function sendMessage(conversationId, senderId, payloadOrContent) {
     attachmentMeta = payloadOrContent.attachmentMeta || payloadOrContent.meta || null;
   }
 
-  content = sanitizeMessageText(content);
+  if (/<[a-z][\s\S]*>/i.test(content)) {
+    content = sanitizeRichTextMessage(content);
+  } else {
+    content = sanitizeMessageText(content);
+  }
 
   if (messageType === 'text') {
     if (!content || content.length === 0) {
       return { success: false, error: 'Message cannot be empty.' };
     }
-    if (content.length > 4000) {
-      return { success: false, error: 'Message exceeds the 4,000 character limit.' };
+    if (content.length > 20000) {
+      return { success: false, error: 'Message exceeds the character limit.' };
     }
   } else if (messageType === 'image' || messageType === 'audio') {
     if (!attachmentUrl) {
       return { success: false, error: `${messageType === 'image' ? 'Image' : 'Voice'} attachment is required.` };
+    }
+  } else if (messageType === 'file') {
+    if (!attachmentUrl) {
+      return { success: false, error: 'File attachment is required.' };
     }
   } else {
     messageType = 'text';
@@ -718,27 +1067,28 @@ export async function sendMessage(conversationId, senderId, payloadOrContent) {
     };
   }
 
-  // 3. Identify recipient
-  const recipientRow = await queryOne(`
+  // 3. Identify all other participants
+  const otherParticipants = await query(`
     SELECT user_id FROM conversation_participants
-    WHERE conversation_id = ? AND user_id != ?
-    LIMIT 1;
+    WHERE conversation_id = ? AND user_id != ?;
   `, [convId, sId]);
 
-  if (!recipientRow) {
-    return { success: false, error: 'Recipient not found in conversation.' };
+  if (!otherParticipants || otherParticipants.length === 0) {
+    return { success: false, error: 'No recipient found in conversation.' };
   }
-  const rId = Number(recipientRow.user_id);
 
-  // 4. Strict Precedence Validation: Global availability + Individual Locks
-  const permission = await canUsersChat(sId, rId);
-  if (!permission.allowed) {
-    return {
-      success: false,
-      error: permission.error,
-      code: permission.code,
-      lockStatus: permission.lockStatus
-    };
+  // 4. Strict Precedence Validation: Global availability + Individual Locks (for 1-on-1)
+  if (otherParticipants.length === 1) {
+    const rId = Number(otherParticipants[0].user_id);
+    const permission = await canUsersChat(sId, rId);
+    if (!permission.allowed) {
+      return {
+        success: false,
+        error: permission.error,
+        code: permission.code,
+        lockStatus: permission.lockStatus
+      };
+    }
   }
 
   // 5. Insert message and update conversation timestamps atomically
@@ -762,12 +1112,12 @@ export async function sendMessage(conversationId, senderId, payloadOrContent) {
       WHERE id = ?;
     `, [convId]);
 
-    // Increment recipient's unread_count
+    // Increment all other participants' unread_count
     await conn.query(`
       UPDATE conversation_participants
       SET unread_count = unread_count + 1
-      WHERE conversation_id = ? AND user_id = ?;
-    `, [convId, rId]);
+      WHERE conversation_id = ? AND user_id != ?;
+    `, [convId, sId]);
 
     await conn.commit();
 
@@ -803,39 +1153,41 @@ export async function sendMessage(conversationId, senderId, payloadOrContent) {
       }
     };
 
-    // 6. Real-Time Delivery via SSE
-    const recipientUnreadTotal = await getTotalUnreadChatCount(rId);
+    // 6. Real-Time Delivery via SSE to all other participants
+    for (const op of otherParticipants) {
+      const recipientId = Number(op.user_id);
+      const recipientUnreadTotal = await getTotalUnreadChatCount(recipientId);
 
-    // Broadcast to recipient
-    sendSseToUser(rId, 'chat:message', {
-      conversationId: convId,
-      message: messagePayload,
-      unreadTotal: recipientUnreadTotal
-    });
+      sendSseToUser(recipientId, 'chat:message', {
+        conversationId: convId,
+        message: messagePayload,
+        unreadTotal: recipientUnreadTotal
+      });
+
+      // 7. Persistent MySQL Notification
+      try {
+        const cleanSnippet = (content || (messageType === 'image' ? 'Sent an image attachment' : (messageType === 'audio' ? 'Sent an audio note' : 'Sent a file attachment'))).replace(/<[^>]+>/g, '').trim().slice(0, 75);
+        const senderName = senderProfile?.display_name || senderProfile?.username || 'A member';
+        await createNotification({
+          userId: recipientId,
+          actorId: sId,
+          type: 'chat_message',
+          title: `Message from ${senderName}`,
+          message: `${senderName}: "${cleanSnippet}"`,
+          link: `#member?id=${encodeURIComponent(senderProfile?.username || sId)}&tab=chat`,
+          entityType: 'chat',
+          entityId: convId
+        });
+      } catch (notifErr) {
+        console.warn('[Chat Notification Warning]:', notifErr.message);
+      }
+    }
 
     // Broadcast to sender (multi-tab sync)
     sendSseToUser(sId, 'chat:message_sent', {
       conversationId: convId,
       message: messagePayload
     });
-
-    // 7. Persistent MySQL Notification for recipient
-    try {
-      const cleanSnippet = (content || (messageType === 'image' ? 'Sent an image attachment' : 'Sent an audio note')).replace(/<[^>]+>/g, '').trim().slice(0, 75);
-      const senderName = senderProfile?.display_name || senderProfile?.username || 'A member';
-      await createNotification({
-        userId: rId,
-        actorId: sId,
-        type: 'chat_message',
-        title: `Message from ${senderName}`,
-        message: `${senderName}: "${cleanSnippet}"`,
-        link: `#member?id=${encodeURIComponent(senderProfile?.username || sId)}&tab=chat`,
-        entityType: 'chat',
-        entityId: convId
-      });
-    } catch (notifErr) {
-      console.warn('[Chat Notification Warning]:', notifErr.message);
-    }
 
     return {
       success: true,

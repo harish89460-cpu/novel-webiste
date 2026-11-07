@@ -166,10 +166,10 @@ export async function getAllWriters({ search = '', status = '' } = {}) {
       wp.access_type, wp.permission_status, wp.full_access, wp.can_publish_independently,
       wp.can_schedule, wp.can_novels, wp.can_short_stories, wp.can_audio_novels, wp.can_episodes,
       wp.access_level,
-      (SELECT COUNT(*) FROM novels n WHERE n.author_id = u.id) AS novels_count,
-      (SELECT COUNT(*) FROM chapters c JOIN novels n ON c.novel_id = n.id WHERE n.author_id = u.id AND c.status = 'published') AS published_episodes_count,
-      (SELECT COUNT(*) FROM chapters c JOIN novels n ON c.novel_id = n.id WHERE n.author_id = u.id) AS total_episodes_count,
-      (SELECT COALESCE(SUM(CAST(n.views AS UNSIGNED)), 0) FROM novels n WHERE n.author_id = u.id) AS total_views
+      (SELECT COUNT(*) FROM content_articles ca WHERE ca.author_id = u.id) AS novels_count,
+      (SELECT COUNT(*) FROM content_articles ca WHERE ca.author_id = u.id AND ca.status = 'published') AS published_episodes_count,
+      (SELECT COUNT(*) FROM content_articles ca WHERE ca.author_id = u.id) AS total_episodes_count,
+      (SELECT COALESCE(SUM(CAST(ca.views_count AS UNSIGNED)), 0) FROM content_articles ca WHERE ca.author_id = u.id) AS total_views
     FROM users u
     LEFT JOIN profiles p ON u.id = p.user_id
     LEFT JOIN writer_permissions wp ON u.id = wp.writer_id
@@ -260,10 +260,10 @@ export async function getWriterDetails(writerId) {
 
   if (!user) return null;
 
-  // Retrieve novels owned by this writer
+  // Retrieve articles owned by this writer
   const novels = await query(`
-    SELECT id, title, genre, category, status, cover, chapters_count, views, rating, is_published, visibility, created_at
-    FROM novels
+    SELECT id, title, unique_slug, status, is_published, visibility, created_at, views_count AS views
+    FROM content_articles
     WHERE author_id = ?
     ORDER BY created_at DESC;
   `, [writerId]);
@@ -385,10 +385,10 @@ export async function deleteWriterAccount({ writerId, actorId = 2, reassignToId 
     return { success: false, error: 'Writer account not found or cannot be deleted.' };
   }
 
-  // Preserve novels integrity: reassign owned novels to primary author (user_id = 2)
-  const ownedNovels = await query('SELECT id, title FROM novels WHERE author_id = ?;', [writerId]);
-  if (ownedNovels.length > 0) {
-    await query('UPDATE novels SET author_id = ? WHERE author_id = ?;', [reassignToId, writerId]);
+  // Preserve articles integrity: reassign owned articles to primary author (user_id = 2)
+  const ownedArticles = await query('SELECT id, title FROM content_articles WHERE author_id = ?;', [writerId]);
+  if (ownedArticles.length > 0) {
+    await query('UPDATE content_articles SET author_id = ? WHERE author_id = ?;', [reassignToId, writerId]);
   }
 
   // Revoke all sessions and presence
@@ -407,7 +407,7 @@ export async function deleteWriterAccount({ writerId, actorId = 2, reassignToId 
     writerId: null,
     actorId,
     action: 'account_deleted',
-    details: `Writer "${writer.username}" (${writer.email}) deleted. ${ownedNovels.length} novel(s) preserved and reassigned to Author ID ${reassignToId}.`
+    details: `Writer "${writer.username}" (${writer.email}) deleted. ${ownedArticles.length} article(s) preserved and reassigned to Author ID ${reassignToId}.`
   });
 
   return {
@@ -430,32 +430,24 @@ export async function getWriterWorkspaceData(writerId) {
 
   if (!writer) return null;
 
-  const novels = await query(`
-    SELECT 
-      n.id, n.title, n.genre, n.category, n.status, n.badge, n.cover, n.description,
-      n.chapters_count, n.views, n.rating, n.is_published, n.visibility, n.created_at, n.updated_at
-    FROM novels n
-    WHERE n.author_id = ?
-    ORDER BY n.updated_at DESC;
+  const assignments = await query(`
+    SELECT * FROM writer_assignments WHERE writer_id = ? ORDER BY created_at DESC;
   `, [writerId]);
 
-  const episodes = await query(`
-    SELECT 
-      c.id, c.novel_id, c.chapter_num, c.episode_number, c.title, c.word_count, c.read_time,
-      c.status, c.scheduled_at, c.published_at, c.created_at, c.updated_at,
-      n.title AS novel_title
-    FROM chapters c
-    JOIN novels n ON c.novel_id = n.id
-    WHERE n.author_id = ?
-    ORDER BY c.novel_id, c.sort_order ASC;
+  const submissions = await query(`
+    SELECT * FROM writer_submissions WHERE writer_id = ? ORDER BY submitted_at DESC;
   `, [writerId]);
 
-  const draftNovels = novels.filter(n => n.visibility === 'draft' || !n.is_published);
-  const publishedNovels = novels.filter(n => n.visibility === 'public' && n.is_published === 1);
-  const draftEpisodes = episodes.filter(e => e.status === 'draft');
-  const publishedEpisodes = episodes.filter(e => e.status === 'published');
-  const scheduledCount = episodes.filter(e => e.status === 'scheduled').length;
-  const totalViews = novels.reduce((acc, n) => acc + (parseInt(n.views, 10) || 0), 0);
+  const articles = await query(`
+    SELECT id, unique_slug, title, status, is_published, created_at, updated_at
+    FROM content_articles
+    WHERE author_id = ?
+    ORDER BY updated_at DESC;
+  `, [writerId]);
+
+  const activeAssignments = (assignments || []).filter(a => a.status === 'active');
+  const pendingSubmissions = (submissions || []).filter(s => s.status === 'pending_review');
+  const changesRequested = (submissions || []).filter(s => s.status === 'changes_requested');
 
   return {
     writer: {
@@ -467,20 +459,15 @@ export async function getWriterWorkspaceData(writerId) {
       status: writer.status
     },
     stats: {
-      novelsCount: novels.length,
-      draftsCount: draftNovels.length + draftEpisodes.length,
-      draftNovelsCount: draftNovels.length,
-      draftEpisodesCount: draftEpisodes.length,
-      publishedNovelsCount: publishedNovels.length,
-      episodesCount: episodes.length,
-      publishedEpisodesCount: publishedEpisodes.length,
-      publishedCount: publishedEpisodes.length,
-      scheduledCount,
-      totalViews
+      assignmentsCount: activeAssignments.length,
+      submissionsCount: (submissions || []).length,
+      pendingSubmissionsCount: pendingSubmissions.length,
+      changesRequestedCount: changesRequested.length,
+      articlesCount: (articles || []).length
     },
-    novels,
-    episodes,
-    recentEpisodes: episodes.slice(0, 10)
+    assignments: assignments || [],
+    submissions: submissions || [],
+    articles: articles || []
   };
 }
 
@@ -752,18 +739,11 @@ export async function createWriterAssignment({
     } else if (contentType === 'sub_category') {
       const sub = await queryOne('SELECT title FROM content_subcategories WHERE id = ?;', [contentId]);
       contentTitle = sub ? sub.title : `Subcategory #${contentId}`;
-    } else if (contentType === 'novel') {
-      const n = await queryOne('SELECT title FROM novels WHERE id = ?;', [contentId]);
-      contentTitle = n ? n.title : `Novel #${contentId}`;
-    } else if (contentType === 'short_story') {
-      const s = await queryOne('SELECT title FROM short_stories WHERE id = ? OR slug = ?;', [contentId, contentId]);
-      contentTitle = s ? s.title : `Story #${contentId}`;
-    } else if (contentType === 'audio_novel') {
-      const a = await queryOne('SELECT title FROM novels WHERE id = ? AND is_audio = 1;', [contentId]) || await queryOne('SELECT title FROM audio_novels WHERE id = ?;', [contentId]);
-      contentTitle = a ? a.title : `Audio Novel #${contentId}`;
-    } else if (contentType === 'chapter' || contentType === 'episode' || contentType === 'audio_episode') {
-      const c = await queryOne('SELECT title FROM chapters WHERE id = ?;', [contentId]);
-      contentTitle = c ? c.title : `Episode #${contentId}`;
+    } else if (contentType === 'article' || contentType === 'content_article' || contentType === 'novel') {
+      const a = await queryOne('SELECT title FROM content_articles WHERE id = ?;', [contentId]);
+      contentTitle = a ? a.title : `Article #${contentId}`;
+    } else {
+      contentTitle = `Content #${contentId}`;
     }
   }
 
@@ -871,34 +851,9 @@ export async function canWriterAccessContent(writerId, contentType, contentId, r
       a.content_type === contentType && String(a.content_id).toLowerCase() === String(contentId).toLowerCase()
     );
 
-    // If checking an episode/chapter, check if writer is assigned to the parent novel
-    if (!matchingAssignment && (contentType === 'chapter' || contentType === 'episode' || contentType === 'audio_episode')) {
-      const ch = await queryOne('SELECT novel_id FROM chapters WHERE id = ?;', [contentId]);
-      if (ch && ch.novel_id) {
-        matchingAssignment = assignments.find(a => 
-          (a.content_type === 'novel' || a.content_type === 'audio_novel') && String(a.content_id) === String(ch.novel_id)
-        );
-      }
-    }
-
-    // Check category-level assignments
+    // Check category-level assignments for articles
     if (!matchingAssignment) {
-      if (contentType === 'novel') {
-        const n = await queryOne('SELECT category FROM novels WHERE id = ?;', [contentId]);
-        if (n && n.category) {
-          matchingAssignment = assignments.find(a => 
-            a.content_type === 'main_category' && (String(a.content_id).toLowerCase() === n.category.toLowerCase() || String(a.title).toLowerCase() === n.category.toLowerCase())
-          );
-        }
-      } else if (contentType === 'short_story') {
-        matchingAssignment = assignments.find(a => 
-          a.content_type === 'main_category' && (String(a.content_id).toLowerCase().includes('short') || String(a.title).toLowerCase().includes('short'))
-        );
-      } else if (contentType === 'audio_novel') {
-        matchingAssignment = assignments.find(a => 
-          a.content_type === 'main_category' && (String(a.content_id).toLowerCase().includes('audio') || String(a.title).toLowerCase().includes('audio'))
-        );
-      } else if (contentType === 'content' || contentType === 'content_article') {
+      if (contentType === 'content' || contentType === 'content_article') {
         const art = await queryOne('SELECT main_category_id, sub_category_id FROM content_articles WHERE id = ? OR unique_slug = ?;', [contentId, String(contentId)]);
         if (art) {
           matchingAssignment = assignments.find(a => 
@@ -944,14 +899,11 @@ export async function canWriterAccessContent(writerId, contentType, contentId, r
     };
   }
 
-  // Check direct ownership or general type capability if novel is owned
-  if (contentType === 'novel' && contentId) {
-    const novel = await queryOne('SELECT author_id, access_permission FROM novels WHERE id = ?;', [contentId]);
-    if (novel) {
-      if (Number(novel.author_id) === Number(writerId)) {
-        if (!perms.canNovels) {
-          return { allowed: false, reason: 'Novels management is not enabled for your account.' };
-        }
+  // Check direct ownership or general type capability for articles
+  if ((contentType === 'article' || contentType === 'content_article' || contentType === 'novel') && contentId) {
+    const art = await queryOne('SELECT author_id, access_permission FROM content_articles WHERE id = ?;', [contentId]);
+    if (art) {
+      if (Number(art.author_id) === Number(writerId)) {
         return {
           allowed: true,
           accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required',
@@ -960,74 +912,15 @@ export async function canWriterAccessContent(writerId, contentType, contentId, r
           canSchedule
         };
       }
-      if (novel.access_permission === 'admin_only') {
-        return { allowed: false, reason: 'This novel is restricted to Admin Only. Writers cannot edit this content.' };
-      }
-    }
-  }
-
-  if (contentType === 'short_story' && contentId) {
-    const story = await queryOne('SELECT author_id FROM short_stories WHERE id = ? OR slug = ?;', [contentId, contentId]);
-    if (story && Number(story.author_id) === Number(writerId)) {
-      if (!perms.canShortStories) {
-        return { allowed: false, reason: 'Short stories management is not enabled for your account.' };
-      }
-      return {
-        allowed: true,
-        accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required',
-        isOwner: true,
-        canPublishIndependently: canIndependentPublish,
-        canSchedule
-      };
-    }
-  }
-
-  if (contentType === 'audio_novel' && contentId) {
-    const audio = await queryOne('SELECT author_id FROM audio_novels WHERE id = ?;', [contentId]);
-    if (audio && Number(audio.author_id) === Number(writerId)) {
-      if (!perms.canAudioNovels) {
-        return { allowed: false, reason: 'Audio novels management is not enabled for your account.' };
-      }
-      return {
-        allowed: true,
-        accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required',
-        isOwner: true,
-        canPublishIndependently: canIndependentPublish,
-        canSchedule
-      };
-    }
-  }
-
-  if ((contentType === 'chapter' || contentType === 'episode') && contentId) {
-    const ch = await queryOne('SELECT author_id, novel_id FROM chapters WHERE id = ?;', [contentId]);
-    if (ch) {
-      const parentNovel = await queryOne('SELECT author_id, access_permission FROM novels WHERE id = ?;', [ch.novel_id]);
-      if (parentNovel && Number(parentNovel.author_id) === Number(writerId)) {
-        return {
-          allowed: true,
-          accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required',
-          isOwner: true,
-          canPublishIndependently: canIndependentPublish,
-          canSchedule
-        };
+      if (art.access_permission === 'admin_only') {
+        return { allowed: false, reason: 'This content is restricted to Admin Only. Writers cannot edit this content.' };
       }
     }
   }
 
   // If creating new content
   if (!contentId && requiredAction === 'create') {
-    if (contentType === 'novel' && perms.canNovels) {
-      return { allowed: true, accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required', isCreating: true };
-    }
-    if (contentType === 'short_story' && perms.canShortStories) {
-      return { allowed: true, accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required', isCreating: true };
-    }
-    if (contentType === 'audio_novel' && perms.canAudioNovels) {
-      return { allowed: true, accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required', isCreating: true };
-    }
-    if ((contentType === 'chapter' || contentType === 'episode') && perms.canEpisodes) {
-      return { allowed: true, accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required', isCreating: true };
-    }
+    return { allowed: true, accessLevel: canIndependentPublish ? 'independent_publish' : 'review_required', isCreating: true };
   }
 
   return { allowed: false, reason: 'You do not have active assignment permissions for this content.' };
@@ -1115,31 +1008,12 @@ export async function createOrUpdateSubmission({
  * Helper to update content status across chapters, short_stories, audio_novels, or novels
  */
 async function updateContentStatus(contentType, contentId, status, scheduledAt = null, reviewStatus = 'published', feedback = null) {
-  if (contentType === 'chapter' || contentType === 'episode' || contentType === 'audio_episode') {
-    await query(`
-      UPDATE chapters 
-      SET status = ?, scheduled_at = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?;
-    `, [status, scheduledAt || null, reviewStatus, feedback, contentId]);
-  } else if (contentType === 'short_story') {
-    await query(`
-      UPDATE short_stories 
-      SET status = ?, scheduled_at = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? OR slug = ?;
-    `, [status, scheduledAt || null, reviewStatus, feedback, contentId, contentId]);
-  } else if (contentType === 'audio_novel') {
-    await query(`
-      UPDATE audio_novels 
-      SET status = ?, review_status = ?, admin_feedback = COALESCE(?, admin_feedback), updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?;
-    `, [status, reviewStatus, feedback, contentId]);
-  } else if (contentType === 'novel') {
-    await query(`
-      UPDATE novels 
-      SET status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?;
-    `, [status, contentId]);
-  }
+  const isPub = status === 'published' ? 1 : 0;
+  await query(`
+    UPDATE content_articles 
+    SET status = ?, is_published = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? OR unique_slug = ?;
+  `, [status, isPub, contentId, String(contentId)]);
 }
 
 /**
@@ -1294,66 +1168,16 @@ export async function getEnhancedWriterWorkspaceData(writerId) {
     SELECT * FROM writer_submissions WHERE writer_id = ? ORDER BY submitted_at DESC;
   `, [writerId]);
 
-  // Also query short stories owned or assigned
-  let shortStories = [];
-  if (perms.canShortStories) {
-    if (perms.fullAccess) {
-      shortStories = await query('SELECT * FROM short_stories ORDER BY updated_at DESC;');
-    } else {
-      const assignedStoryIds = assignments.filter(a => a.contentType === 'short_story').map(a => a.contentId);
-      if (assignedStoryIds.length > 0) {
-        shortStories = await query('SELECT * FROM short_stories WHERE author_id = ? OR id IN (?) OR slug IN (?) ORDER BY updated_at DESC;', [writerId, assignedStoryIds, assignedStoryIds]);
-      } else {
-        shortStories = await query('SELECT * FROM short_stories WHERE author_id = ? ORDER BY updated_at DESC;', [writerId]);
-      }
-    }
-  }
-
-  // Query audio novels owned or assigned (from novels where is_audio=1 or category='Audio Novels')
-  let audioNovels = [];
-  if (perms.canAudioNovels) {
-    if (perms.fullAccess) {
-      audioNovels = await query(`
-        SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
-               (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
-        FROM novels n
-        WHERE n.is_audio = 1 OR n.category = 'Audio Novels'
-        ORDER BY n.updated_at DESC;
-      `);
-    } else {
-      const assignedAudioIds = assignments.filter(a => a.contentType === 'audio_novel').map(a => a.contentId);
-      if (assignedAudioIds.length > 0) {
-        audioNovels = await query(`
-          SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
-                 (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
-          FROM novels n
-          WHERE (n.is_audio = 1 OR n.category = 'Audio Novels') AND (n.author_id = ? OR n.id IN (?))
-          ORDER BY n.updated_at DESC;
-        `, [writerId, assignedAudioIds]);
-      } else {
-        audioNovels = await query(`
-          SELECT n.id, n.title, n.author, n.cover, n.description, n.audio_voice, n.audio_duration, n.status, n.is_published, n.created_at, n.updated_at,
-                 (SELECT COUNT(*) FROM chapters c WHERE c.novel_id = n.id AND c.is_audio = 1) as total_episodes
-          FROM novels n
-          WHERE (n.is_audio = 1 OR n.category = 'Audio Novels') AND n.author_id = ?
-          ORDER BY n.updated_at DESC;
-        `, [writerId]);
-      }
-    }
-  }
-
-  const pendingSubmissions = submissions.filter(s => s.status === 'pending_review');
-  const changesRequested = submissions.filter(s => s.status === 'changes_requested');
+  const pendingSubmissions = (submissions || []).filter(s => s.status === 'pending_review');
+  const changesRequested = (submissions || []).filter(s => s.status === 'changes_requested');
 
   return {
     ...baseData,
     permissions: perms,
-    assignments,
-    assignmentsCount: assignments.length,
-    submissions,
+    assignments: assignments || [],
+    assignmentsCount: (assignments || []).length,
+    submissions: submissions || [],
     pendingSubmissionsCount: pendingSubmissions.length,
-    changesRequestedCount: changesRequested.length,
-    shortStories,
-    audioNovels
+    changesRequestedCount: changesRequested.length
   };
 }
