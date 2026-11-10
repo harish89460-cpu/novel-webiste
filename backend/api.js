@@ -59,6 +59,7 @@ import {
   toggleReaction,
   fetchLinkPreview
 } from './comments.js';
+import { resolveContentMetadata, renderShareHtml } from './share-metadata.js';
 import {
   getSidebarPostsFromDb,
   getForumTopicsFromDb,
@@ -765,6 +766,32 @@ export async function apiMiddleware(req, res, next) {
     }
     const preview = await fetchLinkPreview(targetUrl);
     return sendJson(res, preview, 200);
+  }
+
+  // 12.6. Dynamic Social Media Link Previews & Open Graph Engine (/api/share and /share)
+  if ((pathname === '/share' || pathname.startsWith('/share/') || pathname === '/share-preview') && method === 'GET') {
+    let identifier = parsed.query.id || parsed.query.slug || parsed.query.novel || parsed.query.thread || parsed.query.sub || parsed.query.cat || '';
+    if (!identifier && pathname.startsWith('/share/')) {
+      const parts = pathname.replace(/^\/share\/?/, '').split('/').filter(Boolean);
+      identifier = parts[parts.length - 1] || '';
+    }
+
+    const meta = await resolveContentMetadata(identifier, req);
+
+    // If client requested JSON metadata
+    const acceptHeader = req.headers?.['accept'] || '';
+    if (parsed.query.format === 'json' || pathname === '/share-preview' || acceptHeader.includes('application/json')) {
+      return sendJson(res, { success: true, metadata: meta }, 200);
+    }
+
+    // Otherwise render full Open Graph / Twitter Card HTML
+    const html = renderShareHtml(meta);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, max-age=300, s-maxage=600',
+      'X-Robots-Tag': 'all'
+    });
+    return res.end(html);
   }
 
   // 13. Comments: Add Comment or Nested Reply (Registered Users Only)

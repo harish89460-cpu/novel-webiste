@@ -9,6 +9,14 @@
       "destination": "https://equipped-checking-predicted-relax.trycloudflare.com/uploads/$1"
     },
     {
+      "source": "/share",
+      "destination": "https://equipped-checking-predicted-relax.trycloudflare.com/api/share"
+    },
+    {
+      "source": "/share/(.*)",
+      "destination": "https://equipped-checking-predicted-relax.trycloudflare.com/api/share/$1"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

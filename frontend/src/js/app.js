@@ -883,9 +883,9 @@ async function renderNovelDetailView(container, hash) {
           </div>
 
           <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <button class="share-btn whatsapp" onclick="shareChapter('whatsapp', '${escapeQuotes(novel.title)}')">WhatsApp</button>
-            <button class="share-btn facebook" onclick="shareChapter('facebook', '${escapeQuotes(novel.title)}')">Facebook</button>
-            <button class="share-btn" onclick="shareChapter('copy', '${escapeQuotes(novel.title)}')">Copy Link</button>
+            <button class="share-btn whatsapp" onclick="shareChapter('whatsapp', '${escapeQuotes(novel.title)}', { id: '${escapeQuotes(novel.id)}', description: '${escapeQuotes((novel.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160))}', image: '${escapeQuotes(novel.cover || '')}', type: 'novel' })">WhatsApp</button>
+            <button class="share-btn facebook" onclick="shareChapter('facebook', '${escapeQuotes(novel.title)}', { id: '${escapeQuotes(novel.id)}', description: '${escapeQuotes((novel.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160))}', image: '${escapeQuotes(novel.cover || '')}', type: 'novel' })">Facebook</button>
+            <button class="share-btn" onclick="shareChapter('modal', '${escapeQuotes(novel.title)}', { id: '${escapeQuotes(novel.id)}', description: '${escapeQuotes((novel.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160))}', image: '${escapeQuotes(novel.cover || '')}', type: 'novel' })">Share / Copy Link</button>
           </div>
         </div>
       </div>
@@ -1189,7 +1189,7 @@ async function renderReaderView(container, hash) {
             </div>
 
             <!-- Share Button (Near Like button, on the right side) -->
-            <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ title: '${escapeQuotes(chapter.title || novel.title)}' })" title="Share this novel">
+            <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ id: '${escapeQuotes(chapter.id || novel.id)}', title: '${escapeQuotes((chapter.title || 'Chapter') + ' — ' + (novel.title || 'Rudhra Prarthana Novels'))}', description: '${escapeQuotes((novel.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160))}', image: '${escapeQuotes(novel.cover || '')}', category: '${escapeQuotes(novel.category || 'Novel')}', type: 'chapter' })" title="Share this novel">
               <span class="reader-main-share-icon">🔗</span>
               <span class="reader-main-share-label">Share</span>
             </button>
@@ -5697,6 +5697,33 @@ async function renderContentReadingView(container, hash) {
     const storyBody = isHtml ? rawNovelStory : rawNovelStory.split('\n\n').filter(Boolean).map(p => `<p>${p}</p>`).join('');
     const currentMode = localStorage.getItem('rp_reader_mode') || 'light';
 
+    // Synchronize document head metadata with the current reading content
+    try {
+      document.title = `${art.title} — Rudhra Prarthana Novels`;
+      const setMeta = (prop, content) => {
+        if (!content) return;
+        let el = document.querySelector(`meta[property="${prop}"]`) || document.querySelector(`meta[name="${prop}"]`);
+        if (!el) {
+          el = document.createElement('meta');
+          if (prop.startsWith('og:')) el.setAttribute('property', prop);
+          else el.setAttribute('name', prop);
+          document.head.appendChild(el);
+        }
+        el.setAttribute('content', content);
+      };
+      setMeta('og:title', art.title);
+      setMeta('twitter:title', art.title);
+      const excerpt = (art.summary || rawNovelStory || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+      if (excerpt) {
+        setMeta('og:description', excerpt);
+        setMeta('twitter:description', excerpt);
+      }
+      if (art.coverImage) {
+        setMeta('og:image', art.coverImage);
+        setMeta('twitter:image', art.coverImage);
+      }
+    } catch {}
+
     container.innerHTML = `
       <!-- Top Progress Track -->
       <div class="reading-progress-track">
@@ -5849,7 +5876,7 @@ async function renderContentReadingView(container, hash) {
               </div>
 
               <!-- Share Button (Near Like button, on the right side) -->
-              <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ title: '${escapeQuotes(art.title)}' })" title="Share this novel">
+              <button type="button" class="reader-main-share-btn" onclick="openReaderShareModal({ id: '${escapeQuotes(art.uniqueSlug || art.id)}', title: '${escapeQuotes(art.title)}', description: '${escapeQuotes((art.summary || (art.linkedNovel ? art.linkedNovel.description : '') || art.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160))}', image: '${escapeQuotes(art.coverImage || (art.linkedNovel ? art.linkedNovel.cover : '') || '')}', category: '${escapeQuotes(art.mainCategoryTitle || '')}', type: 'thread' })" title="Share this content">
                 <span class="reader-main-share-icon">🔗</span>
                 <span class="reader-main-share-label">Share</span>
               </button>

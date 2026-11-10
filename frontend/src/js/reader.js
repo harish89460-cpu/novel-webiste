@@ -165,20 +165,45 @@ export function initReader() {
   };
 
   // ==========================================================================
-  // Single Share Button & Clean Share Modal Engine
+  // Single Share Button & Rich Social-Media Link Preview Share Modal Engine
   // ==========================================================================
-  window.shareChapter = (type, title) => {
+  function extractCurrentContentId() {
+    try {
+      const hash = window.location.hash || '';
+      if (!hash) return '';
+      const qIndex = hash.indexOf('?');
+      if (qIndex !== -1) {
+        const params = new URLSearchParams(hash.slice(qIndex + 1));
+        return params.get('id') || params.get('slug') || params.get('novel') || params.get('sub') || params.get('category') || '';
+      }
+      const slashParts = hash.split('/');
+      if (slashParts.length > 1) {
+        return slashParts[1].split('?')[0];
+      }
+    } catch {}
+    return '';
+  }
+
+  window.shareChapter = (type, title, extraMeta = {}) => {
+    const meta = typeof title === 'object' ? title : { title, ...extraMeta };
     if (!type || type === 'modal') {
-      window.openReaderShareModal({ title });
+      window.openReaderShareModal(meta);
     } else {
-      window.executeReaderShare(type, title, window.location.href);
+      const contentId = meta.id || meta.slug || extractCurrentContentId();
+      const origin = window.location.origin;
+      const shareUrl = meta.url || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
+      window.executeReaderShare(type, meta.title || title, shareUrl);
     }
   };
 
   window.openReaderShareModal = (options = {}) => {
+    const contentId = options.id || options.slug || extractCurrentContentId();
+    const origin = window.location.origin;
+    const shareUrl = options.url || options.shareUrl || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
     const title = options.title || document.title || 'Rudhra Prarthana Novels';
-    const rawUrl = options.url || window.location.href;
-    const url = rawUrl.split('#')[0] + window.location.hash;
+    const description = options.description || 'Explore captivating novels, audio releases, and community discussions by author Rudhra Prarthana.';
+    const image = options.image || '/images/logo.png';
+    const domain = origin.replace(/^https?:\/\//i, '').split('/')[0] || 'rudhraprarthananovels.com';
 
     let modal = document.getElementById('reader-share-modal');
     if (!modal) {
@@ -191,20 +216,48 @@ export function initReader() {
     }
 
     const safeTitle = (title || 'Rudhra Prarthana Novel').replace(/"/g, '&quot;');
-    const safeUrl = url.replace(/"/g, '&quot;');
+    const safeDesc = (description || '').replace(/"/g, '&quot;');
+    const safeImage = (image || '/images/logo.png').replace(/"/g, '&quot;');
+    const safeUrl = shareUrl.replace(/"/g, '&quot;');
+    const safeDomain = domain.replace(/"/g, '&quot;');
 
     modal.innerHTML = `
-      <div class="reader-share-card" onclick="event.stopPropagation()">
+      <div class="reader-share-card rp-social-preview-modal-card" onclick="event.stopPropagation()">
         <div class="reader-share-header">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:20px;">🔗</span>
-            <h3 style="margin:0; font-size:16.5px; font-weight:700; color:var(--reader-heading, #0B1F33);">Share Novel</h3>
+            <h3 style="margin:0; font-size:16.5px; font-weight:700; color:var(--reader-heading, #0B1F33);">Share Content</h3>
           </div>
           <button type="button" class="reader-share-close-btn" onclick="window.closeReaderShareModal()" aria-label="Close share dialog">✕</button>
         </div>
+
         <div class="reader-share-body">
-          <div class="reader-share-title-preview" title="${safeTitle}">${safeTitle}</div>
-          
+          <!-- Professional Social Media Link Preview Card -->
+          <div class="rp-social-share-preview-card" id="rp-share-preview-card" aria-label="Social Link Preview">
+            <div class="rp-share-card-header">
+              <img src="/images/logo.png" class="rp-share-card-brand-logo" alt="RP Novels" onerror="this.src='/profile.png'">
+              <div class="rp-share-card-brand-meta">
+                <span class="rp-share-card-brand-name">Rudhra Prarthana Novels</span>
+                <span class="rp-share-card-domain">${safeDomain}</span>
+              </div>
+              <span class="rp-share-preview-badge">Link Preview</span>
+            </div>
+
+            <div class="rp-share-card-cover-wrap" id="rp-share-card-cover-wrap">
+              <img src="${safeImage}" class="rp-share-card-cover-img" id="rp-share-card-cover-img" alt="${safeTitle}" onerror="this.src='/images/logo.png'">
+            </div>
+
+            <div class="rp-share-card-body">
+              <h4 class="rp-share-card-title" id="rp-share-card-title">${safeTitle}</h4>
+              <p class="rp-share-card-desc" id="rp-share-card-desc">${safeDesc}</p>
+              <div class="rp-share-card-url-bar">
+                <span class="rp-share-card-url-icon">🌐</span>
+                <span class="rp-share-card-url-text" id="rp-share-card-url-text">${safeUrl}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Social Media Target Buttons Grid -->
           <div class="reader-share-grid">
             <button type="button" class="reader-share-target-btn whatsapp" onclick="window.executeReaderShare('whatsapp', '${safeTitle}', '${safeUrl}')">
               <span class="share-icon">💬</span>
@@ -226,6 +279,7 @@ export function initReader() {
             ` : ''}
           </div>
 
+          <!-- Quick Copy Link Box -->
           <div class="reader-share-copy-box">
             <input type="text" readonly id="reader-share-url-input" value="${safeUrl}" class="reader-share-input" onclick="this.select()">
             <button type="button" class="reader-copy-btn" id="reader-copy-link-btn" onclick="window.executeReaderShare('copy', '${safeTitle}', '${safeUrl}')">
@@ -242,6 +296,29 @@ export function initReader() {
 
     modal.style.display = 'flex';
     requestAnimationFrame(() => modal.classList.add('open'));
+
+    // Asynchronously fetch enriched metadata if missing image or short description
+    if (contentId && (!options.image || options.image === '/images/logo.png' || !options.description)) {
+      fetch(`/api/share?id=${encodeURIComponent(contentId)}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.success && data.metadata) {
+            const meta = data.metadata;
+            const titleEl = document.getElementById('rp-share-card-title');
+            const descEl = document.getElementById('rp-share-card-desc');
+            const imgEl = document.getElementById('rp-share-card-cover-img');
+            const urlEl = document.getElementById('rp-share-card-url-text');
+            const inputEl = document.getElementById('reader-share-url-input');
+
+            if (titleEl && meta.rawTitle) titleEl.textContent = meta.rawTitle;
+            if (descEl && meta.description) descEl.textContent = meta.description;
+            if (imgEl && meta.image) imgEl.src = meta.image;
+            if (urlEl && meta.canonicalUrl) urlEl.textContent = meta.canonicalUrl;
+            if (inputEl && meta.canonicalUrl) inputEl.value = meta.canonicalUrl;
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   window.closeReaderShareModal = () => {
@@ -255,8 +332,10 @@ export function initReader() {
   };
 
   window.executeReaderShare = async (platform, title, url) => {
-    const shareUrl = url || window.location.href;
-    const shareText = title ? `${title} - ${shareUrl}` : shareUrl;
+    const contentId = extractCurrentContentId();
+    const origin = window.location.origin;
+    const shareUrl = url || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
+    const shareText = title ? `${title}\n${shareUrl}` : shareUrl;
 
     if (platform === 'whatsapp') {
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
@@ -273,9 +352,9 @@ export function initReader() {
       }
       try {
         await navigator.clipboard.writeText(shareUrl);
-        showToast('Link copied to clipboard! 📸 Paste into Instagram story or message.');
+        showToast('Link copied to clipboard! 📸 Paste into Instagram story, bio, or message.');
       } catch {
-        showToast('Link copied! 📋');
+        showToast('Link copied to clipboard! 📋');
       }
     } else if (platform === 'native') {
       if (navigator.share) {
@@ -295,7 +374,7 @@ export function initReader() {
             if (copyBtn) copyBtn.innerHTML = '<span>📋</span> Copy Link';
           }, 2000);
         }
-        showToast('Link copied to clipboard! 📋');
+        showToast('Link copied to clipboard! 📋 Ready to share.');
       } catch {
         showToast('Link copied to clipboard! 📋');
       }

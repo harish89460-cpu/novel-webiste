@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { apiMiddleware } from './api.js';
 import { getDb, loadEnv, testDbConnection } from './db.js';
 import { runAutomatedPublishingScheduler } from './scheduler.js';
+import { resolveContentMetadata, renderShareHtml } from './share-metadata.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -116,6 +117,38 @@ const server = http.createServer(async (req, res) => {
   if (cleanUrl === '/home') {
     res.writeHead(302, { 'Location': '/#forms' });
     return res.end();
+  }
+
+  // Dynamic Social Media Link Previews & Open Graph Engine (/share and /share/*)
+  if (cleanUrl === '/share' || cleanUrl.startsWith('/share/')) {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let identifier = parsedUrl.searchParams.get('id') || parsedUrl.searchParams.get('slug') || parsedUrl.searchParams.get('novel') || parsedUrl.searchParams.get('thread') || parsedUrl.searchParams.get('sub') || parsedUrl.searchParams.get('cat') || '';
+    if (!identifier && cleanUrl.startsWith('/share/')) {
+      const parts = cleanUrl.replace(/^\/share\/?/, '').split('/').filter(Boolean);
+      identifier = parts[parts.length - 1] || '';
+    }
+
+    try {
+      const meta = await resolveContentMetadata(identifier, req);
+      const acceptHeader = req.headers?.['accept'] || '';
+      if (parsedUrl.searchParams.get('format') === 'json' || acceptHeader.includes('application/json')) {
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(JSON.stringify({ success: true, metadata: meta }));
+      }
+
+      const html = renderShareHtml(meta);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=300, s-maxage=600',
+        'X-Robots-Tag': 'all'
+      });
+      return res.end(html);
+    } catch (shareErr) {
+      console.warn('[Share] Error rendering share preview:', shareErr.message);
+    }
   }
 
   // Direct Admin / Author / Writer Route Navigation (Serve index.html with strict no-cache headers)
