@@ -1,0 +1,240 @@
+/* ==========================================================================
+   Rich Editor Enhancements: Smart Link Previews & @Member Tagging
+   Rudhra Prarthana Novels
+   ========================================================================== */
+
+/* Mention Pill / Badge in Editors and Rendered Content */
+.rp-mention-tag,
+.rp-mention-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: linear-gradient(135deg, rgba(200, 155, 60, 0.14) 0%, rgba(200, 155, 60, 0.22) 100%);
+  color: #855305 !important;
+  border: 1px solid rgba(200, 155, 60, 0.35);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 0.9em;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  vertical-align: baseline;
+  user-select: all;
+  box-shadow: 0 1px 2px rgba(200, 155, 60, 0.08);
+}
+
+.rp-mention-tag:hover,
+.rp-mention-badge:hover {
+  background: linear-gradient(135deg, rgba(200, 155, 60, 0.25) 0%, rgba(200, 155, 60, 0.35) 100%);
+  border-color: #C89B3C;
+  color: #633C02 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(200, 155, 60, 0.2);
+}
+
+/* @Member Tagging Autocomplete Popover */
+.rp-mention-popover {
+  position: absolute;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px -4px rgba(11, 31, 51, 0.18), 0 4px 12px rgba(11, 31, 51, 0.08);
+  width: 290px;
+  max-width: calc(100vw - 24px);
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 9999999;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  animation: rpMentionFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rpMentionFadeIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.rp-mention-popover-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid #F1F5F9;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rp-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rp-mention-item:hover,
+.rp-mention-item.active {
+  background: #F8FAFC;
+  border-left: 3px solid #C89B3C;
+}
+
+.rp-mention-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid #E2E8F0;
+  background: #F1F5F9;
+}
+
+.rp-mention-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.rp-mention-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.rp-mention-username {
+  font-size: 11.5px;
+  color: #64748B;
+  line-height: 1.2;
+}
+
+.rp-mention-role-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.rp-mention-role-badge.admin,
+.rp-mention-role-badge.author {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.rp-mention-role-badge.writer {
+  background: #E0E7FF;
+  color: #3730A3;
+}
+
+.rp-mention-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #94A3B8;
+}
+
+/* Editor Live Link Preview Tray */
+.rp-editor-preview-tray {
+  margin-top: 10px;
+  padding: 12px;
+  background: #FDFBF7;
+  border: 1.5px dashed #E2D9C8;
+  border-radius: 10px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: rpMentionFadeIn 0.2s ease;
+}
+
+.rp-editor-preview-tray-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #78350F;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rp-editor-preview-tray-dismiss {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  color: #64748B;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rp-editor-preview-tray-dismiss:hover {
+  background: #FEE2E2;
+  color: #DC2626;
+  border-color: #FCA5A5;
+}
+
+/* Responsive YouTube Embed in preview and reading view */
+.rp-embed-video-card {
+  width: 100%;
+  max-width: 640px;
+  background: #0B1F33;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(11, 31, 51, 0.12);
+  margin: 10px 0;
+}
+
+.rp-embed-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.rp-embed-video-wrap iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Touch & Mobile adjustments */
+@media (max-width: 640px) {
+  .rp-mention-popover {
+    width: calc(100vw - 32px);
+    max-height: 210px;
+  }
+  .rp-mention-item {
+    padding: 10px;
+  }
+  .rp-editor-preview-tray {
+    padding: 8px;
+  }
+}
+

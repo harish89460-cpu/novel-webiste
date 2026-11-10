@@ -1854,6 +1854,9 @@ async function renderWriterEditor(canvas, episodeId = null, novelId = null, pare
     // Setup blur handlers for instant autosave on focus loss
     const canvas = document.getElementById('we-canvas');
     const titleInput = document.getElementById('we-title');
+    if (canvas && typeof window.setupSmartEditor === 'function') {
+      window.setupSmartEditor(canvas);
+    }
     if (canvas && !canvas._rp_blur_bound) {
       canvas._rp_blur_bound = true;
       canvas.addEventListener('blur', () => {

@@ -350,6 +350,10 @@ function setupNovelEditorEventListeners(isWriter) {
   const surface = document.getElementById('novel-editor-surface');
   const titleInput = document.getElementById('novel-title-input');
 
+  if (surface && typeof window.setupSmartEditor === 'function') {
+    window.setupSmartEditor(surface);
+  }
+
   // Autosave on blur
   if (surface) {
     surface.addEventListener('blur', () => {

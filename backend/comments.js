@@ -4,7 +4,7 @@
 import dns from 'node:dns';
 import { query, queryOne } from './db.js';
 function generateNovelSlug(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
-import { createNotification } from './notifications.js';
+import { createNotification, dispatchMentionNotifications } from './notifications.js';
 
 function resolveNotificationLinkAndContext(novelId, chapterNum, novelTitle = null) {
   const strId = String(novelId || '');
@@ -455,6 +455,18 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
         }
       }
     }
+
+    // 3. Dispatch @Mention notifications if any members were tagged in comment
+    const contextLink = resolvedParentId ? resolveNotificationLinkAndContext(targetNovelId, chStr, 'Discussion').link : (targetNovelId ? `#reader?novel=${encodeURIComponent(targetNovelId)}` : '#forms');
+    await dispatchMentionNotifications({
+      content: cleanContent,
+      actorId: userId,
+      actorName: user.display_name || user.username || 'A reader',
+      contextTitle: `a comment`,
+      contextLink,
+      entityType: 'comment',
+      entityId: commentId
+    }).catch(() => {});
   } catch (err) {
     console.warn('[Comment Notification Error]:', err.message);
   }

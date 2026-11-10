@@ -5225,6 +5225,10 @@ window.initInlineThreadComposer = function(subId, catId) {
 
   if (!collapsedBox || !expandedBox) return;
 
+  if (contentArea && typeof window.setupSmartEditor === 'function') {
+    window.setupSmartEditor(contentArea);
+  }
+
   const uploadedAttachments = [];
 
   function expandComposer() {
@@ -5522,6 +5526,11 @@ window.openEditThreadModal = async function(threadId) {
         </div>
       </div>
     `;
+
+    const editContent = document.getElementById('modal-edit-content');
+    if (editContent && typeof window.setupSmartEditor === 'function') {
+      window.setupSmartEditor(editContent);
+    }
 
     document.getElementById('modal-edit-link-btn')?.addEventListener('click', () => {
       const editContent = document.getElementById('modal-edit-content');
@@ -5926,7 +5935,13 @@ window.loadArticleComments = async (articleId) => {
               <span style="font-size:11.5px; color:#64748B;">${new Date(c.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </div>
             <div style="font-size:13px; color:#2D3748; line-height:1.6; margin-bottom:8px;">
-              ${escapeHtml(c.content)}
+              ${(function() {
+                const raw = c.content || '';
+                const formatted = typeof window.formatRichContent === 'function' ? window.formatRichContent(raw.includes('<') ? raw : escapeHtml(raw).replace(/\n/g, '<br>')) : escapeHtml(raw);
+                const embedMatch = raw.match(/(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/);
+                const embed = embedMatch && typeof window.parseSmartUrl === 'function' && typeof window.renderSmartEmbed === 'function' ? window.renderSmartEmbed(window.parseSmartUrl(embedMatch[0]), 'comm-' + c.id) : '';
+                return formatted + (embed ? `<div style="margin-top:8px;">${embed}</div>` : '');
+              })()}
             </div>
             <div style="display:flex; gap:14px; font-size:11.5px;">
               ${window.IS_LOGGED_IN ? `
@@ -5962,7 +5977,12 @@ window.loadArticleComments = async (articleId) => {
                       </div>
                       <span style="font-size:11px; color:#64748B;">${new Date(rep.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
                     </div>
-                    <div style="font-size:12.5px; color:#2D3748; line-height:1.5;">${escapeHtml(rep.content)}</div>
+                    <div style="font-size:12.5px; color:#2D3748; line-height:1.5;">
+                      ${(function() {
+                        const raw = rep.content || '';
+                        return typeof window.formatRichContent === 'function' ? window.formatRichContent(raw.includes('<') ? raw : escapeHtml(raw).replace(/\n/g, '<br>')) : escapeHtml(raw);
+                      })()}
+                    </div>
                   </div>
                 `).join('')}
               </div>
@@ -5971,6 +5991,10 @@ window.loadArticleComments = async (articleId) => {
         </div>
       </div>
     `).join('');
+
+    if (typeof window.hydrateLinkPreviewCards === 'function') {
+      window.hydrateLinkPreviewCards(container);
+    }
   } catch (err) {
     console.error('Failed to load article comments:', err);
     container.innerHTML = `<div style="color:#DC2626; font-size:12px; text-align:center;">Failed to load comments: ${escapeHtml(err.message)}</div>`;
@@ -5980,7 +6004,15 @@ window.loadArticleComments = async (articleId) => {
 window.toggleReplyForm = (commentId) => {
   const form = document.getElementById(`reply-form-${commentId}`);
   if (form) {
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    const isHidden = form.style.display === 'none';
+    form.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+      const input = document.getElementById(`reply-input-${commentId}`);
+      if (input) {
+        if (typeof window.setupSmartEditor === 'function') window.setupSmartEditor(input);
+        input.focus();
+      }
+    }
   }
 };
 

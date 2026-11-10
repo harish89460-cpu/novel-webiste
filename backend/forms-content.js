@@ -5,7 +5,7 @@ import { moveToTrash } from './trash.js';
 
 import { query, queryOne, getDb } from './db.js';
 import { recordAdminAudit } from './admin-members.js';
-import { createNotification } from './notifications.js';
+import { createNotification, dispatchMentionNotifications } from './notifications.js';
 import { checkAndPublishDueArticles } from './scheduler.js';
 
 /**
@@ -780,6 +780,17 @@ export async function addContentComment({ contentId, userId, parentId = null, co
         }).catch(() => {});
       }
     }
+
+    // 3. Dispatch @Mention notifications to tagged members
+    await dispatchMentionNotifications({
+      content: cleanText,
+      actorId: userId,
+      actorName: commenterName,
+      contextTitle: `a comment on "${article.title}"`,
+      contextLink: threadLink,
+      entityType: 'content_comment',
+      entityId: result.insertId
+    }).catch(() => {});
   } catch (notifErr) {
     console.warn('[Thread Comment Notification Error]:', notifErr.message);
   }
@@ -1486,6 +1497,17 @@ export async function createContentArticle({
     } catch (err) {
       console.warn('[Thread Creation Notification Error]:', err.message);
     }
+
+    // Dispatch @Mention notifications to tagged members in thread content
+    await dispatchMentionNotifications({
+      content: content || '',
+      actorId: aId,
+      actorName: authorDisplayName || aName || 'Author',
+      contextTitle: `the thread "${cleanTitle}"`,
+      contextLink: threadLink,
+      entityType: 'content_article',
+      entityId: result.insertId
+    }).catch(() => {});
   }
 
   return { 
@@ -1577,6 +1599,19 @@ export async function updateContentArticle({
     userAgent: null,
     details: `Updated content article "${art.title}" (ID: ${id})`
   });
+
+  if (content) {
+    const threadLink = `#thread?id=${encodeURIComponent(art.unique_slug || id)}`;
+    await dispatchMentionNotifications({
+      content,
+      actorId: adminId,
+      actorName: 'An editor',
+      contextTitle: `the thread "${art.title}"`,
+      contextLink: threadLink,
+      entityType: 'content_article',
+      entityId: id
+    }).catch(() => {});
+  }
 
   return { success: true, message: 'Content updated successfully!' };
 }

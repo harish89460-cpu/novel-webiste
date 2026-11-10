@@ -325,7 +325,7 @@ export async function createNotification({
   if ((type === 'novel_comment' || type === 'comment') && !prefs.notifyComments) return null;
   if (type === 'comment_reply' && !prefs.notifyReplies) return null;
   if ((type === 'comment_reaction' || type === 'comment_like') && !prefs.notifyReactions) return null;
-  if ((type === 'forum_reply' || type === 'forum_mention' || type === 'thread_created' || type === 'review_discussion') && !prefs.notifyForum) return null;
+  if ((type === 'forum_reply' || type === 'forum_mention' || type === 'mention' || type === 'thread_created' || type === 'review_discussion') && !prefs.notifyForum) return null;
   if ((type === 'chapter_release' || type === 'novel_created') && !prefs.notifyChapters) return null;
   if ((type === 'account_event' || type === 'announcement' || type === 'follow' || type === 'chat_message') && !prefs.notifySystem) return null;
 
@@ -580,4 +580,80 @@ export async function broadcastAnnouncement({
   }
 
   return { success: true, count: sentNotifications.length };
+}
+
+/**
+ * Parse and dispatch notifications to users tagged via @mentions
+ */
+export async function dispatchMentionNotifications({
+  content,
+  actorId,
+  actorName = 'A community member',
+  contextTitle = 'a post',
+  contextLink = '#forms',
+  entityType = 'content',
+  entityId = null
+}) {
+  if (!content || typeof content !== 'string') return [];
+
+  const recipientIds = new Set();
+  const cleanActorId = actorId ? Number(actorId) : null;
+
+  // 1. Extract IDs from data-user-id attributes: data-user-id="(\d+)"
+  const idRegex = /data-user-id=["'](\d+)["']/gi;
+  let m;
+  while ((m = idRegex.exec(content)) !== null) {
+    const uid = parseInt(m[1], 10);
+    if (!isNaN(uid) && uid > 0 && uid !== cleanActorId) {
+      recipientIds.add(uid);
+    }
+  }
+
+  // 2. Extract usernames from @([a-zA-Z0-9_]{3,30})
+  const userRegex = /@([a-zA-Z0-9_]{3,30})/g;
+  const usernames = new Set();
+  while ((m = userRegex.exec(content)) !== null) {
+    usernames.add(m[1].toLowerCase());
+  }
+
+  if (usernames.size > 0) {
+    const list = Array.from(usernames);
+    const placeholders = list.map(() => '?').join(',');
+    try {
+      const found = await query(
+        `SELECT id, username FROM users WHERE LOWER(username) IN (${placeholders}) AND (status IS NULL OR status = 'active');`,
+        list
+      );
+      for (const u of found) {
+        if (Number(u.id) !== cleanActorId) {
+          recipientIds.add(Number(u.id));
+        }
+      }
+    } catch (e) {
+      console.warn('[Mentions] Error resolving usernames:', e.message);
+    }
+  }
+
+  const snippet = content.replace(/<[^>]+>/g, '').trim().slice(0, 100);
+  const sent = [];
+
+  for (const uid of recipientIds) {
+    try {
+      const notif = await createNotification({
+        userId: uid,
+        actorId: cleanActorId,
+        type: 'mention',
+        title: `${actorName} mentioned you`,
+        message: `${actorName} mentioned you in ${contextTitle}: "${snippet}"`,
+        link: contextLink,
+        entityType: entityType,
+        entityId: entityId
+      });
+      if (notif) sent.push(notif);
+    } catch (err) {
+      console.warn(`[Mentions] Failed to notify recipient ${uid}:`, err.message);
+    }
+  }
+
+  return sent;
 }

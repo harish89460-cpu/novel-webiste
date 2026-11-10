@@ -837,9 +837,14 @@ export function renderCommentHtml(rawHtml) {
       }
       const txt = node.textContent;
       const urlRegex = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/i;
-      if (urlRegex.test(txt)) {
+      const mentionRegex = /(^|[\s>(])@([a-zA-Z0-9_]{3,30})/i;
+      if (urlRegex.test(txt) || mentionRegex.test(txt)) {
         const span = doc.createElement('span');
-        span.innerHTML = autoLinkifyText(txt);
+        let formatted = autoLinkifyText(txt);
+        formatted = formatted.replace(/(^|[\s>(])@([a-zA-Z0-9_]{3,30})/g, (m, p, u) => {
+          return `${p}<a href="#member?id=${encodeURIComponent(u)}" class="rp-mention-tag" data-username="${u}">@${u}</a>`;
+        });
+        span.innerHTML = formatted;
         node.parentNode.replaceChild(span, node);
       }
       return;
@@ -866,14 +871,16 @@ export function renderCommentHtml(rawHtml) {
         if (tagName === 'a') {
           if (attrName === 'href') {
             const val = attr.value.trim();
-            if (!/^https?:\/\//i.test(val)) {
+            if (!/^https?:\/\//i.test(val) && !val.startsWith('#')) {
               node.removeAttribute('href');
             } else {
-              node.setAttribute('target', '_blank');
-              node.setAttribute('rel', 'noopener noreferrer');
-              node.classList.add('rp-comment-link');
+              if (/^https?:\/\//i.test(val)) {
+                node.setAttribute('target', '_blank');
+                node.setAttribute('rel', 'noopener noreferrer');
+                node.classList.add('rp-comment-link');
+              }
             }
-          } else if (attrName !== 'target' && attrName !== 'rel' && attrName !== 'class' && attrName !== 'title') {
+          } else if (attrName !== 'target' && attrName !== 'rel' && attrName !== 'class' && attrName !== 'title' && attrName !== 'data-user-id' && attrName !== 'data-username' && attrName !== 'contenteditable') {
             node.removeAttribute(attr.name);
           }
         } else if (tagName === 'img') {
@@ -1609,6 +1616,10 @@ window.rpDraftAttachments = window.rpDraftAttachments || {};
 function attachEditorListeners(editorId) {
   const editor = document.getElementById(`comment-editor-${editorId}`);
   if (!editor) return;
+
+  if (typeof window.setupSmartEditor === 'function') {
+    window.setupSmartEditor(editor);
+  }
 
   const handleUpdate = () => saveEditorRange(editorId);
 

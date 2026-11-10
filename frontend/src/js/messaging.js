@@ -789,6 +789,14 @@ function renderActiveConversationThread(container, data) {
   updateDmAttachmentsStrip();
   updateDmVoiceStudioUi();
   scrollMessagesToBottom();
+
+  const dmEditor = document.getElementById('dm-editor-content');
+  if (dmEditor && typeof window.setupSmartEditor === 'function') {
+    window.setupSmartEditor(dmEditor);
+  }
+  if (typeof window.hydrateLinkPreviewCards === 'function') {
+    window.hydrateLinkPreviewCards(document.getElementById('dm-messages-stream'));
+  }
 }
 
 /**
@@ -922,14 +930,31 @@ function renderPostCard(msg) {
 
 function renderSafeMessageContent(html) {
   if (!html) return '';
-  // Convert plain newlines to <br> if no html tags
-  if (!/<[a-z][\s\S]*>/i.test(html)) {
-    return escapeHtml(html).replace(/\n/g, '<br>');
+  let safe = html;
+  if (!/<[a-z][\s\S]*>/i.test(safe)) {
+    safe = escapeHtml(safe).replace(/\n/g, '<br>');
+  } else {
+    safe = String(safe)
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
   }
-  // Allow safe basic tags, strip scripts
-  return String(html)
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+
+  // Format mentions and safe links
+  if (typeof window.formatRichContent === 'function') {
+    safe = window.formatRichContent(safe);
+  }
+
+  // In-app embeds (YouTube, Vimeo, website cards)
+  const urlRegex = /(https?:\/\/[^\s<]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<]*)/;
+  const match = String(html).match(urlRegex);
+  if (match && typeof window.parseSmartUrl === 'function' && typeof window.renderSmartEmbed === 'function') {
+    const embedInfo = window.parseSmartUrl(match[0]);
+    if (embedInfo) {
+      safe += `<div style="margin-top:8px;">${window.renderSmartEmbed(embedInfo, 'dm-msg')}</div>`;
+    }
+  }
+
+  return safe;
 }
 
 export function backToDirectMessagesList() {

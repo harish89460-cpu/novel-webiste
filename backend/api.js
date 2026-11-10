@@ -24,7 +24,8 @@ import {
   requestPasswordResetOtp,
   verifyPasswordResetOtp,
   resendPasswordResetOtp,
-  completePasswordReset
+  completePasswordReset,
+  sanitizeAvatar
 } from './auth.js';
 import {
   getUserChatSettings,
@@ -528,6 +529,37 @@ export async function apiMiddleware(req, res, next) {
   if (pathname === '/members' && method === 'GET') {
     const viewerId = currentUser ? currentUser.id : null;
     const members = await getAllMembersWithStatus(viewerId);
+    return sendJson(res, { success: true, members }, 200);
+  }
+
+  // 9-Mentions. Lightweight member lookup for @tagging across editors and comment boxes
+  if ((pathname === '/members/mentions' || pathname === '/api/members/mentions') && method === 'GET') {
+    const q = (parsed.query.q || parsed.query.query || '').trim().toLowerCase();
+    const rows = await query(`
+      SELECT u.id, u.username, u.role, p.display_name, p.avatar
+      FROM users u
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE (u.status IS NULL OR u.status = 'active')
+        ${q ? 'AND (LOWER(u.username) LIKE ? OR LOWER(p.display_name) LIKE ?)' : ''}
+      ORDER BY 
+        ${q ? `
+          CASE WHEN LOWER(u.username) = ? THEN 1
+               WHEN LOWER(p.display_name) = ? THEN 2
+               WHEN LOWER(u.username) LIKE ? THEN 3
+               ELSE 4 END,
+        ` : ''}
+        u.created_at ASC
+      LIMIT 12;
+    `, q ? [`%${q}%`, `%${q}%`, q, q, `${q}%`] : []);
+
+    const members = rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name || r.username,
+      avatar: sanitizeAvatar(r.avatar),
+      role: r.role || 'Member'
+    }));
+
     return sendJson(res, { success: true, members }, 200);
   }
 

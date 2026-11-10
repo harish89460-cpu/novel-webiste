@@ -1,6 +1,7 @@
 // Entry Point
 import './css/main.css';
 import { initGlobalErrorBoundaries } from './js/errors.js';
+import './js/rich-editor-enhancements.js';
 import { initApp } from './js/app.js';
 
 // Setup global error boundaries early
