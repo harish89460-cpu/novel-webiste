@@ -1389,6 +1389,8 @@ export async function createContentArticle({
   scheduled_at = null,
   sortOrder = 0,
   sort_order = 0,
+  contentType = 'thread',
+  content_type = 'thread',
   adminId = 2
 }) {
   const mId = mainCategoryId || main_category_id;
@@ -1401,6 +1403,7 @@ export async function createContentArticle({
   const sOrder = sortOrder || sort_order || 0;
   const accPerm = accessPermission || access_permission || 'admin_only';
   const schedAt = scheduledAt || scheduled_at || null;
+  const cType = (contentType || content_type || 'thread').toLowerCase() === 'novel' ? 'novel' : 'thread';
 
   const cleanSubId = (sId && String(sId).trim() !== '' && String(sId) !== String(mId)) ? String(sId).trim() : null;
 
@@ -1431,12 +1434,12 @@ export async function createContentArticle({
 
   const result = await query(`
     INSERT INTO content_articles (
-      unique_slug, main_category_id, sub_category_id, parent_id,
+      unique_slug, main_category_id, sub_category_id, parent_id, content_type,
       title, content, summary, cover_image, author_id, author_name, status, visibility, access_permission,
       is_published, is_disabled, sort_order, published_at, scheduled_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
   `, [
-    cleanSlug, mId, cleanSubId, pId,
+    cleanSlug, mId, cleanSubId, pId, cType,
     cleanTitle, content || '', summary || '', cImage, aId, aName, status, visibility, accPerm,
     isPublished, isDisabled, Number(sOrder), schedAt
   ]);
@@ -1452,6 +1455,9 @@ export async function createContentArticle({
 
   // Notify followers and members if published
   if (isPublished) {
+    const threadLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
+    let authorDisplayName = aName || 'A member';
+
     try {
       const author = await queryOne(`
         SELECT u.id, u.username, u.role, COALESCE(p.display_name, u.username) AS display_name
@@ -1459,8 +1465,9 @@ export async function createContentArticle({
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE u.id = ?;
       `, [aId]);
-      const authorDisplayName = author?.display_name || aName || author?.username || 'A member';
-      const threadLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
+      if (author?.display_name || author?.username) {
+        authorDisplayName = author.display_name || author.username;
+      }
 
       // Thread creation recipients:
       // 1. All active Admins and Writers (moderators)

@@ -2198,26 +2198,37 @@ function stopAnyPlayingAudio() {
  * ==========================================================================
  */
 export function openChatImageLightbox(src) {
+  if (!src) return;
   const lightbox = document.getElementById('dm-image-lightbox');
-  const img = document.getElementById('dm-lightbox-img');
-  if (lightbox && img && src) {
-    img.src = src;
-    img.alt = 'Full preview';
-    lightbox.style.display = 'flex';
-    lightbox.classList.add('open');
-  }
+  if (!lightbox) return;
+
+  // Remove any pre-existing preview image element
+  let existingImg = document.getElementById('dm-lightbox-img');
+  if (existingImg) existingImg.remove();
+
+  // Create clean new image element
+  const img = document.createElement('img');
+  img.id = 'dm-lightbox-img';
+  img.className = 'dm-lightbox-img';
+  img.alt = 'Photo Preview';
+  img.onclick = (e) => e.stopPropagation();
+  img.onerror = () => closeChatImageLightbox();
+  img.src = src;
+
+  lightbox.appendChild(img);
+  lightbox.style.setProperty('display', 'flex', 'important');
+  lightbox.classList.add('open');
 }
 
 export function closeChatImageLightbox() {
   const lightbox = document.getElementById('dm-image-lightbox');
-  const img = document.getElementById('dm-lightbox-img');
   if (lightbox) {
     lightbox.classList.remove('open');
-    lightbox.style.display = 'none';
+    lightbox.style.setProperty('display', 'none', 'important');
   }
+  const img = document.getElementById('dm-lightbox-img');
   if (img) {
-    img.src = '';
-    img.alt = '';
+    img.remove();
   }
 }
 

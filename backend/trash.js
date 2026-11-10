@@ -226,15 +226,16 @@ export async function restoreFromTrash({ trashId, user }) {
       case 'content_article':
       case 'article': {
         const art = data.article || data;
+        const cType = art.content_type || (art.unique_slug && String(art.unique_slug).startsWith('novel-') ? 'novel' : 'thread');
         await conn.query(`
           INSERT INTO content_articles (
-            id, unique_slug, main_category_id, sub_category_id, parent_id,
+            id, unique_slug, main_category_id, sub_category_id, parent_id, content_type,
             title, content, summary, cover_image, author_id, author_name,
             status, is_published, is_disabled, visibility, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE title = VALUES(title), content = VALUES(content);
         `, [
-          art.id, art.unique_slug, art.main_category_id, art.sub_category_id, art.parent_id || null,
+          art.id, art.unique_slug, art.main_category_id, art.sub_category_id, art.parent_id || null, cType,
           art.title, art.content, art.summary || '', art.cover_image || null, art.author_id || user.id,
           art.author_name || user.username, art.status || 'published', art.is_published ? 1 : 0,
           art.is_disabled ? 1 : 0, art.visibility || 'public', Number(art.sort_order || 0)

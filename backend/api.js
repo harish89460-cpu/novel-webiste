@@ -1773,7 +1773,7 @@ export async function apiMiddleware(req, res, next) {
     const limit = 10; // Exactly 10 per page as required
     const offset = (page - 1) * limit;
 
-    let whereConditions = ['(? = 1 OR a.author_id = ?)'];
+    let whereConditions = ["a.content_type = 'novel'", '(? = 1 OR a.author_id = ?)'];
     let params = [isAdmin ? 1 : 0, currentUser.id];
 
     if (statusFilter === 'draft') {
@@ -1868,8 +1868,8 @@ export async function apiMiddleware(req, res, next) {
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
 
     const article = isNaN(id)
-      ? await queryOne('SELECT * FROM content_articles WHERE unique_slug = ?;', [idStr])
-      : await queryOne('SELECT * FROM content_articles WHERE id = ? OR unique_slug = ?;', [id, idStr]);
+      ? await queryOne("SELECT * FROM content_articles WHERE unique_slug = ? AND content_type = 'novel';", [idStr])
+      : await queryOne("SELECT * FROM content_articles WHERE (id = ? OR unique_slug = ?) AND content_type = 'novel';", [id, idStr]);
 
     if (!article) return sendJson(res, { success: false, error: 'Novel not found.' }, 404);
 
@@ -1927,7 +1927,7 @@ export async function apiMiddleware(req, res, next) {
 
     // Update existing novel draft/record if ID provided
     if (draftId) {
-      const existing = await queryOne('SELECT id, unique_slug, author_id, status, is_published FROM content_articles WHERE id = ?;', [draftId]);
+      const existing = await queryOne("SELECT id, unique_slug, author_id, status, is_published FROM content_articles WHERE id = ? AND content_type = 'novel';", [draftId]);
       if (existing) {
         if (!isAdmin && Number(existing.author_id) !== Number(authorId)) {
           return sendJson(res, { success: false, error: 'Access denied: You cannot edit this novel.' }, 403);
@@ -1935,7 +1935,7 @@ export async function apiMiddleware(req, res, next) {
         await query(`
           UPDATE content_articles 
           SET title = ?, content = ?, updated_at = NOW() 
-          WHERE id = ?;
+          WHERE id = ? AND content_type = 'novel';
         `, [title || existing.title || 'Untitled Novel', content, draftId]);
 
         const slug = existing.unique_slug || String(draftId);
@@ -1957,9 +1957,9 @@ export async function apiMiddleware(req, res, next) {
     const cleanSlug = `novel-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
     const ins = await query(`
       INSERT INTO content_articles (
-        unique_slug, main_category_id, title, content, author_id, author_name,
+        unique_slug, content_type, main_category_id, title, content, author_id, author_name,
         status, is_published, is_disabled, visibility, sort_order, created_at, updated_at
-      ) VALUES (?, 'rudhra_prarthana_tamil_novels', ?, ?, ?, ?, 'draft', 0, 0, 'public', 0, NOW(), NOW());
+      ) VALUES (?, 'novel', 'rudhra_prarthana_tamil_novels', ?, ?, ?, ?, 'draft', 0, 0, 'public', 0, NOW(), NOW());
     `, [cleanSlug, safeTitle, content, authorId, authorName]);
 
     return sendJson(res, {
@@ -1995,7 +1995,7 @@ export async function apiMiddleware(req, res, next) {
     const authorName = currentUser.displayName || currentUser.username || (isAdmin ? 'Rudhra Prarthana' : 'Writer');
 
     if (targetId) {
-      const existing = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [targetId]);
+      const existing = await queryOne("SELECT * FROM content_articles WHERE id = ? AND content_type = 'novel';", [targetId]);
       if (existing) {
         if (!isAdmin && Number(existing.author_id) !== Number(authorId)) {
           return sendJson(res, { success: false, error: 'Access denied: You cannot publish this novel.' }, 403);
@@ -2011,7 +2011,7 @@ export async function apiMiddleware(req, res, next) {
           UPDATE content_articles 
           SET title = ?, content = ?, status = 'published', is_published = 1, is_disabled = 0,
               published_at = COALESCE(published_at, NOW()), updated_at = NOW() 
-          WHERE id = ?;
+          WHERE id = ? AND content_type = 'novel';
         `, [updatedTitle, updatedContent, targetId]);
 
         const slug = existing.unique_slug || String(targetId);
@@ -2034,9 +2034,9 @@ export async function apiMiddleware(req, res, next) {
     const cleanSlug = `novel-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
     const ins = await query(`
       INSERT INTO content_articles (
-        unique_slug, main_category_id, title, content, author_id, author_name,
+        unique_slug, content_type, main_category_id, title, content, author_id, author_name,
         status, is_published, is_disabled, visibility, sort_order, published_at, created_at, updated_at
-      ) VALUES (?, 'rudhra_prarthana_tamil_novels', ?, ?, ?, ?, 'published', 1, 0, 'public', 0, NOW(), NOW(), NOW());
+      ) VALUES (?, 'novel', 'rudhra_prarthana_tamil_novels', ?, ?, ?, ?, 'published', 1, 0, 'public', 0, NOW(), NOW(), NOW());
     `, [cleanSlug, title, content, authorId, authorName]);
 
     const contentLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
@@ -2057,7 +2057,7 @@ export async function apiMiddleware(req, res, next) {
     const id = parseInt(pathname.replace('/novels/', '').replace('/published-novels/', '').replace('/status', '').replace('/toggle', ''), 10);
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
 
-    const article = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    const article = await queryOne("SELECT * FROM content_articles WHERE id = ? AND content_type = 'novel';", [id]);
     if (!article) return sendJson(res, { success: false, error: 'Novel not found.' }, 404);
 
     if (!isAdmin && Number(article.author_id) !== Number(currentUser.id)) {
@@ -2076,7 +2076,7 @@ export async function apiMiddleware(req, res, next) {
     await query(`
       UPDATE content_articles 
       SET status = ?, is_published = ?, is_disabled = ?, updated_at = NOW() 
-      WHERE id = ?;
+      WHERE id = ? AND content_type = 'novel';
     `, [targetStatus, isPublished, isDisabled, id]);
 
     return sendJson(res, {
@@ -2093,7 +2093,7 @@ export async function apiMiddleware(req, res, next) {
     const id = parseInt(pathname.replace('/novels/', '').replace('/published-novels/', '').replace('/delete', ''), 10);
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
 
-    const article = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    const article = await queryOne("SELECT * FROM content_articles WHERE id = ? AND content_type = 'novel';", [id]);
     if (!article) return sendJson(res, { success: false, error: 'Novel not found.' }, 404);
 
     if (!isAdmin && Number(article.author_id) !== Number(currentUser.id)) {
@@ -2117,7 +2117,7 @@ export async function apiMiddleware(req, res, next) {
     }
 
     // Safely delete from active content_articles
-    await query('DELETE FROM content_articles WHERE id = ?;', [id]);
+    await query("DELETE FROM content_articles WHERE id = ? AND content_type = 'novel';", [id]);
 
     return sendJson(res, {
       success: true,
@@ -2132,7 +2132,7 @@ export async function apiMiddleware(req, res, next) {
     const draft = await queryOne(`
       SELECT id, unique_slug, title, content, updated_at, created_at 
       FROM content_articles 
-      WHERE author_id = ? AND status = 'draft' 
+      WHERE author_id = ? AND content_type = 'novel' AND status = 'draft' 
       ORDER BY updated_at DESC, id DESC 
       LIMIT 1;
     `, [authorId]);

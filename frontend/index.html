@@ -372,10 +372,9 @@
     </div>
   </div>
 
-  <!-- Direct Messaging Image Lightbox -->
-  <div class="dm-lightbox-overlay" id="dm-image-lightbox" style="display:none;" onclick="closeChatImageLightbox()">
+  <!-- Direct Messaging Image Lightbox (Dynamically creates <img> on click, zero phantom image tags) -->
+  <div class="dm-lightbox-overlay" id="dm-image-lightbox" style="display:none !important;" onclick="closeChatImageLightbox()">
     <button type="button" class="dm-lightbox-close" onclick="closeChatImageLightbox()" aria-label="Close image">✕</button>
-    <img id="dm-lightbox-img" class="dm-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
   </div>
 
   <!-- Direct Messaging Link Dialog -->
