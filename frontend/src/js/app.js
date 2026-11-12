@@ -5600,8 +5600,17 @@ window.initInlineThreadComposer = function(subId, catId) {
   });
 };
 
-// Edit Thread Modal
+// Edit Thread (In-place or Modal fallback)
 window.openEditThreadModal = async function(threadId) {
+  // If the inline edit panel exists on the current page for this thread, prioritize in-place editing
+  if (typeof window.enterInlineThreadEdit === 'function') {
+    const editPanel = document.getElementById('thread-edit-panel');
+    if (editPanel) {
+      window.enterInlineThreadEdit(threadId);
+      return;
+    }
+  }
+
   const token = localStorage.getItem('rp_auth_token');
   const headers = {
     'Content-Type': 'application/json',
@@ -6018,61 +6027,114 @@ async function renderContentReadingView(container, hash) {
             </div>
           </div>
 
-          <!-- Chapter Header -->
-          <div class="reader-header" style="margin-bottom:24px; text-align:left;">
-            ${art.linkedNovel ? `
-              <div style="font-size:13px; font-weight:700; color:#B88635; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
-                📖 ${escapeHtml(art.linkedNovel.title)}${art.linkedChapter ? ` — ${escapeHtml(art.linkedChapter.title || ('Chapter ' + (art.linkedChapter.episodeNumber || art.linkedChapter.chapterNum)))}` : ''}
-              </div>
-            ` : ''}
-            <h1 class="reader-chapter-title" style="font-family:var(--font-serif); font-size:clamp(1.7rem, 4vw, 2.4rem); color:var(--color-navy-deep); margin:0 0 10px;">
-              ${escapeHtml(art.title)}
-            </h1>
+          <!-- Active Thread View Panel -->
+          <div id="thread-view-panel">
+            <!-- Chapter Header -->
+            <div class="reader-header" style="margin-bottom:24px; text-align:left;">
+              ${art.linkedNovel ? `
+                <div style="font-size:13px; font-weight:700; color:#B88635; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+                  📖 ${escapeHtml(art.linkedNovel.title)}${art.linkedChapter ? ` — ${escapeHtml(art.linkedChapter.title || ('Chapter ' + (art.linkedChapter.episodeNumber || art.linkedChapter.chapterNum)))}` : ''}
+                </div>
+              ` : ''}
+              <h1 class="reader-chapter-title" id="thread-view-title" style="font-family:var(--font-serif); font-size:clamp(1.7rem, 4vw, 2.4rem); color:var(--color-navy-deep); margin:0 0 10px;">
+                ${escapeHtml(art.title)}
+              </h1>
 
-            <div class="reader-meta-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; border-top:1px solid rgba(0,0,0,0.06); border-bottom:1px solid rgba(0,0,0,0.06);">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <img src="${authorAvatar}" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C;" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
-                <div>
-                  <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                    ${escapeHtml(art.authorName)}
-                    ${(typeof formatAuthorRoleBadge === 'function' ? formatAuthorRoleBadge(art.authorRole) : (window.formatAuthorRoleBadge ? window.formatAuthorRoleBadge(art.authorRole) : ''))}
+              <div class="reader-meta-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 0; border-top:1px solid rgba(0,0,0,0.06); border-bottom:1px solid rgba(0,0,0,0.06);">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <img src="${authorAvatar}" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid #C89B3C;" alt="${escapeHtml(art.authorName)}" onerror="this.src='/profile.png'">
+                  <div>
+                    <div style="font-weight:700; font-size:14px; color:var(--color-navy-deep); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      ${escapeHtml(art.authorName)}
+                      ${(typeof formatAuthorRoleBadge === 'function' ? formatAuthorRoleBadge(art.authorRole) : (window.formatAuthorRoleBadge ? window.formatAuthorRoleBadge(art.authorRole) : ''))}
+                    </div>
+                    <div style="font-size:11.5px; color:#64748B;">Rudhra Prarthana Community</div>
                   </div>
-                  <div style="font-size:11.5px; color:#64748B;">Rudhra Prarthana Community</div>
+                </div>
+
+                ${(function() {
+                  const user = window.CURRENT_USER || (function() { try { return JSON.parse(localStorage.getItem('rp_user')); } catch (e) { return null; } })();
+                  const isAdmin = Boolean(user && (user.isAdmin || ['admin', 'administrator', 'editor'].includes((user.role || '').toLowerCase())));
+                  const authorId = Number(art.authorId ?? art.author_id ?? 0);
+                  const isOwner = Boolean(user && authorId > 0 && Number(user.id) === authorId);
+                  if (isAdmin || isOwner) {
+                    return `
+                      <div style="display:inline-flex; align-items:center; gap:8px;">
+                        <button type="button" class="btn btn-outline btn-sm" id="thread-edit-trigger-btn" onclick="window.enterInlineThreadEdit ? window.enterInlineThreadEdit(${art.id}) : window.openEditThreadModal(${art.id})" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;">
+                          <span>✏️</span> Edit
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="window.confirmDeleteThread(${art.id}, '${escapeQuotes(art.title)}', '${escapeQuotes(art.subCategoryId)}')" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px; color:#DC2626; border-color:#FCA5A5;">
+                          <span>🗑️</span> Delete
+                        </button>
+                      </div>
+                    `;
+                  }
+                  return '';
+                })()}
+
+                <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
+                  <span title="Views">👁️ ${art.viewsCount || 0} reads</span>
+                  <span>•</span>
+                  <span title="Comments">💬 ${commentsCount} comments</span>
                 </div>
               </div>
+            </div>
 
-              ${(function() {
-                const user = window.CURRENT_USER || (function() { try { return JSON.parse(localStorage.getItem('rp_user')); } catch (e) { return null; } })();
-                const isAdmin = Boolean(user && (user.isAdmin || ['admin', 'administrator', 'editor'].includes((user.role || '').toLowerCase())));
-                const authorId = Number(art.authorId ?? art.author_id ?? 0);
-                const isOwner = Boolean(user && authorId > 0 && Number(user.id) === authorId);
-                if (isAdmin || isOwner) {
-                  return `
-                    <div style="display:inline-flex; align-items:center; gap:8px;">
-                      <button type="button" class="btn btn-outline btn-sm" onclick="window.openEditThreadModal(${art.id})" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;">
-                        <span>✏️</span> Edit
-                      </button>
-                      <button type="button" class="btn btn-outline btn-sm" onclick="window.confirmDeleteThread(${art.id}, '${escapeQuotes(art.title)}', '${escapeQuotes(art.subCategoryId)}')" style="font-size:12px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px; color:#DC2626; border-color:#FCA5A5;">
-                        <span>🗑️</span> Delete
-                      </button>
-                    </div>
-                  `;
-                }
-                return '';
-              })()}
+            <!-- Distraction-Free Novel Content Body with Copy Protection (Read-Only) -->
+            <article class="reader-body reader-body-protected" id="reader-body-content" title="Content copying is restricted" style="min-height:220px; line-height:1.85; font-size:var(--reader-font-size, 1.15rem);">
+              ${storyBody || '<p style="color:#64748B; font-style:italic;">No novel content available for this thread.</p>'}
+            </article>
+          </div>
 
-              <div style="display:flex; gap:14px; font-size:12.5px; color:#64748B; align-items:center;">
-                <span title="Views">👁️ ${art.viewsCount || 0} reads</span>
-                <span>•</span>
-                <span title="Comments">💬 ${commentsCount} comments</span>
+          <!-- Inline In-Place Thread Edit Panel (Transforms Thread in Same Panel) -->
+          <div id="thread-edit-panel" style="display:none; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:14px; box-shadow:0 8px 30px rgba(11,31,51,0.08); padding:24px 20px; margin-bottom:30px; box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:14px; margin-bottom:18px; border-bottom:1px solid #F1F5F9;">
+              <h3 style="margin:0; font-family:var(--font-serif); font-size:1.35rem; color:#0B1F33; display:flex; align-items:center; gap:8px;">
+                <span>✏️</span> Edit Thread
+              </h3>
+              <button type="button" id="inline-thread-close-top-btn" class="btn btn-outline btn-xs" style="font-size:12px; color:#64748B;" title="Cancel & Return">✕ Cancel</button>
+            </div>
+
+            <div id="inline-thread-error" style="display:none; background:#FEF2F2; color:#991B1B; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:14px; font-weight:600; border:1px solid #FCA5A5;"></div>
+
+            <div style="margin-bottom:16px;">
+              <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Title <span style="color:#DC2626;">*</span></label>
+              <input type="text" id="inline-thread-edit-title" class="form-input" style="width:100%; box-sizing:border-box; padding:10px 14px; font-size:15px; font-weight:600; border:1px solid #CBD5E1; border-radius:8px;" value="${escapeQuote(art.title)}" />
+            </div>
+
+            <div style="margin-bottom:20px;">
+              <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Message &amp; Content</label>
+              
+              <!-- Rich Formatting Toolbar -->
+              <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; background:#F8FAFC; border:1px solid #CBD5E1; border-bottom:none; border-radius:8px 8px 0 0;">
+                <button type="button" class="btn btn-outline btn-xs" data-inline-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+                <button type="button" class="btn btn-outline btn-xs" data-inline-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+                <button type="button" class="btn btn-outline btn-xs" data-inline-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+                <button type="button" class="btn btn-outline btn-xs" data-inline-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+                <span style="color:#CBD5E1;">|</span>
+                <button type="button" class="btn btn-outline btn-xs" id="inline-thread-link-btn" title="Insert or Edit Link">🔗 Link</button>
+                <button type="button" class="btn btn-outline btn-xs" id="inline-thread-img-btn" title="Upload & Insert Image">🖼️ Image</button>
+                <button type="button" class="btn btn-outline btn-xs" data-inline-cmd="removeFormat" title="Clear Formatting">🧹 Clear</button>
+              </div>
+
+              <!-- Contenteditable Editor Surface -->
+              <div id="inline-thread-edit-content" style="min-height:220px; max-height:480px; overflow-y:auto; border:1px solid #CBD5E1; border-radius:0 0 8px 8px; padding:14px; font-size:14.5px; line-height:1.7; outline:none; background:#FFFFFF;" contenteditable="true">
+                ${rawNovelStory || art.content || ''}
+              </div>
+
+              <input type="file" id="inline-thread-file-input" accept="image/*" style="display:none;" />
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #F1F5F9; padding-top:16px; flex-wrap:wrap; gap:12px;">
+              <div style="font-size:12px; color:#64748B;">
+                Editing thread ID: <strong>${art.id}</strong>
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button type="button" class="btn btn-outline btn-sm" id="inline-thread-cancel-btn" style="padding:8px 18px;">Cancel</button>
+                <button type="button" class="btn btn-gold btn-sm" id="inline-thread-save-btn" style="font-weight:700; padding:8px 22px;">Save Changes</button>
               </div>
             </div>
           </div>
-
-          <!-- Distraction-Free Novel Content Body with Copy Protection (Read-Only) -->
-          <article class="reader-body reader-body-protected" id="reader-body-content" title="Content copying is restricted" style="min-height:220px; line-height:1.85; font-size:var(--reader-font-size, 1.15rem);">
-            ${storyBody || '<p style="color:#64748B; font-style:italic;">No novel content available for this thread.</p>'}
-          </article>
 
           <!-- Decorative Chapter End Ornament -->
           <div class="chapter-end-ornament">
@@ -6185,6 +6247,197 @@ async function renderContentReadingView(container, hash) {
     if (typeof window.initReaderReactions === 'function') {
       window.initReaderReactions(art.id, 'content');
     }
+
+    // In-place inline Thread Editing logic (transforms the thread within the same panel)
+    const viewPanel = document.getElementById('thread-view-panel');
+    const editPanel = document.getElementById('thread-edit-panel');
+    const editTitleInput = document.getElementById('inline-thread-edit-title');
+    const editContentArea = document.getElementById('inline-thread-edit-content');
+    const editErrBox = document.getElementById('inline-thread-error');
+    const cancelBtn = document.getElementById('inline-thread-cancel-btn');
+    const closeTopBtn = document.getElementById('inline-thread-close-top-btn');
+    const saveBtn = document.getElementById('inline-thread-save-btn');
+    const linkBtn = document.getElementById('inline-thread-link-btn');
+    const imgBtn = document.getElementById('inline-thread-img-btn');
+    const fileInput = document.getElementById('inline-thread-file-input');
+
+    if (editContentArea && typeof window.setupSmartEditor === 'function') {
+      window.setupSmartEditor(editContentArea);
+    }
+
+    const showInlineEdit = () => {
+      if (!viewPanel || !editPanel) return;
+      // Initialize inputs with current live values
+      if (editTitleInput) editTitleInput.value = art.title || '';
+      if (editContentArea) editContentArea.innerHTML = rawNovelStory || art.content || '';
+      if (editErrBox) {
+        editErrBox.textContent = '';
+        editErrBox.style.display = 'none';
+      }
+      viewPanel.style.display = 'none';
+      editPanel.style.display = 'block';
+      editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        editTitleInput?.focus();
+      }, 100);
+    };
+
+    const hideInlineEdit = () => {
+      if (!viewPanel || !editPanel) return;
+      if (editErrBox) {
+        editErrBox.textContent = '';
+        editErrBox.style.display = 'none';
+      }
+      editPanel.style.display = 'none';
+      viewPanel.style.display = 'block';
+      viewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    // Global hook for the Edit button in header
+    window.enterInlineThreadEdit = (threadId) => {
+      if (threadId === art.id) {
+        showInlineEdit();
+      } else if (typeof window.openEditThreadModal === 'function') {
+        window.openEditThreadModal(threadId);
+      }
+    };
+
+    cancelBtn?.addEventListener('click', hideInlineEdit);
+    closeTopBtn?.addEventListener('click', hideInlineEdit);
+
+    // Toolbar formatting commands
+    editPanel?.querySelectorAll('button[data-inline-cmd]').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const cmd = btn.getAttribute('data-inline-cmd');
+        if (cmd) {
+          document.execCommand(cmd, false, null);
+          editContentArea?.focus();
+        }
+      });
+    });
+
+    // Link modal insertion
+    linkBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (editContentArea && typeof window.openLinkInsertionModal === 'function') {
+        window.openLinkInsertionModal(editContentArea);
+      }
+    });
+
+    // Image upload insertion
+    imgBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const uploadHeaders = {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        };
+
+        const upRes = await fetch('/api/upload/image', {
+          method: 'POST',
+          headers: uploadHeaders,
+          body: JSON.stringify({
+            data: base64Data,
+            folder: 'comments',
+            filename: file.name
+          })
+        });
+
+        const upData = await upRes.json();
+        if (upData.success && upData.url) {
+          editContentArea.focus();
+          document.execCommand('insertHTML', false, `<p><img src="${upData.url}" alt="${escapeHtml(file.name)}" style="max-width:100%; border-radius:8px; margin:8px 0;" /></p><p><br></p>`);
+          showToast('Image inserted! 🖼️');
+        } else {
+          showToast(upData.error || 'Failed to upload image.');
+        }
+      } catch (err) {
+        showToast('Upload error: ' + err.message);
+      }
+      fileInput.value = '';
+    });
+
+    // Save Changes action
+    saveBtn?.addEventListener('click', async () => {
+      const newTitle = (editTitleInput?.value || '').trim();
+      const newContent = (editContentArea?.innerHTML || '').trim();
+
+      if (!newTitle) {
+        if (editErrBox) {
+          editErrBox.textContent = 'Please enter a thread title.';
+          editErrBox.style.display = 'block';
+        }
+        editTitleInput?.focus();
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      if (editErrBox) editErrBox.style.display = 'none';
+
+      try {
+        const updateRes = await fetch(`/api/content/threads/${art.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            title: newTitle,
+            content: newContent
+          })
+        });
+
+        const updateData = await updateRes.json();
+        if (!updateRes.ok || !updateData.success) {
+          throw new Error(updateData.error || 'Failed to update thread.');
+        }
+
+        // Update in-memory state
+        art.title = newTitle;
+        art.content = newContent;
+
+        // Update DOM elements in thread view
+        const titleEl = document.getElementById('thread-view-title');
+        if (titleEl) titleEl.textContent = newTitle;
+
+        const crumbEl = container.querySelector('.crumb-current');
+        if (crumbEl) crumbEl.textContent = newTitle;
+        document.title = `${newTitle} — Rudhra Prarthana Novels`;
+
+        const bodyEl = document.getElementById('reader-body-content');
+        if (bodyEl) {
+          bodyEl.innerHTML = renderRichArticleContent(newContent) || '<p style="color:#64748B; font-style:italic;">No novel content available for this thread.</p>';
+          hydrateLinkPreviewCards(bodyEl);
+        }
+
+        showToast('Thread updated successfully! ✨');
+        hideInlineEdit();
+      } catch (err) {
+        if (editErrBox) {
+          editErrBox.textContent = err.message || 'Error updating thread.';
+          editErrBox.style.display = 'block';
+        }
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+      }
+    });
   } catch (err) {
     console.error('Error rendering content reading view:', err);
     container.innerHTML = `
