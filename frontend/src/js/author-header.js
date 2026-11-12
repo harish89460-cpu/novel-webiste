@@ -6,9 +6,9 @@ import { t } from './i18n.js';
 let originalNavHtml = null;
 
 const PUBLIC_NAV_HTML = `
-  <a href="#forms" class="nav-link" data-nav="home">Home</a>
-  <a href="#forms" class="nav-link" data-nav="forms">
-    Forms <span class="nav-link-badge">New</span>
+  <a href="#forum" class="nav-link" data-nav="home">Home</a>
+  <a href="#forum" class="nav-link" data-nav="forum">
+    Forum <span class="nav-link-badge">New</span>
   </a>
   <a href="#members" class="nav-link" data-nav="members">Members</a>
   <a href="https://tamil.pratilipi.com/user/rudhra-prarthana-605774cq1w" target="_blank" rel="noopener" class="nav-link">Pratilipi</a>
@@ -22,7 +22,7 @@ const PUBLIC_NAV_HTML = `
  * Determine the active header mode based on route and user
  */
 export function getHeaderMode(hash) {
-  if (!hash) hash = window.location.hash || '#forms';
+  if (!hash) hash = window.location.hash || '#forum';
   const clean = hash.toLowerCase();
 
   // On login pages, header MUST stay in public guest mode
@@ -92,7 +92,7 @@ export function updateAuthorWriterHeader(isActive, member = null, routeHash = nu
   const brandTagline = document.querySelector('.site-header .brand-tagline');
   if (!header) return;
 
-  const currentHash = routeHash || window.location.hash || '#forms';
+  const currentHash = routeHash || window.location.hash || '#forum';
   const mode = isActive ? getHeaderMode(currentHash) : 'public';
 
   // Save original nav markup on first call
@@ -155,7 +155,7 @@ export function updateAuthorWriterHeader(isActive, member = null, routeHash = nu
     document.body.classList.add('author-page-view');
 
     if (brandLink) {
-      brandLink.setAttribute('href', '#forms');
+      brandLink.setAttribute('href', '#forum');
       brandLink.setAttribute('title', 'Rudhra Prarthana Novels');
     }
     if (brandTagline) {
@@ -173,7 +173,7 @@ export function updateAuthorWriterHeader(isActive, member = null, routeHash = nu
   } else {
     // Mode is 'public' — strictly preserve public website header
     if (brandLink) {
-      brandLink.setAttribute('href', '#forms');
+      brandLink.setAttribute('href', '#forum');
       brandLink.setAttribute('title', 'Rudhra Prarthana Novels');
     }
     if (brandTagline) {
@@ -202,7 +202,7 @@ function getAdminNavHtml(hash) {
     { id: 'overview', label: 'Overview' },
     { id: 'editor', label: 'Write Novel' },
     { id: 'novels', label: 'Novel Management', aliases: ['published-novels'] },
-    { id: 'forms', label: 'Form Management' },
+    { id: 'forms', label: 'Forum Management', aliases: ['forum'] },
     { id: 'writers', label: 'Writers' },
     { id: 'submissions', label: 'Submissions' },
     { id: 'members', label: 'Members' },
@@ -339,7 +339,7 @@ function getWriterAuthHtml(member) {
 
   return `
     <!-- View Public Reader Website Button -->
-    <a href="#forms" target="_blank" rel="noopener" class="btn btn-outline btn-sm author-header-viewsite-btn" title="Open Public Reader Website (#forms)">
+    <a href="#forum" target="_blank" rel="noopener" class="btn btn-outline btn-sm author-header-viewsite-btn" title="Open Public Reader Website (#forum)">
       <span>View Site</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>

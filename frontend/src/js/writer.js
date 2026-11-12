@@ -38,7 +38,7 @@ if (typeof window !== 'undefined' && !window.showSavedContentLinkModal) {
           <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="padding:8px 18px;">
             Done
           </button>
-          <a href="#forms" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
+          <a href="#forum" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
             Go to Categories ➔
           </a>
         </div>
@@ -237,7 +237,7 @@ export async function renderWriterDashboard(container, requestedTab) {
             ${escapeHtml(err.message || 'Please log in with your authorized Writer account.')}
           </p>
           <div style="display:flex; justify-content:center; gap:12px;">
-            <a href="#forms" class="btn btn-outline">« Reader Home</a>
+            <a href="#forum" class="btn btn-outline">« Reader Home</a>
             <a href="#writer-login" class="btn btn-gold">Author & Writer Login »</a>
           </div>
         </div>
@@ -282,7 +282,7 @@ export async function renderWriterDashboard(container, requestedTab) {
           ${TAB_TITLES[writerState.activeTab] || 'Writer Dashboard'}
         </span>
 
-        <a href="#forms" class="admin-mobile-site-btn" title="View Reader Site" style="color:#E2E8F0;">
+        <a href="#forum" class="admin-mobile-site-btn" title="View Reader Site" style="color:#E2E8F0;">
           ${ADMIN_ICONS.externalLink}
         </a>
       </header>
@@ -420,7 +420,7 @@ export async function renderWriterDashboard(container, requestedTab) {
 
           <!-- Sidebar Footer: 7. Community Site, 8. Sign Out -->
           <div class="writer-sidebar-footer">
-            <a href="#forms" class="writer-footer-link" title="View Reader Site">
+            <a href="#forum" class="writer-footer-link" title="View Reader Site">
               ${ADMIN_ICONS.externalLink}
               <span>Community Site</span>
             </a>

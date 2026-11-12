@@ -37,7 +37,7 @@ window.showSavedContentLinkModal = ({ title, type, contentLink }) => {
         <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="padding:8px 18px;">
           Done
         </button>
-        <a href="#forms" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
+        <a href="#forum" class="btn btn-gold btn-sm" onclick="document.getElementById('saved-content-link-modal')?.remove()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 18px; text-decoration:none;">
           Go to Categories ➔
         </a>
       </div>
@@ -414,7 +414,7 @@ export async function renderAdminLoginView(container) {
         <div class="auth-admin-redirect-wrap">
           <a href="#login" class="auth-admin-redirect-link">&larr; Member Login</a>
           <span class="auth-sep" style="margin:0 8px; color:#CBD5E1;">•</span>
-          <a href="#forms" class="auth-admin-redirect-link">Return to Public Website</a>
+          <a href="#forum" class="auth-admin-redirect-link">Return to Public Website</a>
         </div>
       `;
     } else if (currentView === 'forgot-request') {
@@ -1113,7 +1113,7 @@ export async function renderAdminDashboard(container, requestedTab) {
             This area is restricted exclusively to the authorized author. Normal reader accounts cannot access publishing controls or author tools.
           </p>
           <div style="display:flex; justify-content:center; gap:12px;">
-            <a href="#forms" class="btn btn-outline">« Back to Reader Home</a>
+            <a href="#forum" class="btn btn-outline">« Back to Reader Home</a>
             <a href="#admin-login" class="btn btn-gold">Author Portal Login »</a>
           </div>
         </div>
@@ -1141,7 +1141,7 @@ export async function renderAdminDashboard(container, requestedTab) {
     submissions: 'Writer Submissions',
     'writer-chats': 'Writer Chat History',
     members: 'Member Account Management',
-    forum: 'Form Management',
+    forum: 'Forum Management',
     updates: 'Dynamic Update Panels',
     settings: 'Settings',
     trash: 'Trash / Recycle Bin'
@@ -1165,7 +1165,7 @@ export async function renderAdminDashboard(container, requestedTab) {
           ${TAB_TITLES[adminState.activeTab] || 'Dashboard'}
         </span>
 
-        <a href="#forms" class="admin-mobile-site-btn" title="View Reader Site">
+        <a href="#forum" class="admin-mobile-site-btn" title="View Reader Site">
           ${ADMIN_ICONS.externalLink}
         </a>
       </header>
@@ -1268,7 +1268,7 @@ export async function renderAdminDashboard(container, requestedTab) {
                     onclick="switchAdminTab('forum')">
               <span class="admin-nav-item-content">
                 ${ADMIN_ICONS.chat}
-                <span>Form Management</span>
+                <span>Forum Management</span>
               </span>
               <span class="admin-nav-pill" id="nav-forum-count">-</span>
             </button>
@@ -1308,7 +1308,7 @@ export async function renderAdminDashboard(container, requestedTab) {
 
           <!-- Compact Sidebar Footer with ONLY View Site and ONLY Logout -->
           <div class="admin-sidebar-footer">
-            <a href="#forms" class="admin-sidebar-action-btn" title="Open Public Reader Website">
+            <a href="#forum" class="admin-sidebar-action-btn" title="Open Public Reader Website">
               ${ADMIN_ICONS.externalLink}
               <span>View Site</span>
             </a>
@@ -1599,17 +1599,17 @@ async function renderOverviewTab(canvas) {
       <div class="admin-page-header">
         <div class="admin-page-title-group">
           <h1 class="admin-page-title">Dashboard</h1>
-          <p class="admin-page-subtitle">Manage Form Management content, categories, writers, and community.</p>
+          <p class="admin-page-subtitle">Manage Forum Management content, categories, writers, and community.</p>
         </div>
         <div class="admin-page-actions">
-          <button type="button" class="btn btn-gold btn-sm" onclick="switchAdminTab('forum')">+ Form Management</button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="switchAdminTab('forum')">+ Forum Management</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="switchAdminTab('scheduler')">Scheduler</button>
         </div>
       </div>
 
       <!-- 4 Compact Database-Backed Metric Cards -->
       <div class="admin-metrics-grid">
-        <div class="admin-metric-card" onclick="switchAdminTab('forum')" style="cursor:pointer;" title="View Form Categories">
+        <div class="admin-metric-card" onclick="switchAdminTab('forum')" style="cursor:pointer;" title="View Forum Categories">
           <div class="admin-metric-header">
             <span class="admin-metric-label">Categories</span>
             <span class="admin-metric-icon">${ADMIN_ICONS.grid}</span>
@@ -1642,7 +1642,7 @@ async function renderOverviewTab(canvas) {
         </div>
       </div>
 
-      <!-- 2-Column Content Sections: Scheduled & Form Articles -->
+      <!-- 2-Column Content Sections: Scheduled & Forum Articles -->
       <div class="admin-content-grid">
         <!-- Scheduled Content Section -->
         <div class="admin-card">
@@ -1654,7 +1654,7 @@ async function renderOverviewTab(canvas) {
             ${(!data.upcomingScheduled || data.upcomingScheduled.length === 0) ? `
               <div class="admin-empty-state">
                 <div class="admin-empty-title">No scheduled content</div>
-                <div class="admin-empty-desc">Schedule an article or form content to see it here.</div>
+                <div class="admin-empty-desc">Schedule an article or forum content to see it here.</div>
               </div>
             ` : `
               <div class="admin-compact-list">
@@ -1662,7 +1662,7 @@ async function renderOverviewTab(canvas) {
                   <div class="admin-compact-item">
                     <div class="admin-compact-info">
                       <div class="admin-compact-title">${escapeHtml(s.title)}</div>
-                      <div class="admin-compact-meta">${escapeHtml(s.categoryTitle || 'Form Management')}</div>
+                      <div class="admin-compact-meta">${escapeHtml(s.categoryTitle || 'Forum Management')}</div>
                     </div>
                     <span class="status-badge scheduled">${formatScheduleDate(s.scheduledAt)}</span>
                   </div>
@@ -1672,17 +1672,17 @@ async function renderOverviewTab(canvas) {
           </div>
         </div>
 
-        <!-- Form Management Articles Section -->
+        <!-- Forum Management Articles Section -->
         <div class="admin-card">
           <div class="admin-card-header">
             <h2 class="admin-card-title">Recent Articles</h2>
-            <button type="button" class="admin-card-action-link" onclick="switchAdminTab('forum')">Form Management</button>
+            <button type="button" class="admin-card-action-link" onclick="switchAdminTab('forum')">Forum Management</button>
           </div>
           <div class="admin-card-body">
             ${(!data.recentArticles || data.recentArticles.length === 0) ? `
               <div class="admin-empty-state">
                 <div class="admin-empty-title">No articles yet</div>
-                <div class="admin-empty-desc">Create articles in Form Management to get started.</div>
+                <div class="admin-empty-desc">Create articles in Forum Management to get started.</div>
               </div>
             ` : `
               <div class="admin-compact-list">
@@ -1691,7 +1691,7 @@ async function renderOverviewTab(canvas) {
                     <div class="admin-compact-thumb-wrap">
                       <div class="admin-compact-info">
                         <div class="admin-compact-title">${escapeHtml(art.title)}</div>
-                        <div class="admin-compact-meta">${escapeHtml(art.categoryTitle || 'Form Management')} • ${escapeHtml(art.status || 'Published')}</div>
+                        <div class="admin-compact-meta">${escapeHtml(art.categoryTitle || 'Forum Management')} • ${escapeHtml(art.status || 'Published')}</div>
                       </div>
                     </div>
                     <button type="button" class="btn btn-outline btn-xs" onclick="switchAdminTab('forum')">
@@ -11165,7 +11165,7 @@ window.forumAdminState = {
 
 // ============================================================================
 // ============================================================================
-// FORM MANAGEMENT (TITLE HIERARCHY ONLY: MAIN TITLE -> SUB-TITLE -> SUB-SUB-TITLE)
+// FORUM MANAGEMENT (TITLE HIERARCHY ONLY: MAIN TITLE -> SUB-TITLE -> SUB-SUB-TITLE)
 // Exact match to reference design: White/Off-white, Gold accents, Drag & Drop
 // ============================================================================
 
@@ -11184,7 +11184,7 @@ window.formsAdminState = {
 };
 
 /**
- * Render Redesigned Form Management Tab
+ * Render Redesigned Forum Management Tab
  * Dedicated strictly to Title Organization (Main Title -> Sub-title -> Sub-sub-title)
  */
 export async function renderForumManagementTab(canvas) {
@@ -11200,7 +11200,7 @@ export async function renderForumManagementTab(canvas) {
           </svg>
         </div>
         <div class="fm-header-content">
-          <h1 class="fm-header-title">Form Management</h1>
+          <h1 class="fm-header-title">Forum Management</h1>
           <p class="fm-header-subtitle">
             Create and organize your content hierarchy <span class="fm-hierarchy-pill">(Main Title &rarr; Sub-title &rarr; Sub-sub-title)</span> with rich editor and access control.
           </p>
@@ -11239,7 +11239,7 @@ export async function renderForumManagementTab(canvas) {
       <div id="forms-admin-tree-container">
         <div style="text-align:center; padding:60px 20px; color:#64748B;">
           <div style="width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#D97706; border-radius:50%; animation:adminSpinner 0.8s linear infinite; margin:0 auto 14px;"></div>
-          <div style="font-size:14px; font-weight:500;">Loading Form Management hierarchy...</div>
+          <div style="font-size:14px; font-weight:500;">Loading Forum Management hierarchy...</div>
         </div>
       </div>
 
@@ -11252,7 +11252,7 @@ export async function renderForumManagementTab(canvas) {
 }
 
 /**
- * Load all Form Titles and Access Data from Database
+ * Load all Forum Titles and Access Data from Database
  */
 window.loadFormsAdminData = async () => {
   try {
@@ -11296,12 +11296,12 @@ window.loadFormsAdminData = async () => {
 
     window.renderFormsHierarchyTree();
   } catch (err) {
-    console.error('Error loading form management data:', err);
+    console.error('Error loading forum management data:', err);
     const container = document.getElementById('forms-admin-tree-container');
     if (container) {
       container.innerHTML = `
         <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:12px; padding:24px; text-align:center; color:#DC2626;">
-          <div style="font-weight:700; margin-bottom:6px;">Failed to load Form Management hierarchy</div>
+          <div style="font-weight:700; margin-bottom:6px;">Failed to load Forum Management hierarchy</div>
           <div style="font-size:13px; color:#64748B; margin-bottom:14px;">${escapeHtml(err.message || 'Network error')}</div>
           <button type="button" class="btn btn-outline btn-sm" onclick="window.loadFormsAdminData()">Retry</button>
         </div>
@@ -13514,7 +13514,7 @@ window.openWriterAccessModal = async (writerIdOrIds) => {
                   <span class="badge" style="background:#C89B3C; color:#FFF; font-size:10.5px; padding:2px 6px; border-radius:4px;">Unrestricted Publishing</span>
                 </div>
                 <p style="color:#475569; margin-top:3px;">
-                  Writer can create, write, edit, publish, and schedule novels, chapters, episodes, sub-episodes, short stories, audio novels, and permitted Forms content <strong>without requiring individual admin approval before publishing</strong>.
+                  Writer can create, write, edit, publish, and schedule novels, chapters, episodes, sub-episodes, short stories, audio novels, and permitted Forum content <strong>without requiring individual admin approval before publishing</strong>.
                 </p>
               </div>
             </label>

@@ -135,7 +135,7 @@ export async function renderAppView() {
   let hash = window.location.hash;
 
   // Direct pathname normalization for admin routes (e.g. /admin, /admin/dashboard, /admin/novels, /admin/login)
-  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms') && window.location.pathname.startsWith('/admin')) {
+  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms' || hash === '#forum') && window.location.pathname.startsWith('/admin')) {
     const pathname = window.location.pathname.replace(/\/+$/, '');
     if (pathname === '/admin/login') {
       hash = '#admin-login';
@@ -160,7 +160,7 @@ export async function renderAppView() {
   }
 
   // Direct pathname normalization for writer routes (e.g. /writer, /writer/dashboard, /writer/editor)
-  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms') && window.location.pathname.startsWith('/writer')) {
+  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms' || hash === '#forum') && window.location.pathname.startsWith('/writer')) {
     const pathname = window.location.pathname.replace(/\/+$/, '');
     if (pathname === '/writer' || pathname === '/writer/dashboard') {
       hash = '#writer';
@@ -171,9 +171,9 @@ export async function renderAppView() {
   }
 
   if (!hash || hash === '#' || hash === '' || hash === '#home') {
-    hash = '#forms';
-    if (window.location.hash !== '#forms') {
-      window.history.replaceState(null, '', '#forms');
+    hash = '#forum';
+    if (window.location.hash !== '#forum') {
+      window.history.replaceState(null, '', '#forum');
     }
   }
   const main = document.getElementById('main-content');
@@ -264,11 +264,11 @@ export async function renderAppView() {
       const subId = urlParams.get('sub') || '';
       const catId = urlParams.get('cat') || '';
       if (subId) {
-        window.location.hash = `#forms?sub=${encodeURIComponent(subId)}&compose=true`;
+        window.location.hash = `#forum?sub=${encodeURIComponent(subId)}&compose=true`;
       } else if (catId) {
-        window.location.hash = `#forms?category=${encodeURIComponent(catId)}&compose=true`;
+        window.location.hash = `#forum?category=${encodeURIComponent(catId)}&compose=true`;
       } else {
-        window.location.hash = '#forms?compose=true';
+        window.location.hash = '#forum?compose=true';
       }
       return;
     } else if (hash.startsWith('#thread?') || hash.startsWith('#thread/')) {
@@ -301,11 +301,11 @@ export async function renderAppView() {
       if (typeof window.renderDirectMessagesView === 'function') {
         await window.renderDirectMessagesView(main, hash);
       } else {
-        await renderForumView(main, '#forms');
+        await renderForumView(main, '#forum');
       }
 
     } else if (hash === '#home' || hash.startsWith('#home')) {
-      window.location.hash = '#forms';
+      window.location.hash = '#forum';
       return;
     } else {
       // 404 Page Not Found for unrecognized routes
@@ -340,9 +340,9 @@ export async function renderAppView() {
     } else if (err && err.status === 403) {
       renderAccessDenied(main, hash);
     } else {
-      if (hash && hash !== '#forms' && hash !== '#' && hash !== '#home') {
-        console.warn('[Route Graceful Fallback to #forms]', hash, err);
-        window.location.hash = '#forms';
+      if (hash && hash !== '#forum' && hash !== '#forms' && hash !== '#' && hash !== '#home') {
+        console.warn('[Route Graceful Fallback to #forum]', hash, err);
+        window.location.hash = '#forum';
       } else {
         renderServerError(main, () => renderAppView());
       }
@@ -359,17 +359,17 @@ export async function renderAppView() {
 }
 
 function updateNavActiveState(hash) {
-  let path = hash ? hash.split('?')[0] : '#forms';
-  if (path === '#' || path === '' || path === '#home') path = '#forms';
+  let path = hash ? hash.split('?')[0] : '#forum';
+  if (path === '#' || path === '' || path === '#home' || path === '#forms') path = '#forum';
   const isForumOrForms = path === '#forum' || path === '#forms' || path.startsWith('#topic');
   document.querySelectorAll('.nav-link, .drawer-nav-item').forEach(link => {
     const href = link.getAttribute('href');
     const dataNav = link.getAttribute('data-nav');
-    if (dataNav === 'home' && (path === '#forms' || path === '#home')) {
+    if (dataNav === 'home' && (path === '#forum' || path === '#home')) {
       link.classList.add('active');
-    } else if (dataNav === 'forms' && (path === '#forms' || path === '#home')) {
+    } else if ((dataNav === 'forum' || dataNav === 'forms') && (path === '#forum' || path === '#home')) {
       link.classList.remove('active');
-    } else if (href === path || (isForumOrForms && (href === '#forum' || href === '#forms' || href === '#home') && dataNav !== 'forms')) {
+    } else if (href === path || (isForumOrForms && (href === '#forum' || href === '#forms' || href === '#home') && dataNav !== 'forum' && dataNav !== 'forms')) {
       link.classList.add('active');
     } else {
       link.classList.remove('active');
@@ -676,7 +676,7 @@ async function renderNovelDetailView(container, hash) {
       <div class="container section">
         <!-- Breadcrumb Navigation -->
         <nav class="breadcrumb-bar" style="margin-bottom:20px; font-size:13px; color:var(--color-text-muted); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <a href="#forms" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">Home</a>
+          <a href="#forum" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">Home</a>
           <span>›</span>
           <a href="#novels" style="color:var(--color-gold-warm); text-decoration:none; font-weight:600;">Novels</a>
           <span>›</span>
@@ -1312,16 +1312,16 @@ async function renderForumView(container, hash = '') {
         <div class="container forum-page">
           <!-- Breadcrumbs -->
           <nav class="forum-breadcrumbs" aria-label="Forum Breadcrumb">
-            <a href="#forms">Home</a>
+            <a href="#forum">Home</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms">Forms &amp; Community</a>
+            <a href="#forum">Forum &amp; Community</a>
             ${parentMain ? `
               <span class="crumb-separator">›</span>
-              <a href="#forms?category=${encodeURIComponent(parentMain.id)}">${escapeHtml(parentMain.title)}</a>
+              <a href="#forum?category=${encodeURIComponent(parentMain.id)}">${escapeHtml(parentMain.title)}</a>
             ` : ''}
             ${parentSub ? `
               <span class="crumb-separator">›</span>
-              <a href="#forms?sub=${encodeURIComponent(parentSub.id)}">${escapeHtml(parentSub.title)}</a>
+              <a href="#forum?sub=${encodeURIComponent(parentSub.id)}">${escapeHtml(parentSub.title)}</a>
             ` : ''}
             <span class="crumb-separator">›</span>
             <span class="crumb-current">${escapeHtml(currentSub.title)}</span>
@@ -1330,7 +1330,7 @@ async function renderForumView(container, hash = '') {
           <!-- Subtitle Header Bar -->
           <div class="forms-subpage-header-bar">
             <div class="forms-subpage-left">
-              <a href="${parentSub ? `#forms?sub=${encodeURIComponent(parentSub.id)}` : (parentMain ? `#forms?category=${encodeURIComponent(parentMain.id)}` : '#forms')}" class="btn btn-outline btn-sm">« Back${parentSub ? ` to ${escapeHtml(parentSub.title)}` : (parentMain ? ` to ${escapeHtml(parentMain.title)}` : ' to Forms')}</a>
+              <a href="${parentSub ? `#forum?sub=${encodeURIComponent(parentSub.id)}` : (parentMain ? `#forum?category=${encodeURIComponent(parentMain.id)}` : '#forum')}" class="btn btn-outline btn-sm">« Back${parentSub ? ` to ${escapeHtml(parentSub.title)}` : (parentMain ? ` to ${escapeHtml(parentMain.title)}` : ' to Forum')}</a>
               ${currentSub.novelId ? `
                 <a href="#novel?id=${encodeURIComponent(currentSub.novelId)}" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:4px;">
                   <span>📖</span> Novel Synopsis
@@ -1389,7 +1389,7 @@ async function renderForumView(container, hash = '') {
                     </div>
                     <div class="forum-table-body">
                       ${childrenList.map(child => {
-                        const childLink = `#forms?sub=${encodeURIComponent(child.id)}`;
+                        const childLink = `#forum?sub=${encodeURIComponent(child.id)}`;
                         const grandChildrenList = child.children || child.subcategories || [];
                         const hasGrandChildren = grandChildrenList.length > 0;
                         const childNotes = hasGrandChildren ? grandChildrenList.length : (child.articles?.length || 0);
@@ -1623,28 +1623,28 @@ async function renderForumView(container, hash = '') {
   }
 
   // ============================================================================
-  // B. MAIN FORMS OVERVIEW PAGE
+  // B. MAIN FORUM OVERVIEW PAGE
   // ============================================================================
-  const activeCategoryTitle = currentCategory ? currentCategory.title : 'Forms & Reader Forum';
+  const activeCategoryTitle = currentCategory ? currentCategory.title : 'Forum & Reader Community';
 
   container.innerHTML = `
     <div class="container forum-page">
       <!-- Breadcrumbs -->
       <nav class="forum-breadcrumbs" aria-label="Forum Breadcrumb">
-        <a href="#forms">Home</a>
+        <a href="#forum">Home</a>
         <span class="crumb-separator">›</span>
         ${currentCategoryId ? `
-          <a href="#forms">Forms &amp; Community</a>
+          <a href="#forum">Forum &amp; Community</a>
           <span class="crumb-separator">›</span>
           <span class="crumb-current">${escapeHtml(currentCategory?.title || 'Category')}</span>
         ` : `
-          <span class="crumb-current">Forms &amp; Reader Community</span>
+          <span class="crumb-current">Forum &amp; Reader Community</span>
         `}
       </nav>
 
       ${!currentCategoryId ? `
         <!-- 1. Welcoming Hero Section -->
-        <section class="forms-hero-section" id="forms-hero-section" aria-label="Forms Welcome Hero">
+        <section class="forms-hero-section" id="forms-hero-section" aria-label="Forum Welcome Hero">
           <div class="forms-hero-overlay">
             <div class="forms-hero-badge">
               <span>WELCOME</span>
@@ -1673,7 +1673,7 @@ async function renderForumView(container, hash = '') {
       ` : `
         <div class="forum-header-bar">
           <div>
-            <a href="#forms" class="section-link" style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-weight:600;">
+            <a href="#forum" class="section-link" style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-weight:600;">
               « Back to All Categories
             </a>
             <span class="section-subtitle">${t('forum_subtitle')}</span>
@@ -1751,7 +1751,7 @@ async function renderForumView(container, hash = '') {
                     <div class="forms-cat-title-group">
                       <div class="forms-cat-icon">${cat.icon || '💬'}</div>
                       <div>
-                        <a href="#forms?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}">
+                        <a href="#forum?category=${encodeURIComponent(cat.id)}" style="text-decoration:none; color:inherit;" title="View all in ${escapeHtml(cat.title)}">
                           <h2 class="forms-cat-name">${escapeHtml(cat.title)}</h2>
                         </a>
                       </div>
@@ -1898,7 +1898,7 @@ async function renderForumView(container, hash = '') {
                       </div>
                       <div class="forum-table-body">
                         ${subs.map(sub => {
-                          const subLink = `#forms?sub=${encodeURIComponent(sub.id)}`;
+                          const subLink = `#forum?sub=${encodeURIComponent(sub.id)}`;
                           const hasSubChildren = Boolean(sub.children && sub.children.length > 0);
                           const noteCount = hasSubChildren ? sub.children.length : (sub.articles?.length || 0);
                           const subComments = sub.stats?.totalComments ?? (sub.articles || []).reduce((s, a) => s + Number(a.commentsCount || 0), 0);
@@ -2457,7 +2457,7 @@ async function renderDiscussionThread(container, topic) {
     <div class="container section">
       <!-- Breadcrumbs -->
       <nav class="forum-breadcrumbs" aria-label="Thread Breadcrumb">
-        <a href="#forms">Home</a>
+        <a href="#forum">Home</a>
         <span class="crumb-separator">›</span>
         <a href="#forum">Forum</a>
         <span class="crumb-separator">›</span>
@@ -2996,7 +2996,7 @@ async function renderMemberProfileView(container, hash) {
             <div class="profile-empty-icon">🔖</div>
             <div class="profile-empty-title">No Saved Novels Yet</div>
             <p class="profile-empty-desc">${isCurrentUser ? 'Novels you bookmark or save while reading will appear here.' : 'This member has not saved any novels yet.'}</p>
-            <a href="#forms" class="btn btn-gold btn-sm">Explore Novels ➔</a>
+            <a href="#forum" class="btn btn-gold btn-sm">Explore Novels ➔</a>
           </div>
         `;
         return;
@@ -3112,7 +3112,7 @@ async function renderMemberProfileView(container, hash) {
                     <span class="activity-time-stamp">⏱ ${timeAgo}</span>
                   </div>
                   <div>
-                    <a href="${escapeHtml(item.targetUrl || '#forms')}" class="activity-target-link">
+                    <a href="${escapeHtml(item.targetUrl || '#forum')}" class="activity-target-link">
                       ${escapeHtml(item.targetTitle || 'View Discussion')}
                     </a>
                   </div>
@@ -3226,7 +3226,7 @@ async function renderMemberProfileView(container, hash) {
             <div class="profile-empty-icon">📖</div>
             <div class="profile-empty-title">No Recently Read Topics</div>
             <p class="profile-empty-desc">${isCurrentUser ? 'Forum discussion topics you read or open in the community will appear here.' : 'No recently read topics for this member.'}</p>
-            <a href="#forms" class="btn btn-gold btn-sm">Explore Community Forum ➔</a>
+            <a href="#forum" class="btn btn-gold btn-sm">Explore Community Forum ➔</a>
           </div>
         `;
         return;
@@ -4815,10 +4815,10 @@ window.showContentRestrictionModal = ({ title, message, redirectHash } = {}) => 
         Guests can read the latest daily update of each novel for free. Previous chapters, completed stories, and full audio stories are reserved for registered members.
       </p>
       <div style="display:flex; flex-direction:column; gap:10px;">
-        <button class="btn btn-gold btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forms'}'); openAuthModal('login');">
+        <button class="btn btn-gold btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forum'}'); openAuthModal('login');">
           🔑 ${t('btn_login')}
         </button>
-        <button class="btn btn-outline btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forms'}'); openAuthModal('register');">
+        <button class="btn btn-outline btn-lg" onclick="document.getElementById('content-restriction-modal')?.remove(); sessionStorage.setItem('rp_auth_redirect', '${redirectHash || window.location.hash || '#forum'}'); openAuthModal('register');">
           ✨ ${t('btn_register')}
         </button>
         <button class="btn btn-outline btn-sm" style="border:none; margin-top:6px; color:var(--color-text-muted);" onclick="document.getElementById('content-restriction-modal')?.remove();">
@@ -4862,7 +4862,7 @@ async function renderThreadCreateView(container, hash = '') {
 
   if (!isPrivilegedWriter) {
     showToast('Access restricted: Only Admin and Writers can post threads.');
-    window.location.hash = '#forms';
+    window.location.hash = '#forum';
     return;
   }
 
@@ -4917,17 +4917,17 @@ async function renderThreadCreateView(container, hash = '') {
     <div class="container section" style="max-width:860px; margin:0 auto; padding:40px 16px;">
       <!-- Breadcrumbs -->
       <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
-        <a href="#forms">Home</a>
+        <a href="#forum">Home</a>
         <span class="crumb-separator">›</span>
-        <a href="#forms">Forms</a>
+        <a href="#forum">Forum</a>
         <span class="crumb-separator">›</span>
-        <a href="#forms?category=${encodeURIComponent(targetCat?.id || catId)}">${escapeHtml(catTitle)}</a>
+        <a href="#forum?category=${encodeURIComponent(targetCat?.id || catId)}">${escapeHtml(catTitle)}</a>
         ${targetParentSub ? `
           <span class="crumb-separator">›</span>
-          <a href="#forms?sub=${encodeURIComponent(targetParentSub.id)}">${escapeHtml(targetParentSub.title)}</a>
+          <a href="#forum?sub=${encodeURIComponent(targetParentSub.id)}">${escapeHtml(targetParentSub.title)}</a>
         ` : ''}
         <span class="crumb-separator">›</span>
-        <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}">${escapeHtml(subTitle)}</a>
+        <a href="#forum?sub=${encodeURIComponent(targetSub?.id || subId)}">${escapeHtml(subTitle)}</a>
         <span class="crumb-separator">›</span>
         <span class="crumb-current">Add Thread</span>
       </nav>
@@ -4942,7 +4942,7 @@ async function renderThreadCreateView(container, hash = '') {
                 Post your thread with linked novel content to publish it for readers in this category.
               </p>
             </div>
-            <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline btn-sm">
+            <a href="#forum?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline btn-sm">
               « Back to Section
             </a>
           </div>
@@ -4989,7 +4989,7 @@ async function renderThreadCreateView(container, hash = '') {
 
           <!-- Actions -->
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px solid #F1ECE4; padding-top:20px;">
-            <a href="#forms?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline">
+            <a href="#forum?sub=${encodeURIComponent(targetSub?.id || subId)}" class="btn btn-outline">
               Cancel
             </a>
             <button type="submit" class="btn btn-gold btn-lg" id="btn-submit-thread" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; padding:10px 24px;">
@@ -5065,7 +5065,7 @@ window.submitThreadPosting = async (catId, subId) => {
     }
 
     showToast('Thread published successfully! 🎉');
-    window.location.hash = `#forms?sub=${encodeURIComponent(subId)}`;
+    window.location.hash = `#forum?sub=${encodeURIComponent(subId)}`;
   } catch (err) {
     if (errorBanner) {
       errorBanner.textContent = err.message || 'Error publishing thread.';
@@ -5138,7 +5138,7 @@ window.openLinkInsertionModal = function(targetEditor) {
           <label style="display:block; font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px;">
             Web Address (URL) <span style="color:#DC2626;">*</span>
           </label>
-          <input type="text" id="tc-link-url-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="https://example.com or /#forms" />
+          <input type="text" id="tc-link-url-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="https://example.com or /#forum" />
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #F1F5F9; padding-top:14px;">
@@ -5600,9 +5600,9 @@ window.confirmDeleteThread = async function(threadId, threadTitle, subId) {
 
     showToast('Thread moved to Trash.');
     if (subId) {
-      window.location.hash = `#forms?sub=${encodeURIComponent(subId)}`;
+      window.location.hash = `#forum?sub=${encodeURIComponent(subId)}`;
     } else {
-      window.location.hash = '#forms';
+      window.location.hash = '#forum';
     }
   } catch (err) {
     showToast('Error deleting thread: ' + err.message);
@@ -5621,7 +5621,7 @@ async function renderContentReadingView(container, hash) {
           <h2 style="font-family:var(--font-serif); color:#9A3412; margin:0 0 8px;">No Reading Content Selected</h2>
           <p style="color:#7C2D12; font-size:14px; margin-bottom:20px; line-height:1.6;">Please select a thread or novel from the community forum or library to start reading.</p>
           <div style="display:flex; justify-content:center; gap:12px;">
-            <a href="#forms" class="btn btn-primary btn-sm">« Return to Forms &amp; Community</a>
+            <a href="#forum" class="btn btn-primary btn-sm">« Return to Forum &amp; Community</a>
             <a href="#novels" class="btn btn-outline btn-sm">Explore Novels</a>
           </div>
         </div>
@@ -5665,9 +5665,9 @@ async function renderContentReadingView(container, hash) {
       container.innerHTML = `
         <div class="content-reading-wrap">
           <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
-            <a href="#forms">Home</a>
+            <a href="#forum">Home</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms">Forms</a>
+            <a href="#forum">Forum</a>
             <span class="crumb-separator">›</span>
             <span class="crumb-current">Unavailable</span>
           </nav>
@@ -5679,7 +5679,7 @@ async function renderContentReadingView(container, hash) {
               ${escapeHtml(errDesc)}
             </p>
             <div style="display:flex; justify-content:center; gap:12px;">
-              <a href="#forms" class="btn btn-primary btn-sm">« Return to Forms &amp; Community</a>
+              <a href="#forum" class="btn btn-primary btn-sm">« Return to Forum &amp; Community</a>
               <a href="#novels" class="btn btn-outline btn-sm">Explore Novels</a>
             </div>
           </div>
@@ -5736,26 +5736,26 @@ async function renderContentReadingView(container, hash) {
         <div class="reader-container" style="max-width:840px; margin:0 auto; padding:20px 16px;">
           <!-- Breadcrumbs & Back Bar -->
           <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
-            <a href="#forms">Home</a>
+            <a href="#forum">Home</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms">Forms</a>
+            <a href="#forum">Forum</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms?category=${encodeURIComponent(art.mainCategoryId || '')}">${escapeHtml(art.mainCategoryTitle || 'General')}</a>
+            <a href="#forum?category=${encodeURIComponent(art.mainCategoryId || '')}">${escapeHtml(art.mainCategoryTitle || 'General')}</a>
                         ${(art.parentSubCategoryTitle && art.subCategoryTitle) ? `
               <span class="crumb-separator">›</span>
-              <a href="#forms?sub=${encodeURIComponent(art.parentSubCategoryId)}">${escapeHtml(art.parentSubCategoryTitle)}</a>
+              <a href="#forum?sub=${encodeURIComponent(art.parentSubCategoryId)}">${escapeHtml(art.parentSubCategoryTitle)}</a>
             ` : ''}
             ${art.subCategoryTitle ? `
               <span class="crumb-separator">›</span>
-              <a href="#forms?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
+              <a href="#forum?sub=${encodeURIComponent(art.subCategoryId || '')}">${escapeHtml(art.subCategoryTitle)}</a>
             ` : ''}
             <span class="crumb-separator">›</span>
             <span class="crumb-current">${escapeHtml(art.title)}</span>
           </nav>
 
           <div class="content-reading-back-bar" style="margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <a href="${art.subCategoryId ? `#forms?sub=${encodeURIComponent(art.subCategoryId)}` : `#forms?category=${encodeURIComponent(art.mainCategoryId || '')}`}" class="content-back-btn">
-              « Back to ${escapeHtml(art.subCategoryTitle || art.mainCategoryTitle || 'Forms')}
+            <a href="${art.subCategoryId ? `#forum?sub=${encodeURIComponent(art.subCategoryId)}` : `#forum?category=${encodeURIComponent(art.mainCategoryId || '')}`}" class="content-back-btn">
+              « Back to ${escapeHtml(art.subCategoryTitle || art.mainCategoryTitle || 'Forum')}
             </a>
             <div class="reader-meta-right" style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;">
               <div style="font-size:12px; color:#64748B;">
@@ -5920,7 +5920,7 @@ async function renderContentReadingView(container, hash) {
         <div class="content-restricted-alert">
           <h2>Failed to Load Content</h2>
           <p>${escapeHtml(err.message)}</p>
-          <a href="#forms" class="btn btn-primary btn-sm">Return to Forms</a>
+          <a href="#forum" class="btn btn-primary btn-sm">Return to Forum</a>
         </div>
       </div>
     `;
@@ -6192,11 +6192,11 @@ async function renderStoryReadingView(container, hash) {
       container.innerHTML = `
         <div class="content-reading-wrap">
           <nav class="forum-breadcrumbs" style="margin-bottom:20px;">
-            <a href="#forms">Home</a>
+            <a href="#forum">Home</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms">Forms</a>
+            <a href="#forum">Forum</a>
             <span class="crumb-separator">›</span>
-            <a href="#forms?category=short-stories">Short Stories</a>
+            <a href="#forum?category=short-stories">Short Stories</a>
             <span class="crumb-separator">›</span>
             <span class="crumb-current">Unavailable</span>
           </nav>
@@ -6208,8 +6208,8 @@ async function renderStoryReadingView(container, hash) {
               ${escapeHtml(errDesc)}
             </p>
             <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
-              <a href="#forms?category=short-stories" class="btn btn-primary btn-sm">« Return to Short Stories</a>
-              <a href="#forms" class="btn btn-outline btn-sm">Forms &amp; Community</a>
+              <a href="#forum?category=short-stories" class="btn btn-primary btn-sm">« Return to Short Stories</a>
+              <a href="#forum" class="btn btn-outline btn-sm">Forum &amp; Community</a>
             </div>
           </div>
         </div>
@@ -6232,17 +6232,17 @@ async function renderStoryReadingView(container, hash) {
       <div class="content-reading-wrap">
         <!-- Breadcrumbs & Back Navigation -->
         <nav class="forum-breadcrumbs" style="margin-bottom:14px;">
-          <a href="#forms">Home</a>
+          <a href="#forum">Home</a>
           <span class="crumb-separator">›</span>
-          <a href="#forms">Forms</a>
+          <a href="#forum">Forum</a>
           <span class="crumb-separator">›</span>
-          <a href="#forms?category=short-stories">Short Stories</a>
+          <a href="#forum?category=short-stories">Short Stories</a>
           <span class="crumb-separator">›</span>
           <span class="crumb-current">${escapeHtml(story.title)}</span>
         </nav>
 
         <div class="content-reading-back-bar">
-          <a href="#forms?category=short-stories" class="content-back-btn">
+          <a href="#forum?category=short-stories" class="content-back-btn">
             <span>«</span> Back to Short Stories
           </a>
           <div style="font-size:12px; color:#64748B;">
@@ -6361,7 +6361,7 @@ async function renderStoryReadingView(container, hash) {
         <div class="content-restricted-alert">
           <h2>Failed to Load Story</h2>
           <p>${escapeHtml(err.message)}</p>
-          <a href="#forms?category=short-stories" class="btn btn-primary btn-sm">Return to Short Stories</a>
+          <a href="#forum?category=short-stories" class="btn btn-primary btn-sm">Return to Short Stories</a>
         </div>
       </div>
     `;
@@ -6594,7 +6594,7 @@ async function renderFollowersFollowingView(container, hash) {
     <div class="container connections-page-wrap">
       <!-- Breadcrumb navigation -->
       <div class="breadcrumbs" style="margin-bottom:16px;">
-        <a href="#forms">Home</a>
+        <a href="#forum">Home</a>
         <span class="breadcrumb-separator">/</span>
         <a href="#members">Members</a>
         <span class="breadcrumb-separator">/</span>

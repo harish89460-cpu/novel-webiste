@@ -149,7 +149,7 @@ function renderUpdatePanelsView(canvas) {
             </h1>
           </div>
           <p style="font-size:14px; color:#64748B; margin:0; max-width:700px; line-height:1.5;">
-            Create custom update panels, target specific categories (e.g. Audio Novels, Ongoing Novels), and drag & drop to arrange the exact display position of all sidebar panels on the Forms page.
+            Create custom update panels, target specific categories (e.g. Audio Novels, Ongoing Novels), and drag & drop to arrange the exact display position of all sidebar panels on the Forum page.
           </p>
         </div>
         
@@ -176,7 +176,7 @@ function renderUpdatePanelsView(canvas) {
                 <span>Sidebar Panel Placement</span>
               </h2>
               <div style="font-size:12px; color:#64748B;">
-                Drag handles ⠿ or use Up/Down buttons to reorder panels live on Forms page.
+                Drag handles ⠿ or use Up/Down buttons to reorder panels live on Forum page.
               </div>
             </div>
             <span id="reorder-status-badge" style="display:inline-block; font-size:11px; font-weight:700; padding:3px 8px; border-radius:20px; background:#DCFCE7; color:#15803D;">
@@ -365,7 +365,7 @@ function renderUpdatePanelsView(canvas) {
                       <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#64748B; flex-wrap:wrap; gap:8px;">
                         <div>
                           <strong>Visibility:</strong> 
-                          ${panel.isGlobal ? `<span style="color:#2563EB; font-weight:600;">Global (All Categories + Forms Overview)</span>` : `<span style="color:#0B1F33;">${escapeHtml(catsList)}${novelsList ? ` · Novels: ${escapeHtml(novelsList)}` : ''}</span>`}
+                          ${panel.isGlobal ? `<span style="color:#2563EB; font-weight:600;">Global (All Categories + Forum Overview)</span>` : `<span style="color:#0B1F33;">${escapeHtml(catsList)}${novelsList ? ` · Novels: ${escapeHtml(novelsList)}` : ''}</span>`}
                         </div>
                         <div style="font-size:11.5px; color:#94A3B8;">
                           By ${escapeHtml(panel.creatorName || 'Admin')} · ${escapeHtml(panel.updatedAt || panel.createdAt || '')}
@@ -758,7 +758,7 @@ export function openUpdatePanelModal(panelId = null) {
           <div style="margin-bottom:14px; padding-bottom:12px; border-bottom:1px dashed #CBD5E1;">
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#0B1F33; cursor:pointer;">
               <input type="checkbox" id="up-is-global-checkbox" ${currentIsGlobal ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
-              <span>Show across All Categories and Main Forms Overview Page (Global)</span>
+              <span>Show across All Categories and Main Forum Overview Page (Global)</span>
             </label>
           </div>
 
