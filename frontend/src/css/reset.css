@@ -97,6 +97,16 @@ a {
   display: block;
 }
 
+/* Zero phantom image ghosting: Never display uninitialized or empty src images */
+img:not([src]),
+img[src=""],
+img[src="#"],
+img[src="undefined"],
+img[src="null"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
 /* Ensure WordPress custom logo image and theme logos never overflow or distort */
 img.custom-logo,
 .brand-logo,

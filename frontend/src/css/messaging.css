@@ -1388,8 +1388,23 @@ body.dark-theme .dm-chip {
   padding: 24px;
 }
 
+.dm-lightbox-overlay:not(.open) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .dm-lightbox-overlay.open {
-  display: flex;
+  display: flex !important;
+}
+
+/* Guard against broken or empty image placeholders rendering browser alt-text boxes */
+.dm-lightbox-img:not([src]),
+.dm-lightbox-img[src=""],
+.dm-lightbox-img[src="#"] {
+  display: none !important;
+  visibility: hidden !important;
 }
 
 .dm-lightbox-img {

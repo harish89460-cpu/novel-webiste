@@ -2198,26 +2198,46 @@ function stopAnyPlayingAudio() {
  * ==========================================================================
  */
 export function openChatImageLightbox(src) {
-  if (!src) return;
-  const lightbox = document.getElementById('dm-image-lightbox');
-  if (!lightbox) return;
+  if (!src || typeof src !== 'string') return;
+  const cleanSrc = src.trim();
+  if (!cleanSrc || cleanSrc === 'null' || cleanSrc === 'undefined' || cleanSrc === '[object Object]') return;
 
-  // Remove any pre-existing preview image element
-  let existingImg = document.getElementById('dm-lightbox-img');
-  if (existingImg) existingImg.remove();
+  // Pre-load image in background memory first to verify it is valid before rendering any DOM overlay
+  const preloader = new Image();
+  preloader.onload = () => {
+    // Remove any pre-existing preview overlay
+    closeChatImageLightbox();
 
-  // Create clean new image element
-  const img = document.createElement('img');
-  img.id = 'dm-lightbox-img';
-  img.className = 'dm-lightbox-img';
-  img.alt = 'Photo Preview';
-  img.onclick = (e) => e.stopPropagation();
-  img.onerror = () => closeChatImageLightbox();
-  img.src = src;
+    const lightbox = document.createElement('div');
+    lightbox.id = 'dm-image-lightbox';
+    lightbox.className = 'dm-lightbox-overlay open';
+    lightbox.style.setProperty('display', 'flex', 'important');
+    lightbox.onclick = closeChatImageLightbox;
 
-  lightbox.appendChild(img);
-  lightbox.style.setProperty('display', 'flex', 'important');
-  lightbox.classList.add('open');
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'dm-lightbox-close';
+    closeBtn.setAttribute('aria-label', 'Close image');
+    closeBtn.textContent = '✕';
+    closeBtn.onclick = closeChatImageLightbox;
+
+    const img = document.createElement('img');
+    img.id = 'dm-lightbox-img';
+    img.className = 'dm-lightbox-img';
+    img.alt = '';
+    img.src = cleanSrc;
+    img.onclick = (e) => e.stopPropagation();
+    img.onerror = () => closeChatImageLightbox();
+
+    lightbox.appendChild(closeBtn);
+    lightbox.appendChild(img);
+    document.body.appendChild(lightbox);
+  };
+  preloader.onerror = () => {
+    // If the image fails to load, fail safely without ever showing an empty or dimmed broken image overlay
+    closeChatImageLightbox();
+  };
+  preloader.src = cleanSrc;
 }
 
 export function closeChatImageLightbox() {
@@ -2225,10 +2245,8 @@ export function closeChatImageLightbox() {
   if (lightbox) {
     lightbox.classList.remove('open');
     lightbox.style.setProperty('display', 'none', 'important');
-  }
-  const img = document.getElementById('dm-lightbox-img');
-  if (img) {
-    img.remove();
+    lightbox.innerHTML = '';
+    lightbox.remove();
   }
 }
 
