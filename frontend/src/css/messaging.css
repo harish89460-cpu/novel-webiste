@@ -1085,6 +1085,31 @@ body.dark-theme .dm-voice-studio {
   transform: scale(1.2);
 }
 
+/* Floating Emoji Popover - Attached beside triggering button in viewport */
+.dm-emoji-popover {
+  position: fixed !important;
+  z-index: 100000 !important;
+  background: #FFFFFF !important;
+  border: 1.5px solid #CBD5E1 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2) !important;
+  padding: 8px !important;
+  max-width: 280px !important;
+  box-sizing: border-box !important;
+  animation: dmEmojiPopIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes dmEmojiPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 /* Submit Row */
 .dm-submit-btn {
   background: var(--dm-green-primary);

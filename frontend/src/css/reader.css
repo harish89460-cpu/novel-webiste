@@ -1239,6 +1239,7 @@
 }
 
 .reader-share-modal-backdrop.open {
+  display: flex !important;
   opacity: 1;
 }
 

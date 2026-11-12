@@ -1539,13 +1539,47 @@ button.btn-loading *,
 }
 
 /* =============================================================================
-   UNIVERSAL FIXED MODAL & DIALOG POSITIONING (Edit Thread, Article, Chapter)
-   Guarantees all edit forms open in fixed viewport center, never near footer
+   UNIVERSAL FIXED MODAL & DIALOG POSITIONING (All Roles: Member, Writer, Admin)
+   Guarantees all edit forms, popups, and dialogs open in fixed viewport center,
+   never near, behind, or below the footer.
    ============================================================================= */
 .modal-backdrop.open,
+.modal-backdrop.active,
 .modal-overlay.open,
+.modal-overlay.active,
+.admin-modal-backdrop,
+.admin-modal-overlay,
+.novel-confirm-modal-overlay,
+.member-mgmt-modal-wrapper,
+.dm-modal-overlay.open,
+.dm-link-modal:not([style*="display: none"]):not([style*="display:none"]),
+.reader-share-modal-backdrop.open,
+.reader-prefs-backdrop.open,
+.rp-reaction-modal-overlay.open,
+.writer-preview-overlay,
 #edit-thread-modal,
-.rp-edit-thread-modal {
+.rp-edit-thread-modal,
+#modal-update-panel,
+#modal-edit-title,
+#modal-add-chapter,
+#modal-add-episode,
+#modal-edit-chapter,
+#modal-writer-add-chapter,
+#modal-writer-edit-chapter,
+#modal-writer-schedule,
+#modal-writer-reschedule,
+#modal-view-novel,
+#modal-view-novel-writer,
+#modal-novel-link,
+#modal-novel-emoji,
+#modal-novel-preview,
+#modal-rich-link,
+#search-modal.open,
+#auth-modal.open,
+#saved-content-link-modal,
+#content-restriction-modal,
+#reaction-detail-modal,
+#writer-aep-modal {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -1566,15 +1600,21 @@ button.btn-loading *,
   overflow-y: auto !important;
 }
 
-.modal-backdrop:not(.open):not(#edit-thread-modal):not(.rp-edit-thread-modal),
-.modal-overlay:not(.open):not(#edit-thread-modal):not(.rp-edit-thread-modal) {
+.modal-backdrop:not(.open):not(.active):not(#edit-thread-modal):not(.rp-edit-thread-modal):not(.admin-modal-backdrop),
+.modal-overlay:not(.open):not(.active):not(#edit-thread-modal):not(.rp-edit-thread-modal):not(.admin-modal-backdrop):not(.admin-modal-overlay),
+.dm-modal-overlay:not(.open),
+.reader-share-modal-backdrop:not(.open),
+.reader-prefs-backdrop:not(.open),
+.dm-link-modal[style*="display: none"],
+.dm-link-modal[style*="display:none"] {
   display: none !important;
   pointer-events: none !important;
 }
 
 .modal-dialog,
 .edit-thread-dialog,
-.modal-card.edit-thread-modal-card {
+.modal-card.edit-thread-modal-card,
+.dm-link-card {
   position: relative !important;
   margin: auto !important;
   max-width: 760px !important;
@@ -1588,6 +1628,11 @@ button.btn-loading *,
   box-sizing: border-box !important;
   overflow: hidden !important;
   animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.dm-link-card {
+  max-width: 480px !important;
+  padding: 24px !important;
 }
 
 @keyframes modalPopIn {

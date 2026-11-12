@@ -328,7 +328,7 @@
   border: 1.5px solid var(--color-border, #E8DCCB);
   border-radius: var(--radius-md, 8px);
   background: #FFFFFF;
-  overflow: hidden;
+  overflow: visible;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 

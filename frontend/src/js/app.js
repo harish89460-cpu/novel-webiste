@@ -4837,7 +4837,7 @@ function setupHtml5AudioPlayer(audioEl) {
 window.showContentRestrictionModal = ({ title, message, redirectHash } = {}) => {
   document.getElementById('content-restriction-modal')?.remove();
   const modal = document.createElement('div');
-  modal.className = 'modal-backdrop active';
+  modal.className = 'modal-backdrop active open';
   modal.id = 'content-restriction-modal';
   modal.innerHTML = `
     <div class="modal-box" style="text-align:center; max-width:440px; padding:32px 24px;">
@@ -5168,7 +5168,7 @@ window.openLinkInsertionModal = function(targetEditor) {
 
   modal = document.createElement('div');
   modal.id = modalId;
-  modal.className = 'modal-backdrop active';
+  modal.className = 'modal-backdrop active open';
   modal.style.cssText = 'position:fixed; inset:0; background:rgba(11,31,51,0.55); z-index:999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(2px); padding:16px;';
 
   modal.innerHTML = `

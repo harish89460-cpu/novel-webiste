@@ -23,7 +23,7 @@ export function initForum() {
       const cleanQuote = String(content || '').replace(/<[^>]+>/g, '').trim().substring(0, 160);
       replyInput.value = `<blockquote><strong>@${author}:</strong> ${cleanQuote}...</blockquote>\n\n`;
       replyInput.focus();
-      replyInput.scrollIntoView({ behavior: 'smooth' });
+      replyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -38,7 +38,7 @@ export function initForum() {
     const replyInput = document.getElementById('topic-reply-input');
     if (replyInput) {
       replyInput.focus();
-      replyInput.scrollIntoView({ behavior: 'smooth' });
+      replyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 

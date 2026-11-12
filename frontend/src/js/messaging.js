@@ -1770,8 +1770,9 @@ export function toggleDmEmojiPicker(event) {
   const btn = event?.currentTarget;
   if (btn) {
     const rect = btn.getBoundingClientRect();
-    popover.style.top = `${rect.bottom + window.scrollY + 6}px`;
-    popover.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 240)}px`;
+    popover.style.position = 'fixed';
+    popover.style.top = `${rect.bottom + 6}px`;
+    popover.style.left = `${Math.min(rect.left, window.innerWidth - 270)}px`;
   }
 
   popover.style.display = popover.style.display === 'block' ? 'none' : 'block';

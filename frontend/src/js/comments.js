@@ -2481,7 +2481,7 @@ window.handleCommentSubmit = async function(novelId, chapterNum, containerId) {
     setTimeout(() => {
       const feed = document.getElementById(`ig-feed-${containerId}`);
       if (feed && feed.lastElementChild) {
-        feed.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+        feed.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, 250);
   } catch (err) {
@@ -2631,7 +2631,7 @@ window.handleReplySubmit = async function(parentId, novelId, chapterNum, contain
     setTimeout(() => {
       const feed = document.getElementById(`ig-feed-${containerId}`);
       if (feed && feed.lastElementChild) {
-        feed.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+        feed.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, 250);
   } catch (err) {
