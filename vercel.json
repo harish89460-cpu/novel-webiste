@@ -2,19 +2,19 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://olympic-occurring-cattle-hosted.trycloudflare.com/api/$1"
+      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://olympic-occurring-cattle-hosted.trycloudflare.com/uploads/$1"
+      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/uploads/$1"
     },
     {
       "source": "/share",
-      "destination": "https://olympic-occurring-cattle-hosted.trycloudflare.com/api/share"
+      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/share"
     },
     {
       "source": "/share/(.*)",
-      "destination": "https://olympic-occurring-cattle-hosted.trycloudflare.com/api/share/$1"
+      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/share/$1"
     },
     {
       "source": "/((?!assets/).*)",
