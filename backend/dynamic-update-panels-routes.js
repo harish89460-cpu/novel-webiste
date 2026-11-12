@@ -80,10 +80,13 @@ function safeJsonParse(val, fallback = []) {
  */
 function formatRelativeTime(date) {
   if (!date) return 'Recently';
-  const d = new Date(date);
+  const safeDateStr = typeof date === 'string' && date.includes(' ') && !date.includes('T')
+    ? date.replace(' ', 'T')
+    : date;
+  const d = new Date(safeDateStr);
   if (isNaN(d.getTime())) return 'Recently';
   const now = new Date();
-  const diffSec = Math.floor((now - d) / 1000);
+  const diffSec = Math.max(0, Math.floor((now - d) / 1000));
   if (diffSec < 45) return 'Just now';
   if (diffSec < 90) return '1 min ago';
   const diffMin = Math.floor(diffSec / 60);
@@ -91,6 +94,7 @@ function formatRelativeTime(date) {
   const diffHour = Math.floor(diffMin / 60);
   if (diffHour < 24) return `${diffHour}h ago`;
   const diffDay = Math.floor(diffHour / 24);
+  if (diffDay === 1) return 'Yesterday';
   if (diffDay < 7) return `${diffDay}d ago`;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
@@ -296,33 +300,37 @@ export async function getPanelActivitiesForPanel(panel, limit = 8) {
 
     const sql = `
       SELECT id, category_id, sub_category_id, novel_id, user_id, user_name, user_avatar,
-             activity_type, title, preview, emoji, target_type, target_id, url, created_at
+             activity_type, title, preview, emoji, target_type, target_id, url, created_at, updated_at
       FROM panel_activities
       ${whereClause}
-      ORDER BY created_at DESC, id DESC
+      ORDER BY GREATEST(created_at, COALESCE(updated_at, created_at)) DESC, id DESC
       LIMIT ?;
     `;
     params.push(limit);
 
     const rows = await query(sql, params);
-    return rows.map(r => ({
-      id: r.id,
-      categoryId: r.category_id,
-      subCategoryId: r.sub_category_id,
-      novelId: r.novel_id,
-      userId: r.user_id,
-      userName: r.user_name || 'Member',
-      userAvatar: r.user_avatar || '/profile.png',
-      activityType: r.activity_type,
-      title: r.title,
-      preview: r.preview || '',
-      emoji: r.emoji,
-      targetType: r.target_type,
-      targetId: r.target_id,
-      url: r.url,
-      createdAt: r.created_at,
-      timeAgo: formatRelativeTime(r.created_at)
-    }));
+    return rows.map(r => {
+      const effectiveDate = r.updated_at && new Date(r.updated_at) > new Date(r.created_at) ? r.updated_at : r.created_at;
+      return {
+        id: r.id,
+        categoryId: r.category_id,
+        subCategoryId: r.sub_category_id,
+        novelId: r.novel_id,
+        userId: r.user_id,
+        userName: r.user_name || 'Member',
+        userAvatar: r.user_avatar || '/profile.png',
+        activityType: r.activity_type,
+        title: r.title,
+        preview: r.preview || '',
+        emoji: r.emoji,
+        targetType: r.target_type,
+        targetId: r.target_id,
+        url: r.url,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        timeAgo: formatRelativeTime(effectiveDate)
+      };
+    });
   } catch (err) {
     console.warn('[GetPanelActivitiesForPanel Error]:', err.message);
     return [];

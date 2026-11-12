@@ -573,6 +573,16 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
         targetId: String(commentId),
         url: catInfo.url ? `${catInfo.url}#comment-${commentId}` : `#thread?id=${encodeURIComponent(targetNovelId)}#comment-${commentId}`
       });
+
+      // Update parent thread's latest activity timestamp
+      if (catInfo.novelId) {
+        await query(`
+          UPDATE panel_activities
+          SET updated_at = NOW()
+          WHERE (target_type IN ('thread', 'content') AND target_id = ?)
+             OR (category_id = ? AND novel_id = ? AND target_type IN ('thread', 'content'));
+        `, [String(catInfo.novelId), catInfo.categoryId, String(catInfo.novelId)]).catch(() => {});
+      }
     }
   } catch (actErr) {
     console.warn('[Comment Activity Tracking Warning]:', actErr.message);

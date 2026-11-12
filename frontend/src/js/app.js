@@ -2199,38 +2199,38 @@ function getActivityBadgeConfig(act) {
   const type = act.activityType || 'thread_created';
   switch (type) {
     case 'thread_created':
-      return { label: 'New Thread', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0', icon: '📝' };
+      return { label: 'NEW THREAD', typeClass: 'new-thread' };
     case 'thread_updated':
-      return { label: 'Thread Edited', bg: '#F1F5F9', color: '#475569', border: '#CBD5E1', icon: '✏️' };
+      return { label: 'THREAD EDITED', typeClass: 'thread-edited' };
     case 'comment_created':
-      return { label: 'New Comment', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', icon: '💬' };
+      return { label: 'COMMENT', typeClass: 'comment' };
     case 'comment_updated':
-      return { label: 'Comment Edited', bg: '#F1F5F9', color: '#475569', border: '#CBD5E1', icon: '✏️' };
+      return { label: 'COMMENT EDITED', typeClass: 'comment-edited' };
     case 'reply_created':
-      return { label: 'New Reply', bg: '#F5F3FF', color: '#7C3AED', border: '#DDD6FE', icon: '↳' };
+      return { label: 'REPLY', typeClass: 'reply' };
     case 'reply_updated':
-      return { label: 'Reply Edited', bg: '#F1F5F9', color: '#475569', border: '#CBD5E1', icon: '✏️' };
+      return { label: 'REPLY EDITED', typeClass: 'reply-edited' };
     case 'like_added':
-      return { label: 'Liked', bg: '#FFF1F2', color: '#BE123C', border: '#FECDD3', icon: '❤️' };
+      return { label: 'LIKE', typeClass: 'like' };
     case 'reaction_added':
-      return { label: act.emoji ? `${act.emoji} Reacted` : 'Reacted', bg: '#FEF3C7', color: '#B45309', border: '#FCD34D', icon: act.emoji || '👍' };
+      return { label: 'REACTION', typeClass: 'reaction' };
     case 'novel_published':
-      return { label: 'Novel Published', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0', icon: '📚' };
+      return { label: 'NEW NOVEL', typeClass: 'new-novel' };
     case 'novel_updated':
-      return { label: 'Novel Updated', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', icon: '🔄' };
+      return { label: 'NOVEL EDITED', typeClass: 'novel-edited' };
     case 'chapter_published':
-      return { label: 'New Chapter', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0', icon: '📖' };
+      return { label: 'NEW CHAPTER', typeClass: 'new-chapter' };
     case 'chapter_updated':
-      return { label: 'Chapter Updated', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', icon: '✏️' };
+      return { label: 'CHAPTER EDITED', typeClass: 'chapter-edited' };
     default:
-      return { label: 'Update', bg: '#F8FAFC', color: '#334155', border: '#E2E8F0', icon: '🔔' };
+      return { label: 'UPDATE', typeClass: 'default' };
   }
 }
 
 function renderPanelActivityItems(activities) {
   if (!Array.isArray(activities) || activities.length === 0) {
     return `
-      <div class="sidebar-empty-state" style="text-align:center; padding:24px 16px; background:#FFFFFF;">
+      <div class="sidebar-empty-state" style="text-align:center; padding:24px 16px;">
         <div style="font-size:24px; margin-bottom:6px;">⚡</div>
         <div style="font-weight:600; font-size:13px; color:var(--color-navy-deep); margin-bottom:2px;">No recent activities yet</div>
         <div style="font-size:12px; color:var(--color-text-muted);">Activities from this category will appear here in real time.</div>
@@ -2243,35 +2243,30 @@ function renderPanelActivityItems(activities) {
     const avatarUrl = getAvatarUrl(act.userAvatar);
     const safeUserName = escapeHtml(act.userName || 'Member');
     const safeTitle = escapeHtml(act.title || 'Discussion Thread');
-    const safeTime = escapeHtml(act.timeAgo || formatLastSeen(act.createdAt) || 'Recently');
-    const safePreview = act.preview ? escapeHtml(act.preview) : '';
+    const safeTime = escapeHtml(act.timeAgo || 'Recently');
+    const rawPreview = (act.preview || '').replace(/\s+/g, ' ').trim();
+    const previewSnippet = rawPreview.length > 42 ? rawPreview.slice(0, 42) + '…' : rawPreview;
+    const safePreview = escapeHtml(previewSnippet);
     const safeUrl = act.url || '#forum';
 
     return `
       <article class="sidebar-post-item dynamic-activity-item" 
                onclick="if(!event.target.closest('a')) window.location.hash='${escapeQuotes(safeUrl)}'" 
-               style="cursor:pointer; padding:12px 14px; background:#FFFFFF;">
-        <div class="sidebar-post-avatar-wrap" style="position:relative;">
+               style="cursor:pointer;">
+        <div class="sidebar-post-avatar-wrap">
           <img src="${avatarUrl}" alt="${safeUserName}" class="sidebar-post-avatar" onerror="this.onerror=null;this.src='/profile.png';" loading="lazy">
-          <span style="position:absolute; bottom:-3px; right:-3px; font-size:12px; line-height:1; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.15));">${badge.icon}</span>
         </div>
-        <div class="sidebar-post-content" style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
-            <span style="font-weight:700; font-size:12.5px; color:#0B1F33;">${safeUserName}</span>
-            <span class="activity-type-pill" style="font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:10px; background:${badge.bg}; color:${badge.color}; border:1px solid ${badge.border}; line-height:1.3;">
-              ${badge.label}
-            </span>
+        <div class="sidebar-post-content">
+          <div class="dynamic-activity-header-line">
+            <a href="${safeUrl}" class="sidebar-post-title" title="${safeTitle}">${safeTitle}</a>
+            <span class="activity-type-badge badge-${badge.typeClass}">${badge.label}</span>
           </div>
-          <a href="${safeUrl}" class="sidebar-post-title" title="${safeTitle}" style="font-size:13px; font-weight:600; line-height:1.4; color:var(--color-navy-deep); text-decoration:none; display:block; margin:2px 0;">
-            ${safeTitle}
-          </a>
-          ${safePreview ? `
-            <div style="font-size:11.5px; color:#64748B; margin-top:3px; line-height:1.4; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
-              ${safePreview}
-            </div>
-          ` : ''}
-          <div class="sidebar-post-meta-line" style="margin-top:4px; font-size:11px; color:#94A3B8;">
+          <div class="sidebar-post-updater">
+            by <strong class="sidebar-updater-name">${safeUserName}</strong>${safePreview ? ` <span class="sidebar-activity-preview">· "${safePreview}"</span>` : ''}
+          </div>
+          <div class="sidebar-post-meta-line">
             <span class="meta-item">🕐 ${safeTime}</span>
+            ${act.emoji ? `<span class="meta-dot">·</span><span class="meta-item activity-reaction-item">${escapeHtml(act.emoji)}</span>` : ''}
           </div>
         </div>
       </article>
@@ -2291,7 +2286,7 @@ function renderSingleCustomPanelHtml(panel) {
         </h3>
         <span class="forum-panel-badge" style="background:${escapeHtml(panel.badgeBg || 'rgba(217, 119, 6, 0.15)')}; color:${escapeHtml(panel.badgeColor || '#B45309')};">${escapeHtml(panel.badge || 'UPDATE')}</span>
       </div>
-      <div class="forum-panel-list dynamic-update-content" style="padding:0; background:#FFFFFF;">
+      <div class="forum-panel-list dynamic-update-content">
         ${renderPanelActivityItems(panel.activities)}
       </div>
     </section>
