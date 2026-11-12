@@ -2,19 +2,19 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://surfing-eric-worcester-mrs.trycloudflare.com/api/$1"
+      "destination": "https://hardwood-replied-speak-wendy.trycloudflare.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://surfing-eric-worcester-mrs.trycloudflare.com/uploads/$1"
+      "destination": "https://hardwood-replied-speak-wendy.trycloudflare.com/uploads/$1"
     },
     {
       "source": "/share",
-      "destination": "https://surfing-eric-worcester-mrs.trycloudflare.com/api/share"
+      "destination": "https://hardwood-replied-speak-wendy.trycloudflare.com/api/share"
     },
     {
       "source": "/share/(.*)",
-      "destination": "https://surfing-eric-worcester-mrs.trycloudflare.com/api/share/$1"
+      "destination": "https://hardwood-replied-speak-wendy.trycloudflare.com/api/share/$1"
     },
     {
       "source": "/((?!assets/).*)",

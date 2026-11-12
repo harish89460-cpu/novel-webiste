@@ -1400,6 +1400,7 @@ export async function createContentArticle({
   const cImage = coverImage || cover_image || null;
   const aId = authorId || author_id || 2;
   const aName = authorName || author_name || 'Rudhra Prarthana';
+  let authorDisplayName = aName || 'A member';
   const sOrder = sortOrder || sort_order || 0;
   const accPerm = accessPermission || access_permission || 'admin_only';
   const schedAt = scheduledAt || scheduled_at || null;
@@ -1453,10 +1454,9 @@ export async function createContentArticle({
     details: `Created content article "${cleanTitle}" (ID: ${result.insertId}, ParentID: ${pId}, Slug: ${cleanSlug})`
   });
 
-  // Notify followers and members if published
+  // Notify followers and members if published (Non-blocking background delivery)
   if (isPublished) {
     const threadLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
-    let authorDisplayName = aName || 'A member';
 
     try {
       const author = await queryOne(`
@@ -1501,20 +1501,22 @@ export async function createContentArticle({
           console.warn('[Notification Delivery Warning]:', err.message);
         });
       }
+
+      // Dispatch @Mention notifications to tagged members in thread content
+      await dispatchMentionNotifications({
+        content: content || '',
+        actorId: aId,
+        actorName: authorDisplayName || aName || 'Author',
+        contextTitle: `the thread "${cleanTitle}"`,
+        contextLink: threadLink,
+        entityType: 'content_article',
+        entityId: result.insertId
+      }).catch((mentionErr) => {
+        console.warn('[Mentions Dispatch Warning]:', mentionErr.message);
+      });
     } catch (err) {
       console.warn('[Thread Creation Notification Error]:', err.message);
     }
-
-    // Dispatch @Mention notifications to tagged members in thread content
-    await dispatchMentionNotifications({
-      content: content || '',
-      actorId: aId,
-      actorName: authorDisplayName || aName || 'Author',
-      contextTitle: `the thread "${cleanTitle}"`,
-      contextLink: threadLink,
-      entityType: 'content_article',
-      entityId: result.insertId
-    }).catch(() => {});
   }
 
   return { 
