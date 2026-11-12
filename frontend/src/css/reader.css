@@ -1706,14 +1706,14 @@
 .rp-reaction-summary-panel {
   display: flex;
   align-items: center;
-  margin: 14px 0 8px 0;
-  padding: 8px 14px;
+  margin: 10px 0 8px 0;
+  padding: 6px 12px;
   background: #F8FAFC;
   border-left: 3.5px solid #DC2626;
   border-top: 1px solid #E2E8F0;
   border-right: 1px solid #E2E8F0;
   border-bottom: 1px solid #E2E8F0;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 4px 4px 0;
   box-sizing: border-box;
   width: 100%;
   cursor: pointer;
@@ -1733,10 +1733,10 @@
 .rp-rx-summary-inner {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   font-size: 13.5px;
-  line-height: 1.5;
+  line-height: 1.45;
   color: #007791;
   width: 100%;
 }
@@ -1759,13 +1759,13 @@
 .rp-rx-summary-text {
   font-size: 13.5px;
   font-weight: 500;
-  color: #006680;
+  color: #007791;
   letter-spacing: 0.1px;
   word-break: break-word;
 }
 
 .rp-reaction-summary-panel:hover .rp-rx-summary-text {
-  color: #004D61;
+  color: #005A6E;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

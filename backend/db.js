@@ -548,6 +548,7 @@ export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
   const postIds = (posts || []).map(p => String(p.id));
   const reactionsMap = {};
   const userReactionsMap = {};
+  const reactorsMap = {};
 
   if (postIds.length > 0) {
     const placeholders = postIds.map(() => '?').join(',');
@@ -573,6 +574,32 @@ export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
       for (const ur of userReacts) {
         userReactionsMap[ur.target_id] = ur.emoji;
       }
+    }
+
+    // Load reactors for each forum post to populate the Like/Reaction summary panel
+    const reactorRows = await query(`
+      SELECT r.target_id, r.user_id, r.emoji, r.created_at,
+             u.username,
+             COALESCE(p.display_name, u.username) AS name,
+             p.avatar
+      FROM reactions r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE r.target_type = 'forum_post' AND r.target_id IN (${placeholders})
+      ORDER BY ${currentUserId ? `(r.user_id = ${parseInt(currentUserId, 10)}) DESC, ` : ''}r.created_at DESC;
+    `, postIds);
+
+    for (const r of reactorRows) {
+      if (!reactorsMap[r.target_id]) reactorsMap[r.target_id] = [];
+      reactorsMap[r.target_id].push({
+        userId: r.user_id,
+        isCurrentUser: Boolean(currentUserId && Number(r.user_id) === Number(currentUserId)),
+        username: r.username,
+        name: r.name || r.username,
+        avatar: r.avatar || '/profile.png',
+        emoji: r.emoji,
+        createdAt: r.created_at
+      });
     }
   }
 
@@ -624,7 +651,8 @@ export async function getForumTopicByIdFromDb(topicId, currentUserId = null) {
         content: p.content,
         reactions: pReactions,
         totalReactions: totalR,
-        userReacted: userReactionsMap[String(p.id)] || null
+        userReacted: userReactionsMap[String(p.id)] || null,
+        reactors: reactorsMap[String(p.id)] || []
       };
     })
   };

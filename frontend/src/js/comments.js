@@ -1033,17 +1033,9 @@ export async function renderReactionsWidget(containerId, targetType, targetId) {
             }).join('')}
           </div>
         </div>
-
-        <!-- Live Reaction Breakdown Summary Pill -->
-        ${totalCount > 0 ? `
-          <div class="rp-reactions-summary-pill" title="Community reactions breakdown">
-            <span class="rp-summary-emojis">${topEmojis.join(' ')}</span>
-            <span class="rp-summary-count">${totalCount} reaction${totalCount === 1 ? '' : 's'}</span>
-          </div>
-        ` : ''}
       </div>
 
-      <!-- Compact Reaction Summary Panel -->
+      <!-- Compact Reaction Summary Panel (Reference Design) -->
       ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({
         targetType,
         targetId,

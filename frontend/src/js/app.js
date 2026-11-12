@@ -2604,6 +2604,15 @@ async function renderDiscussionThread(container, topic) {
                   </button>
                 </div>
               </div>
+
+              <!-- Like / Reaction Summary Panel for Forum Post -->
+              ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({
+                targetType: 'forum_post',
+                targetId: post.id,
+                total: post.totalReactions || 0,
+                activeEmojis: Object.keys(post.reactions || {}).filter(e => post.reactions[e] > 0),
+                reactors: post.reactors || []
+              }) : ''}
             </div>
           `;
         }).join('')}

@@ -747,7 +747,7 @@ export async function getReactions({ targetType, targetId, userId = null }) {
     }
   }
 
-  const total = Object.values(counts).reduce((acc, c) => acc + c, 0);
+  let total = Object.values(counts).reduce((acc, c) => acc + c, 0);
 
   // Fetch reactors ordered with current user first, then by most recent reaction
   let reactors = [];
@@ -774,6 +774,47 @@ export async function getReactions({ targetType, targetId, userId = null }) {
       createdAt: r.created_at
     }));
   }
+
+  // Also seamlessly check the likes table (used for comments, replies, profile posts, etc.)
+  try {
+    const likeRows = await query(`
+      SELECT l.user_id, l.created_at,
+             u.username,
+             COALESCE(p.display_name, u.username) AS name,
+             p.avatar
+      FROM likes l
+      JOIN users u ON l.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE l.target_type = ? AND l.target_id = ?
+      ORDER BY ${userId ? `(l.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}l.created_at DESC;
+    `, [targetType, String(targetId)]);
+
+    if (likeRows && likeRows.length > 0) {
+      const defaultEmoji = targetType === 'comment' ? '❤️' : '👍';
+      for (const lr of likeRows) {
+        if (!reactors.some(r => Number(r.userId) === Number(lr.user_id))) {
+          const isMe = Boolean(userId && Number(lr.user_id) === Number(userId));
+          reactors.push({
+            userId: lr.user_id,
+            isCurrentUser: isMe,
+            username: lr.username,
+            name: lr.name || lr.username,
+            avatar: lr.avatar || '/profile.png',
+            emoji: defaultEmoji,
+            createdAt: lr.created_at
+          });
+          counts[defaultEmoji] = (counts[defaultEmoji] || 0) + 1;
+          if (isMe && !userReaction) {
+            userReaction = defaultEmoji;
+          }
+        }
+      }
+    }
+  } catch (likeErr) {
+    console.warn('[GetReactions] Error checking likes fallback:', likeErr.message);
+  }
+
+  total = Object.values(counts).reduce((acc, c) => acc + c, 0);
 
   // Active top emojis for the summary badge
   const activeEmojis = Object.keys(counts)

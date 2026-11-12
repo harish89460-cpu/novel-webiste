@@ -156,6 +156,13 @@ export function initForum() {
         window.renderTopicView();
       }
 
+      // Synchronize compact Reaction Summary Panel below post actions
+      if (typeof window.updateReactionSummaryPanel === 'function') {
+        const targetType = postId ? 'forum_post' : 'forum_topic';
+        const targetId = postId || topicId;
+        window.updateReactionSummaryPanel(targetType, targetId, data);
+      }
+
       showToast(data.userReaction ? `Reacted ${emoji}!` : 'Reaction removed.');
     } catch (err) {
       console.error('[Forum] Error toggling reaction:', err);
