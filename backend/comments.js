@@ -5,6 +5,7 @@ import dns from 'node:dns';
 import { query, queryOne } from './db.js';
 function generateNovelSlug(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
 import { createNotification, dispatchMentionNotifications } from './notifications.js';
+import { recordPanelActivity, removePanelActivity, resolveCategoryForTarget } from './dynamic-update-panels-routes.js';
 
 function resolveNotificationLinkAndContext(novelId, chapterNum, novelTitle = null) {
   const strId = String(novelId || '');
@@ -553,6 +554,30 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
     console.warn('[Comment Notification Error]:', err.message);
   }
 
+  // Live Activity Tracking for Update Panels
+  try {
+    const catInfo = await resolveCategoryForTarget('comment', commentId, targetNovelId);
+    if (catInfo && catInfo.categoryId) {
+      await recordPanelActivity({
+        categoryId: catInfo.categoryId,
+        subCategoryId: catInfo.subCategoryId,
+        novelId: catInfo.novelId,
+        userId: userId,
+        userName: user.display_name || user.username,
+        userAvatar: user.avatar || '/profile.png',
+        activityType: resolvedParentId ? 'reply_created' : 'comment_created',
+        title: catInfo.title || 'Discussion Thread',
+        preview: cleanContent ? cleanContent.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
+        emoji: null,
+        targetType: resolvedParentId ? 'reply' : 'comment',
+        targetId: String(commentId),
+        url: catInfo.url ? `${catInfo.url}#comment-${commentId}` : `#thread?id=${encodeURIComponent(targetNovelId)}#comment-${commentId}`
+      });
+    }
+  } catch (actErr) {
+    console.warn('[Comment Activity Tracking Warning]:', actErr.message);
+  }
+
   const nowIso = new Date().toISOString();
 
   return {
@@ -607,6 +632,30 @@ export async function updateComment({ commentId, userId, content }) {
     WHERE id = ?;
   `, [cleanContent, commentId]);
 
+  // Live Activity Tracking for Update Panels
+  try {
+    const catInfo = await resolveCategoryForTarget('comment', commentId, existing.novel_id);
+    if (catInfo && catInfo.categoryId) {
+      await recordPanelActivity({
+        categoryId: catInfo.categoryId,
+        subCategoryId: catInfo.subCategoryId,
+        novelId: catInfo.novelId,
+        userId: userId,
+        userName: null,
+        userAvatar: null,
+        activityType: existing.parent_id ? 'reply_updated' : 'comment_updated',
+        title: catInfo.title || 'Discussion Thread',
+        preview: cleanContent ? cleanContent.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
+        emoji: null,
+        targetType: existing.parent_id ? 'reply' : 'comment',
+        targetId: String(commentId),
+        url: catInfo.url ? `${catInfo.url}#comment-${commentId}` : `#thread?id=${encodeURIComponent(existing.novel_id)}#comment-${commentId}`
+      });
+    }
+  } catch (actErr) {
+    console.warn('[Comment Update Activity Warning]:', actErr.message);
+  }
+
   return { success: true, commentId, content: cleanContent, isEdited: true };
 }
 
@@ -647,6 +696,18 @@ export async function deleteComment({ commentId, userId }) {
     }
   }
 
+  // Remove activities from panel_activities
+  try {
+    await removePanelActivity({ targetType: 'comment', targetId: String(commentId) });
+    await removePanelActivity({ targetType: 'reply', targetId: String(commentId) });
+    for (const child of childReplies) {
+      await removePanelActivity({ targetType: 'comment', targetId: String(child.id) });
+      await removePanelActivity({ targetType: 'reply', targetId: String(child.id) });
+    }
+  } catch (actErr) {
+    console.warn('[Comment Delete Activity Warning]:', actErr.message);
+  }
+
   return { success: true, commentId };
 }
 
@@ -673,12 +734,41 @@ export async function toggleCommentLike({ commentId, userId }) {
   if (existing) {
     await query('DELETE FROM likes WHERE id = ?;', [existing.id]);
     liked = false;
+
+    // Remove from panel_activities
+    try {
+      await removePanelActivity({ targetType: 'comment', targetId: String(commentId), userId, activityType: 'like_added' });
+    } catch (err) {}
   } else {
     await query(
       'INSERT INTO likes (target_type, target_id, user_id) VALUES ("comment", ?, ?);',
       [targetId, userId]
     );
     liked = true;
+
+    // Live Activity Tracking for Update Panels
+    try {
+      const commentRow = await queryOne(`SELECT novel_id FROM comments WHERE id = ?;`, [commentId]);
+      const catInfo = await resolveCategoryForTarget('comment', commentId, commentRow?.novel_id);
+      if (catInfo && catInfo.categoryId) {
+        const u = await queryOne(`SELECT COALESCE(p.display_name, u.username) AS name, p.avatar FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;`, [userId]);
+        await recordPanelActivity({
+          categoryId: catInfo.categoryId,
+          subCategoryId: catInfo.subCategoryId,
+          novelId: catInfo.novelId,
+          userId,
+          userName: u?.name || 'Member',
+          userAvatar: u?.avatar || '/profile.png',
+          activityType: 'like_added',
+          title: catInfo.title || 'Discussion Thread',
+          preview: 'Liked a comment',
+          emoji: '❤️',
+          targetType: 'comment',
+          targetId: String(commentId),
+          url: catInfo.url ? `${catInfo.url}#comment-${commentId}` : `#thread?id=${encodeURIComponent(commentRow?.novel_id || commentId)}#comment-${commentId}`
+        });
+      }
+    } catch (err) {}
 
     // Genuine Notification for comment like
     try {
@@ -906,9 +996,37 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
     if (existing.emoji === resolvedEmoji) {
       // User clicked their active reaction -> remove it
       await query(`DELETE FROM reactions WHERE id = ?;`, [existing.id]);
+
+      // Remove from panel_activities
+      try {
+        await removePanelActivity({ targetType, targetId: String(targetId), userId, activityType: 'reaction_added' });
+      } catch (err) {}
     } else {
       // User clicked a different emoji -> update to the new one
       await query(`UPDATE reactions SET emoji = ? WHERE id = ?;`, [resolvedEmoji, existing.id]);
+
+      // Update in panel_activities
+      try {
+        const catInfo = await resolveCategoryForTarget(targetType, targetId);
+        if (catInfo && catInfo.categoryId) {
+          const u = await queryOne(`SELECT COALESCE(p.display_name, u.username) AS name, p.avatar FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;`, [userId]);
+          await recordPanelActivity({
+            categoryId: catInfo.categoryId,
+            subCategoryId: catInfo.subCategoryId,
+            novelId: catInfo.novelId,
+            userId,
+            userName: u?.name || 'Member',
+            userAvatar: u?.avatar || '/profile.png',
+            activityType: 'reaction_added',
+            title: catInfo.title || 'Discussion Thread',
+            preview: `Reacted with ${resolvedEmoji}`,
+            emoji: resolvedEmoji,
+            targetType,
+            targetId: String(targetId),
+            url: catInfo.url || `#thread?id=${encodeURIComponent(targetId)}`
+          });
+        }
+      } catch (actErr) {}
     }
   } else {
     // New reaction
@@ -916,6 +1034,29 @@ export async function toggleReaction({ targetType, targetId, userId, emoji }) {
       INSERT INTO reactions (target_type, target_id, user_id, emoji)
       VALUES (?, ?, ?, ?);
     `, [targetType, targetId, userId, resolvedEmoji]);
+
+    // Live Activity Tracking for Update Panels
+    try {
+      const catInfo = await resolveCategoryForTarget(targetType, targetId);
+      if (catInfo && catInfo.categoryId) {
+        const u = await queryOne(`SELECT COALESCE(p.display_name, u.username) AS name, p.avatar FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?;`, [userId]);
+        await recordPanelActivity({
+          categoryId: catInfo.categoryId,
+          subCategoryId: catInfo.subCategoryId,
+          novelId: catInfo.novelId,
+          userId,
+          userName: u?.name || 'Member',
+          userAvatar: u?.avatar || '/profile.png',
+          activityType: 'reaction_added',
+          title: catInfo.title || 'Discussion Thread',
+          preview: `Reacted with ${resolvedEmoji}`,
+          emoji: resolvedEmoji,
+          targetType,
+          targetId: String(targetId),
+          url: catInfo.url || `#thread?id=${encodeURIComponent(targetId)}`
+        });
+      }
+    } catch (actErr) {}
 
     // Reaction Notification
     if (targetType === 'comment') {

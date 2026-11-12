@@ -357,8 +357,15 @@ function renderUpdatePanelsView(canvas) {
                       </div>
 
                       <!-- Content Snippet -->
-                      <div style="font-size:13px; color:#334155; line-height:1.5; background:#F8FAFC; border-radius:6px; padding:10px 12px; margin-bottom:10px; white-space:pre-wrap; word-break:break-word;">
-                        ${escapeHtml(panel.content)}
+                      <!-- Live Activity Tracking Indicator -->
+                      <div style="font-size:13px; color:#334155; line-height:1.5; background:#F8FAFC; border-radius:6px; padding:10px 12px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; border:1px solid #E2E8F0;">
+                        <span style="display:inline-flex; align-items:center; gap:6px; font-weight:600; color:#047857;">
+                          <span style="width:8px; height:8px; border-radius:50%; background:#10B981; display:inline-block;"></span>
+                          Live Activity Tracking Active
+                        </span>
+                        <span style="font-size:12px; color:#64748B;">
+                          ${Array.isArray(panel.activities) ? panel.activities.length : 0} recent activities captured
+                        </span>
                       </div>
 
                       <!-- Visibility Info Line -->
@@ -655,7 +662,7 @@ export function openUpdatePanelModal(panelId = null) {
               ${isEdit ? 'Edit Update Panel' : 'Create New Update Panel'}
             </h3>
             <div style="font-size:12px; color:#64748B;">
-              Configure title, content, badge, and category-based visibility
+              Configure title, badge, and category-based visibility
             </div>
           </div>
         </div>
@@ -732,20 +739,6 @@ export function openUpdatePanelModal(panelId = null) {
           </div>
           <input type="hidden" id="up-badge-color" value="${escapeQuote(currentBadgeColor)}">
           <input type="hidden" id="up-badge-bg" value="${escapeQuote(currentBadgeBg)}">
-        </div>
-
-        <!-- Panel Announcement Content -->
-        <div>
-          <label style="display:block; font-size:13px; font-weight:700; color:#0B1F33; margin-bottom:6px;">
-            Update Announcement Content <span style="color:#DC2626;">*</span>
-          </label>
-          <textarea id="up-content-input" 
-                    rows="4" 
-                    placeholder="Enter the announcement or update description that will appear inside this sidebar panel..."
-                    style="width:100%; padding:10px 14px; font-size:13.5px; line-height:1.55; border:1px solid #CBD5E1; border-radius:8px; outline:none; font-family:inherit; resize:vertical; box-sizing:border-box;">${escapeHtml(currentContent)}</textarea>
-          <div style="font-size:11.5px; color:#64748B; margin-top:4px;">
-            Supports multiple lines. Plain text, emojis, and link URLs are formatted cleanly.
-          </div>
         </div>
 
         <!-- Category & Novel Visibility Targeting -->
@@ -906,7 +899,6 @@ export function openUpdatePanelModal(panelId = null) {
   // Save button handler
   document.getElementById('btn-save-update-panel').onclick = async () => {
     const title = document.getElementById('up-title-input').value.trim();
-    const content = document.getElementById('up-content-input').value.trim();
     const icon = document.getElementById('up-icon-input').value.trim() || '📢';
     const badge = document.getElementById('up-badge-input').value.trim() || 'UPDATE';
     const badgeColor = document.getElementById('up-badge-color').value.trim() || '#B45309';
@@ -918,11 +910,6 @@ export function openUpdatePanelModal(panelId = null) {
     if (!title) {
       alert('Please enter a Panel Title.');
       document.getElementById('up-title-input').focus();
-      return;
-    }
-    if (!content) {
-      alert('Please enter the announcement Content.');
-      document.getElementById('up-content-input').focus();
       return;
     }
 
@@ -946,7 +933,7 @@ export function openUpdatePanelModal(panelId = null) {
 
     const payload = {
       title,
-      content,
+      content: '',
       icon,
       badge,
       badgeColor,

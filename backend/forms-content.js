@@ -1,4 +1,5 @@
 import { moveToTrash } from './trash.js';
+import { recordPanelActivity, removePanelActivity } from './dynamic-update-panels-routes.js';
 // Forms, Threads, and Content Management Layer for Rudhra Prarthana Novels
 // Implements 3-Level Hierarchy: Main Category -> Sub Category -> Content Articles
 // With dedicated reading pages, comments, and fine-grained individual member access control
@@ -1460,6 +1461,27 @@ export async function createContentArticle({
   if (isPublished) {
     const threadLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
 
+    // Live Activity Tracking for Update Panels
+    try {
+      await recordPanelActivity({
+        categoryId: String(mId),
+        subCategoryId: cleanSubId,
+        novelId: String(result.insertId),
+        userId: aId,
+        userName: authorDisplayName,
+        userAvatar: null,
+        activityType: cType === 'novel' ? 'novel_published' : 'thread_created',
+        title: cleanTitle,
+        preview: content ? content.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
+        emoji: null,
+        targetType: cType === 'novel' ? 'novel' : 'thread',
+        targetId: String(result.insertId),
+        url: threadLink
+      });
+    } catch (actErr) {
+      console.warn('[Panel Activity Tracking Warning]:', actErr.message);
+    }
+
     try {
       const author = await queryOne(`
         SELECT u.id, u.username, u.role, COALESCE(p.display_name, u.username) AS display_name
@@ -1625,6 +1647,32 @@ export async function updateContentArticle({
     }).catch(() => {});
   }
 
+  // Live Activity Tracking for Update Panels
+  try {
+    const updatedSlug = (uniqueSlug !== undefined && uniqueSlug !== null && uniqueSlug.trim() !== '') ? uniqueSlug.trim() : art.unique_slug;
+    const finalTitle = title ? title.trim() : art.title;
+    const finalContent = content !== undefined ? content : art.content;
+    const finalCat = (mainCategoryId !== undefined && mainCategoryId !== null && mainCategoryId !== '') ? String(mainCategoryId) : String(art.main_category_id);
+    const finalSub = (subCategoryId !== undefined && subCategoryId !== null && subCategoryId !== '') ? String(subCategoryId) : (art.sub_category_id ? String(art.sub_category_id) : null);
+    await recordPanelActivity({
+      categoryId: finalCat,
+      subCategoryId: finalSub,
+      novelId: String(numericId),
+      userId: adminId,
+      userName: authorName || art.author_name,
+      userAvatar: null,
+      activityType: 'thread_updated',
+      title: finalTitle,
+      preview: finalContent ? finalContent.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
+      emoji: null,
+      targetType: 'thread',
+      targetId: String(numericId),
+      url: `#thread?id=${encodeURIComponent(updatedSlug || numericId)}`
+    });
+  } catch (actErr) {
+    console.warn('[Panel Activity Tracking Warning]:', actErr.message);
+  }
+
   return { success: true, message: 'Content updated successfully!' };
 }
 
@@ -1691,6 +1739,14 @@ export async function deleteContentArticle({ id, confirmTitle, adminId = 2 }) {
 
   // Delete access rules for this content
   await query(`DELETE FROM content_access_rules WHERE target_type IN ('content', 'article') AND (target_id = ? OR target_id = ?);`, [String(id), String(art.unique_slug)]);
+
+  // Remove activities from panel_activities
+  try {
+    await removePanelActivity({ targetType: 'thread', targetId: String(id) });
+    await removePanelActivity({ targetType: 'content', targetId: String(id) });
+  } catch (actErr) {
+    console.warn('[Panel Activity Removal Warning]:', actErr.message);
+  }
   // Delete comments in content_comments
   await query(`DELETE FROM content_comments WHERE content_id = ?;`, [id]);
   // Delete article

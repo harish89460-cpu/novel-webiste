@@ -6,6 +6,7 @@
  * - Multi-category and specific novel visibility rules
  * - Drag-and-drop persistent ordering across all sidebar panels (system & custom)
  * - Strict Admin authorization (viewable by members/guests according to category filter)
+ * - Live real-time activity tracking across categories & novels
  */
 
 import { query, queryOne } from './db.js';
@@ -71,6 +72,260 @@ function safeJsonParse(val, fallback = []) {
     return JSON.parse(val);
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Format relative time
+ */
+function formatRelativeTime(date) {
+  if (!date) return 'Recently';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'Recently';
+  const now = new Date();
+  const diffSec = Math.floor((now - d) / 1000);
+  if (diffSec < 45) return 'Just now';
+  if (diffSec < 90) return '1 min ago';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Record a live activity into panel_activities
+ */
+export async function recordPanelActivity({
+  categoryId,
+  subCategoryId = null,
+  novelId = null,
+  userId,
+  userName = null,
+  userAvatar = null,
+  activityType,
+  title,
+  preview = null,
+  emoji = null,
+  targetType,
+  targetId,
+  url
+}) {
+  if (!categoryId || !userId || !activityType || !targetType || !targetId || !title || !url) {
+    return null;
+  }
+
+  try {
+    let finalName = userName;
+    let finalAvatar = userAvatar;
+    if (!finalName || !finalAvatar) {
+      const u = await queryOne(`
+        SELECT u.username, COALESCE(p.display_name, u.username) AS name, p.avatar
+        FROM users u
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE u.id = ?;
+      `, [userId]);
+      if (u) {
+        finalName = finalName || u.name || u.username;
+        finalAvatar = finalAvatar || u.avatar || '/profile.png';
+      }
+    }
+
+    const cleanPreview = preview ? preview.replace(/<[^>]+>/g, '').trim().slice(0, 150) : null;
+
+    // Check if an identical activity already exists for user + target + activityType to avoid duplicates
+    const existing = await queryOne(`
+      SELECT id FROM panel_activities
+      WHERE user_id = ? AND target_type = ? AND target_id = ? AND activity_type = ?
+      LIMIT 1;
+    `, [userId, targetType, String(targetId), activityType]);
+
+    if (existing) {
+      await query(`
+        UPDATE panel_activities
+        SET category_id = ?, sub_category_id = ?, novel_id = ?,
+            user_name = ?, user_avatar = ?, title = ?, preview = ?,
+            emoji = ?, url = ?, updated_at = NOW()
+        WHERE id = ?;
+      `, [
+        categoryId, subCategoryId, novelId,
+        finalName || 'Member', finalAvatar || '/profile.png',
+        title, cleanPreview, emoji, url,
+        existing.id
+      ]);
+      return existing.id;
+    }
+
+    const res = await query(`
+      INSERT INTO panel_activities (
+        category_id, sub_category_id, novel_id, user_id, user_name, user_avatar,
+        activity_type, title, preview, emoji, target_type, target_id, url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    `, [
+      categoryId, subCategoryId, novelId,
+      userId, finalName || 'Member', finalAvatar || '/profile.png',
+      activityType, title, cleanPreview, emoji, targetType, String(targetId), url
+    ]);
+
+    return res.insertId;
+  } catch (err) {
+    console.warn('[RecordPanelActivity Error]:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Remove an activity record (e.g. When a like/reaction is removed, or thread/comment deleted)
+ */
+export async function removePanelActivity({ targetType, targetId, userId = null, activityType = null }) {
+  if (!targetType || !targetId) return false;
+  try {
+    let sql = 'DELETE FROM panel_activities WHERE target_type = ? AND target_id = ?';
+    const params = [targetType, String(targetId)];
+
+    if (userId) {
+      sql += ' AND user_id = ?';
+      params.push(userId);
+    }
+    if (activityType) {
+      sql += ' AND activity_type = ?';
+      params.push(activityType);
+    }
+
+    await query(sql, params);
+    return true;
+  } catch (err) {
+    console.warn('[RemovePanelActivity Error]:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Resolves main_category_id, sub_category_id, novel_id, title and url for a target
+ */
+export async function resolveCategoryForTarget(targetType, targetId, novelId = null) {
+  let articleId = null;
+  if (targetType === 'content' || targetType === 'thread') {
+    articleId = targetId;
+  } else if (novelId) {
+    if (String(novelId).startsWith('content_')) {
+      articleId = String(novelId).replace('content_', '');
+    } else {
+      articleId = novelId;
+    }
+  }
+
+  if (articleId) {
+    const art = await queryOne(
+      'SELECT id, main_category_id, sub_category_id, title, unique_slug FROM content_articles WHERE id = ? OR unique_slug = ? LIMIT 1',
+      [articleId, articleId]
+    );
+    if (art) {
+      return {
+        categoryId: String(art.main_category_id || ''),
+        subCategoryId: art.sub_category_id ? String(art.sub_category_id) : null,
+        novelId: String(art.id),
+        title: art.title,
+        url: `#thread?id=${encodeURIComponent(art.unique_slug || art.id)}`
+      };
+    }
+  }
+
+  if (targetType === 'comment' && targetId) {
+    const comm = await queryOne('SELECT id, novel_id FROM comments WHERE id = ? LIMIT 1;', [targetId]);
+    if (comm && comm.novel_id) {
+      return resolveCategoryForTarget('comment', null, comm.novel_id);
+    }
+  }
+
+  // Fallback check in content_subcategories
+  if (novelId) {
+    const sub = await queryOne('SELECT id, main_category_id, title FROM content_subcategories WHERE id = ? LIMIT 1;', [novelId]);
+    if (sub) {
+      return {
+        categoryId: String(sub.main_category_id || ''),
+        subCategoryId: String(sub.id),
+        novelId: String(sub.id),
+        title: sub.title,
+        url: `#forum?category=${encodeURIComponent(sub.main_category_id)}&sub=${encodeURIComponent(sub.id)}`
+      };
+    }
+  }
+
+  return { categoryId: 'general', subCategoryId: null, novelId: null, title: 'Discussion Thread', url: '#forum' };
+}
+
+/**
+ * Fetch live activities for an update panel according to its category & novel configuration
+ */
+export async function getPanelActivitiesForPanel(panel, limit = 8) {
+  if (!panel) return [];
+  try {
+    const isGlobal = Boolean(panel.isGlobal);
+    const categories = Array.isArray(panel.categories) ? panel.categories : [];
+    const novels = Array.isArray(panel.novels) ? panel.novels : [];
+
+    let whereClause = '';
+    const params = [];
+
+    if (!isGlobal && (categories.length > 0 || novels.length > 0)) {
+      const conditions = [];
+
+      if (categories.length > 0) {
+        const normCats = Array.from(new Set(categories.flatMap(c => {
+          const s = String(c).trim();
+          return [s, s.replace(/_/g, '-'), s.replace(/-/g, '_')];
+        })));
+        const placeholders = normCats.map(() => '?').join(',');
+        conditions.push(`(category_id IN (${placeholders}) OR REPLACE(category_id, '-', '_') IN (${placeholders}))`);
+        params.push(...normCats, ...normCats);
+      }
+
+      if (novels.length > 0) {
+        const placeholders = novels.map(() => '?').join(',');
+        conditions.push(`(sub_category_id IN (${placeholders}) OR novel_id IN (${placeholders}))`);
+        params.push(...novels, ...novels);
+      }
+
+      if (conditions.length > 0) {
+        whereClause = `WHERE ${conditions.join(' OR ')}`;
+      }
+    }
+
+    const sql = `
+      SELECT id, category_id, sub_category_id, novel_id, user_id, user_name, user_avatar,
+             activity_type, title, preview, emoji, target_type, target_id, url, created_at
+      FROM panel_activities
+      ${whereClause}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?;
+    `;
+    params.push(limit);
+
+    const rows = await query(sql, params);
+    return rows.map(r => ({
+      id: r.id,
+      categoryId: r.category_id,
+      subCategoryId: r.sub_category_id,
+      novelId: r.novel_id,
+      userId: r.user_id,
+      userName: r.user_name || 'Member',
+      userAvatar: r.user_avatar || '/profile.png',
+      activityType: r.activity_type,
+      title: r.title,
+      preview: r.preview || '',
+      emoji: r.emoji,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      url: r.url,
+      createdAt: r.created_at,
+      timeAgo: formatRelativeTime(r.created_at)
+    }));
+  } catch (err) {
+    console.warn('[GetPanelActivitiesForPanel Error]:', err.message);
+    return [];
   }
 }
 
@@ -202,6 +457,11 @@ export async function handleDynamicUpdatePanelsEndpoints(
 
       const panelOrder = await getSidebarPanelOrder();
 
+      // Populate live activities for each visible panel
+      for (const p of visiblePanels) {
+        p.activities = await getPanelActivitiesForPanel(p, 8);
+      }
+
       if (res.setHeader) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       }
@@ -246,6 +506,11 @@ export async function handleDynamicUpdatePanelsEndpoints(
           ...formatPanel(r),
           creatorName: r.creator_name || 'Admin'
         }));
+
+        // Populate live activities snippet for each panel in admin view
+        for (const p of panels) {
+          p.activities = await getPanelActivitiesForPanel(p, 6);
+        }
 
         // Fetch available categories and subcategories for the configuration modal
         const categories = await query(`
@@ -334,9 +599,6 @@ export async function handleDynamicUpdatePanelsEndpoints(
         if (!title) {
           return sendJson(res, { success: false, error: 'Panel title is required.' }, 400);
         }
-        if (!content) {
-          return sendJson(res, { success: false, error: 'Panel content is required.' }, 400);
-        }
 
         const badge = (body.badge || 'UPDATE').trim();
         const badgeColor = (body.badgeColor || '#B45309').trim();
@@ -358,7 +620,7 @@ export async function handleDynamicUpdatePanelsEndpoints(
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         `, [
           title,
-          content,
+          content || null,
           badge,
           badgeColor,
           badgeBg,
@@ -382,11 +644,13 @@ export async function handleDynamicUpdatePanelsEndpoints(
         }
 
         const createdRow = await queryOne('SELECT * FROM dynamic_update_panels WHERE id = ?;', [newId]);
+        const formatted = formatPanel(createdRow);
+        formatted.activities = await getPanelActivitiesForPanel(formatted, 6);
 
         return sendJson(res, {
           success: true,
           message: 'Update panel created successfully.',
-          panel: formatPanel(createdRow),
+          panel: formatted,
           panelOrder: currentOrder
         }, 201);
       } catch (err) {
@@ -412,9 +676,6 @@ export async function handleDynamicUpdatePanelsEndpoints(
         if (!title) {
           return sendJson(res, { success: false, error: 'Panel title cannot be empty.' }, 400);
         }
-        if (!content) {
-          return sendJson(res, { success: false, error: 'Panel content cannot be empty.' }, 400);
-        }
 
         const badge = body.badge !== undefined ? String(body.badge).trim() : existing.badge;
         const badgeColor = body.badgeColor !== undefined ? String(body.badgeColor).trim() : existing.badge_color;
@@ -436,7 +697,7 @@ export async function handleDynamicUpdatePanelsEndpoints(
           WHERE id = ?;
         `, [
           title,
-          content,
+          content || null,
           badge,
           badgeColor,
           badgeBg,
@@ -449,11 +710,13 @@ export async function handleDynamicUpdatePanelsEndpoints(
         ]);
 
         const updatedRow = await queryOne('SELECT * FROM dynamic_update_panels WHERE id = ?;', [panelId]);
+        const formatted = formatPanel(updatedRow);
+        formatted.activities = await getPanelActivitiesForPanel(formatted, 6);
 
         return sendJson(res, {
           success: true,
           message: 'Update panel updated successfully.',
-          panel: formatPanel(updatedRow)
+          panel: formatted
         }, 200);
       } catch (err) {
         console.error('[Admin Update UpdatePanel Error]:', err);
