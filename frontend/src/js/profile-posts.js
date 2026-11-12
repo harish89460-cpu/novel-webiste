@@ -270,6 +270,7 @@ window.handleEditProfilePost = (postId) => {
     editBox.style.display = 'block';
     const input = document.getElementById(`profile-post-edit-input-${postId}`);
     input?.focus();
+    editBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 };
 

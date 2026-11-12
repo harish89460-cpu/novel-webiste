@@ -1537,3 +1537,77 @@ button.btn-loading *,
 .auth-btn-gold.btn-loading * {
   visibility: hidden !important;
 }
+
+/* =============================================================================
+   UNIVERSAL FIXED MODAL & DIALOG POSITIONING (Edit Thread, Article, Chapter)
+   Guarantees all edit forms open in fixed viewport center, never near footer
+   ============================================================================= */
+.modal-backdrop,
+.modal-overlay,
+#edit-thread-modal,
+.rp-edit-thread-modal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  inset: 0 !important;
+  background: rgba(11, 31, 51, 0.72) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  z-index: 999999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+}
+
+.modal-dialog,
+.edit-thread-dialog,
+.modal-card.edit-thread-modal-card {
+  position: relative !important;
+  margin: auto !important;
+  max-width: 760px !important;
+  width: 100% !important;
+  max-height: calc(92vh - 24px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #FFFFFF !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 60px rgba(11, 31, 51, 0.35) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes modalPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop,
+  .modal-overlay,
+  #edit-thread-modal,
+  .rp-edit-thread-modal {
+    padding: 8px !important;
+  }
+  .modal-dialog,
+  .edit-thread-dialog,
+  .modal-card.edit-thread-modal-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 96vh !important;
+    border-radius: 10px !important;
+  }
+}

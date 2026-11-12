@@ -213,6 +213,18 @@ const server = http.createServer(async (req, res) => {
   res.end('Not Found');
 });
 
+// Resilient socket and error guards
+server.on('error', (err) => {
+  console.error('[HTTP Server Error]:', err);
+});
+
+server.on('clientError', (err, socket) => {
+  if (err.code === 'ECONNRESET' || !socket.writable) return;
+  try {
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  } catch {}
+});
+
 // Ensure local MySQL daemon is running if configured for localhost
 async function ensureLocalMysqlRunning() {
   const host = process.env.DB_HOST || 'localhost';

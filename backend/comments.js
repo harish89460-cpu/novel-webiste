@@ -324,7 +324,7 @@ export async function addComment({ novelId, chapterNum = 0, userId, content, par
     cleanNovelId = decodeURIComponent(cleanNovelId);
   } catch {}
 
-  const targetNovelId = cleanNovelId;
+  let targetNovelId = cleanNovelId;
 
   // Determine chapter number: novel-level comments normalized to '0'
   const chRaw = chapterNum !== undefined ? String(chapterNum).trim() : '0';

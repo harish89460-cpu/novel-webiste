@@ -2517,6 +2517,8 @@ window.openCommentReply = function(commentId, authorName) {
       editor.focus();
       saveEditorRange(replyEditorId);
     }
+    // Ensure the inline reply box scrolls into view directly under the comment
+    replyBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 };
 
@@ -2722,7 +2724,14 @@ window.handleCommentEdit = function(commentId) {
     if (metaBar) metaBar.style.display = 'none';
     editBox.style.display = 'flex';
     const textarea = document.getElementById(`ig-edit-textarea-${commentId}`);
-    if (textarea) textarea.focus();
+    if (textarea) {
+      textarea.focus();
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.max(68, textarea.scrollHeight) + 'px';
+    }
+    // Scroll directly to the comment row and inline editor, never to page footer
+    const targetRow = document.getElementById(`ig-comment-${commentId}`) || editBox;
+    targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 };
 

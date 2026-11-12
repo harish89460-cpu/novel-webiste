@@ -5619,22 +5619,23 @@ window.openEditThreadModal = async function(threadId) {
 
     const modalId = 'edit-thread-modal';
     let modal = document.getElementById(modalId);
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = modalId;
-      modal.className = 'modal-backdrop active';
-      document.body.appendChild(modal);
-    }
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'modal-overlay open rp-edit-thread-modal';
+    modal.style.cssText = 'position:fixed; inset:0; z-index:999999; display:flex; align-items:center; justify-content:center; background:rgba(11,31,51,0.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); padding:16px; overflow-y:auto; box-sizing:border-box;';
+    document.body.appendChild(modal);
 
     modal.innerHTML = `
-      <div class="modal-dialog" style="max-width:760px; width:95%; background:#FFFFFF; border-radius:12px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.18);">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;">
+      <div class="modal-card edit-thread-modal-card" style="max-width:760px; width:100%; max-height:calc(92vh - 24px); display:flex; flex-direction:column; background:#FFFFFF; border-radius:14px; overflow:hidden; box-shadow:0 24px 60px rgba(11,31,51,0.35); position:relative; margin:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #E2E8F0; background:#F8FAFC; flex-shrink:0;">
           <h3 style="margin:0; font-family:var(--font-serif); font-size:1.25rem; color:#0B1F33; display:flex; align-items:center; gap:8px;">
             <span>✏️</span> Edit Thread
           </h3>
-          <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748B; line-height:1;">&times;</button>
+          <button type="button" class="btn-close-edit-thread-modal" style="background:none; border:none; font-size:24px; cursor:pointer; color:#64748B; line-height:1; padding:4px 8px;" title="Close">&times;</button>
         </div>
-        <div style="padding:20px;">
+        <div style="padding:20px; overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch;">
           <div id="modal-edit-error" style="display:none; background:#FEF2F2; color:#991B1B; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:14px; font-weight:600; border:1px solid #FCA5A5;"></div>
           
           <div style="margin-bottom:16px;">
@@ -5670,13 +5671,38 @@ window.openEditThreadModal = async function(threadId) {
               Editing thread ID: <strong>${realId}</strong>
             </div>
             <div style="display:flex; gap:10px;">
-              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+              <button type="button" class="btn btn-outline btn-sm btn-close-edit-thread-modal">Cancel</button>
               <button type="button" class="btn btn-gold btn-sm" id="modal-edit-save-btn" style="font-weight:700; padding:8px 22px;">Save Changes</button>
             </div>
           </div>
         </div>
       </div>
     `;
+
+    // Lock body scroll and focus title
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => {
+      document.getElementById('modal-edit-title')?.focus();
+    }, 60);
+
+    const closeEditModal = () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleEscapeKey);
+      modal.remove();
+    };
+
+    const handleEscapeKey = (e) => {
+      if (e.key === 'Escape') closeEditModal();
+    };
+    document.addEventListener('keydown', handleEscapeKey);
+
+    modal.querySelectorAll('.btn-close-edit-thread-modal').forEach(b => {
+      b.addEventListener('click', closeEditModal);
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeEditModal();
+    });
 
     const editContent = document.getElementById('modal-edit-content');
     if (editContent && typeof window.setupSmartEditor === 'function') {
@@ -5779,7 +5805,7 @@ window.openEditThreadModal = async function(threadId) {
         if (!updateRes.ok || !updateData.success) throw new Error(updateData.error || 'Failed to update thread.');
 
         showToast('Thread updated successfully! ✨');
-        modal.remove();
+        closeEditModal();
 
         // Refresh view
         if (window.location.hash.startsWith('#thread') || window.location.hash.startsWith('#content')) {

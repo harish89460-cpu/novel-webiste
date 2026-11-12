@@ -865,22 +865,27 @@ export async function apiMiddleware(req, res, next) {
       chapterNum = chapterNum !== undefined ? chapterNum : parts[4];
     }
 
-    const result = await addComment({
-      novelId,
-      chapterNum: chapterNum !== undefined ? String(chapterNum).trim() : '0',
-      userId: currentUser.id,
-      content: body.content,
-      parentId
-    });
+    try {
+      const result = await addComment({
+        novelId,
+        chapterNum: chapterNum !== undefined ? String(chapterNum).trim() : '0',
+        userId: currentUser.id,
+        content: body.content,
+        parentId
+      });
 
-    if (!result.success) {
-      return sendJson(res, result, 400);
+      if (!result.success) {
+        return sendJson(res, result, 400);
+      }
+      return sendJson(res, {
+        success: true,
+        commentId: result.comment?.id,
+        comment: result.comment
+      }, 201);
+    } catch (commentErr) {
+      console.error('[AddComment API Error]:', commentErr);
+      return sendJson(res, { success: false, error: commentErr.message || 'Failed to post comment.' }, 500);
     }
-    return sendJson(res, {
-      success: true,
-      commentId: result.comment?.id,
-      comment: result.comment
-    }, 201);
   }
 
   // 13.5. Comments: Like/Unlike Comment (Instagram-Style Like)

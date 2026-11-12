@@ -43,6 +43,7 @@ window.showSavedContentLinkModal = ({ title, type, contentLink }) => {
       </div>
     </div>
   `;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
 };
 
@@ -3216,6 +3217,7 @@ window.openCreateNovelModal = () => {
 };
 
 window.closeNovelModal = () => {
+  document.body.style.overflow = '';
   const modal = document.getElementById('novel-form-modal');
   if (modal) modal.remove();
 };
@@ -3227,8 +3229,17 @@ window.openEditNovelModal = (novelId) => {
   const nov = adminState.novels.find(n => n.id === novelId);
   if (!nov) return;
 
-  const mount = document.getElementById('novel-modal-mount');
-  if (!mount) return;
+  let mount = document.getElementById('novel-modal-mount');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.id = 'novel-modal-mount';
+    document.body.appendChild(mount);
+  }
+
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    document.getElementById('edit-novel-title')?.focus();
+  }, 60);
 
   mount.innerHTML = `
     <div class="modal-overlay open" id="novel-form-modal" onclick="if(event.target === this) closeNovelModal();">
@@ -3889,10 +3900,19 @@ window.openAudioNovelModal = (audioNovelId = null) => {
   const an = audioNovelId ? adminState.audioNovels.find(a => String(a.id) === String(audioNovelId)) : null;
   const isEdit = Boolean(an);
 
-  const mount = document.getElementById('audio-modal-mount');
-  if (!mount) return;
+  let mount = document.getElementById('audio-modal-mount');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.id = 'audio-modal-mount';
+    document.body.appendChild(mount);
+  }
 
   const currentSourceType = an?.sourceType || 'youtube';
+
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    document.getElementById('an-title')?.focus();
+  }, 60);
 
   mount.innerHTML = `
     <div class="modal-overlay open" id="audio-form-modal" onclick="if(event.target === this) closeAudioNovelModal();">
@@ -4237,6 +4257,7 @@ window.openAudioNovelModal = (audioNovelId = null) => {
 };
 
 window.closeAudioNovelModal = () => {
+  document.body.style.overflow = '';
   const modal = document.getElementById('audio-form-modal');
   if (modal) modal.remove();
 };
@@ -8135,6 +8156,7 @@ window.clearWriterFilters = () => {
    ======================================================== */
 
 window.closeWriterModal = () => {
+  document.body.style.overflow = '';
   const mount = document.getElementById('writer-modal-mount');
   if (mount) mount.innerHTML = '';
 };
@@ -8334,14 +8356,23 @@ window.submitCreateWriterForm = async () => {
 
 // 2. EDIT WRITER MODAL
 window.openEditWriterModal = async (writerId) => {
-  const mount = document.getElementById('writer-modal-mount');
-  if (!mount) return;
+  let mount = document.getElementById('writer-modal-mount');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.id = 'writer-modal-mount';
+    document.body.appendChild(mount);
+  }
 
   const writer = adminState.writers.find(w => w.id === writerId);
   if (!writer) {
     showToast('Writer not found');
     return;
   }
+
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    document.getElementById('ew-fullname')?.focus();
+  }, 60);
 
   mount.innerHTML = `
     <div class="modal-overlay open" id="edit-writer-modal" onclick="if(event.target === this) closeWriterModal();">
@@ -9707,6 +9738,7 @@ window.handleResetMembersFilters = () => {
    MODAL CONTROLS: CLOSE HELPER
    ======================================================== */
 window.closeMemberModal = () => {
+  document.body.style.overflow = '';
   const modals = document.querySelectorAll('.member-mgmt-modal-wrapper');
   modals.forEach(m => m.remove());
 };
@@ -9906,6 +9938,7 @@ window.openEditMemberModal = async (memberId) => {
       </div>
     </div>
   `;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
 
   try {
@@ -10465,6 +10498,7 @@ window.openManagePermissionsModal = async (memberId) => {
       </div>
     </div>
   `;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
 
   try {
@@ -10817,6 +10851,7 @@ window.openMemberDetailsModal = async (memberId) => {
       </div>
     </div>
   `;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
 
   try {
