@@ -284,12 +284,13 @@ export function getApiBaseUrl() {
   }
 
   // 1. Same-origin or local environment check:
-  // When running on localhost, private LAN, or directly through the Cloudflare tunnel itself,
-  // ALWAYS use relative path '' so requests go to the active server/proxy seamlessly.
+  // When running on localhost, private LAN, Vercel (which uses server-side vercel.json rewrites),
+  // or directly through the Cloudflare tunnel itself, ALWAYS use relative path '' so requests go to the active server/proxy seamlessly.
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (
       host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '' ||
+      host.endsWith('.vercel.app') ||
       host.endsWith('.trycloudflare.com') ||
       /^192\.168\.\d+\.\d+$/.test(host) ||
       /^10\.\d+\.\d+\.\d+$/.test(host) ||
