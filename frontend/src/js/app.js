@@ -132,6 +132,14 @@ export function initApp() {
   window.addEventListener('popstate', renderAppView);
   window.renderAppView = renderAppView;
 
+  // Live sidebar refresh when admin creates, updates, toggles, or reorders update panels
+  window.addEventListener('rp:update-panels-updated', () => {
+    const curHash = window.location.hash || '';
+    if (curHash === '' || curHash === '#' || curHash.startsWith('#forum') || curHash.startsWith('#forms')) {
+      renderAppView();
+    }
+  });
+
   renderAppView();
   updateHeaderUserArea();
   updateUnreadMessageBadge();
@@ -1281,7 +1289,7 @@ async function renderForumView(container, hash = '') {
   const token = localStorage.getItem('rp_auth_token');
   const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-  const updatePanelsPromise = fetch(`/api/update-panels?category=${encodeURIComponent(currentCategoryId || '')}&sub=${encodeURIComponent(currentSubId || '')}`, { headers })
+  const updatePanelsPromise = fetch(`/api/update-panels?category=${encodeURIComponent(currentCategoryId || '')}&sub=${encodeURIComponent(currentSubId || '')}&_t=${Date.now()}`, { headers })
     .then(r => r.json())
     .catch(() => ({ panels: [], panelOrder: ['system_latest_updates', 'system_trending', 'system_profile_posts'] }));
 
@@ -2185,6 +2193,31 @@ function renderSidebarPostItems(posts, { isTrending = false } = {}) {
 /**
  * Render unified dynamic sidebar with persistent Admin-configured panel order
  */
+function formatPanelAnnouncementContent(raw) {
+  if (!raw) return '';
+  const escaped = escapeHtml(raw);
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#C89B3C; text-decoration:underline; font-weight:600;">$1</a>');
+}
+
+function renderSingleCustomPanelHtml(panel) {
+  if (!panel || !panel.id) return '';
+  return `
+    <!-- Dynamic Update Panel: ${escapeHtml(panel.title)} -->
+    <section class="forum-panel dynamic-update-panel" aria-labelledby="sidebar-update-panel-${panel.id}-heading" data-panel-key="custom_${panel.id}">
+      <div class="forum-panel-header">
+        <h3 id="sidebar-update-panel-${panel.id}-heading" class="forum-panel-title">
+          <span>${escapeHtml(panel.icon || '📢')}</span>
+          <span>${escapeHtml(panel.title)}</span>
+        </h3>
+        <span class="forum-panel-badge" style="background:${escapeHtml(panel.badgeBg || 'rgba(217, 119, 6, 0.15)')}; color:${escapeHtml(panel.badgeColor || '#B45309')};">${escapeHtml(panel.badge || 'UPDATE')}</span>
+      </div>
+      <div class="forum-panel-list dynamic-update-content" style="padding:14px 16px; font-size:13.5px; line-height:1.65; color:#334155; white-space:pre-wrap; word-break:break-word;">
+        ${formatPanelAnnouncementContent(panel.content)}
+      </div>
+    </section>
+  `;
+}
+
 function renderDynamicForumSidebar(sidebarData, updatePanelsData) {
   const defaultOrder = ['system_latest_updates', 'system_trending', 'system_profile_posts'];
   const panelOrder = Array.isArray(updatePanelsData?.panelOrder) && updatePanelsData.panelOrder.length > 0
@@ -2201,9 +2234,11 @@ function renderDynamicForumSidebar(sidebarData, updatePanelsData) {
   });
 
   const renderedPanels = [];
+  const renderedKeys = new Set();
 
   for (const key of panelOrder) {
     if (key === 'system_latest_updates') {
+      renderedKeys.add(key);
       renderedPanels.push(`
         <!-- Latest Posts Panel -->
         <section class="forum-panel forum-sidebar-panel" aria-labelledby="sidebar-latest-posts-heading" data-panel-key="system_latest_updates">
@@ -2220,6 +2255,7 @@ function renderDynamicForumSidebar(sidebarData, updatePanelsData) {
         </section>
       `);
     } else if (key === 'system_trending') {
+      renderedKeys.add(key);
       renderedPanels.push(`
         <!-- Trending Posts Panel -->
         <section class="forum-panel forum-sidebar-panel" aria-labelledby="sidebar-trending-posts-heading" data-panel-key="system_trending">
@@ -2236,24 +2272,21 @@ function renderDynamicForumSidebar(sidebarData, updatePanelsData) {
         </section>
       `);
     } else if (key === 'system_profile_posts') {
+      renderedKeys.add(key);
       renderedPanels.push(renderLatestProfilePostsPanelHtml());
     } else if (customMap.has(key)) {
+      renderedKeys.add(key);
       const panel = customMap.get(key);
-      renderedPanels.push(`
-        <!-- Dynamic Update Panel: ${escapeHtml(panel.title)} -->
-        <section class="forum-panel dynamic-update-panel" aria-labelledby="sidebar-update-panel-${panel.id}-heading" data-panel-key="custom_${panel.id}">
-          <div class="forum-panel-header">
-            <h3 id="sidebar-update-panel-${panel.id}-heading" class="forum-panel-title">
-              <span>${escapeHtml(panel.icon || '📢')}</span>
-              <span>${escapeHtml(panel.title)}</span>
-            </h3>
-            <span class="forum-panel-badge" style="background:${escapeHtml(panel.badgeBg || 'rgba(217, 119, 6, 0.15)')}; color:${escapeHtml(panel.badgeColor || '#B45309')};">${escapeHtml(panel.badge || 'UPDATE')}</span>
-          </div>
-          <div class="forum-panel-list dynamic-update-content" style="padding:14px 16px; font-size:13.5px; line-height:1.65; color:#334155; white-space:pre-wrap; word-break:break-word;">
-            ${escapeHtml(panel.content)}
-          </div>
-        </section>
-      `);
+      renderedPanels.push(renderSingleCustomPanelHtml(panel));
+    }
+  }
+
+  // Ensure any custom panel returned by the API that was not yet placed in panelOrder is rendered
+  for (const panel of customPanels) {
+    const key = `custom_${panel.id}`;
+    if (!renderedKeys.has(key) && !renderedKeys.has(panel.panelKey)) {
+      renderedKeys.add(key);
+      renderedPanels.push(renderSingleCustomPanelHtml(panel));
     }
   }
 

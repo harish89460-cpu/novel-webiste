@@ -132,38 +132,79 @@ export async function handleDynamicUpdatePanelsEndpoints(
 
       const allActive = rows.map(formatPanel);
 
-      // Apply category and novel visibility rules
+      // If viewing a subcategory and categoryId wasn't passed, resolve parent category from DB
+      let resolvedCategoryId = categoryId;
+      if (!resolvedCategoryId && subCategoryId) {
+        try {
+          const subRow = await queryOne('SELECT main_category_id FROM content_subcategories WHERE id = ? LIMIT 1;', [subCategoryId]);
+          if (subRow && subRow.main_category_id) {
+            resolvedCategoryId = subRow.main_category_id;
+          }
+        } catch (e) {
+          console.warn('[UpdatePanels] Error resolving subcategory parent:', e.message);
+        }
+      }
+
+      // Apply category, novel, and forum overview visibility rules
       const visiblePanels = allActive.filter(p => {
-        // If viewing main Forms overview page (#forms):
-        if (isOverview) {
-          // Visible if marked global or has no restrictive category filter
-          return p.isGlobal || p.categories.length === 0;
-        }
-
-        // If viewing a specific category:
-        if (categoryId && p.categories.includes(categoryId)) {
-          return true;
-        }
-
-        // If viewing a specific subcategory / novel:
-        if (subCategoryId && p.novels.includes(subCategoryId)) {
-          return true;
-        }
-
-        // Also check if subcategory's parent category matches
-        if (categoryId && p.categories.includes(categoryId)) {
-          return true;
-        }
-
-        // If panel is explicitly configured to show globally across all categories
+        // 1. If panel is explicitly configured to show globally across all pages
         if (p.isGlobal) {
           return true;
+        }
+
+        // 2. If panel has no restrictive category filter or novel filter, it shows everywhere
+        if ((!p.categories || p.categories.length === 0) && (!p.novels || p.novels.length === 0)) {
+          return true;
+        }
+
+        // 3. Main Forum overview page (#forum / #forms):
+        if (isOverview) {
+          // Visible if explicitly marked for forum_overview / forum
+          if (p.categories && (p.categories.includes('forum_overview') || p.categories.includes('forum') || p.categories.includes('overview') || p.categories.includes('all'))) {
+            return true;
+          }
+          // Also, update panels targeted to any of the forum categories are showcased in the Forum sidebar
+          if (p.categories && p.categories.length > 0) {
+            return true;
+          }
+          return false;
+        }
+
+        // 4. Specific category view (e.g. #forum?category=audio-novels)
+        if (resolvedCategoryId) {
+          // Direct match
+          if (p.categories && p.categories.includes(resolvedCategoryId)) {
+            return true;
+          }
+          // Normalized match (handling rudhra_prarthana_tamil_novels vs rudhraprarthana_tamil_novels)
+          const normCat = resolvedCategoryId.replace(/_/g, '').toLowerCase();
+          if (p.categories && p.categories.some(c => String(c).replace(/_/g, '').toLowerCase() === normCat)) {
+            return true;
+          }
+        }
+
+        // 5. Specific subcategory / novel view (e.g. #forum?sub=konjam_ullam_sinthidu)
+        if (subCategoryId) {
+          if (p.novels && p.novels.includes(subCategoryId)) {
+            return true;
+          }
+          if (resolvedCategoryId && p.categories && p.categories.includes(resolvedCategoryId)) {
+            return true;
+          }
+          const normCat = resolvedCategoryId ? resolvedCategoryId.replace(/_/g, '').toLowerCase() : '';
+          if (normCat && p.categories && p.categories.some(c => String(c).replace(/_/g, '').toLowerCase() === normCat)) {
+            return true;
+          }
         }
 
         return false;
       });
 
       const panelOrder = await getSidebarPanelOrder();
+
+      if (res.setHeader) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
 
       return sendJson(res, {
         success: true,

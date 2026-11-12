@@ -396,6 +396,10 @@ function getCategoryNamesList(categoryIds, allCategories) {
   if (!Array.isArray(categoryIds) || categoryIds.length === 0) return 'All Categories';
   const names = [];
   for (const id of categoryIds) {
+    if (id === 'forum_overview' || id === 'forum') {
+      names.push('Main Forum Overview');
+      continue;
+    }
     const found = allCategories.find(c => String(c.id) === String(id));
     if (found) names.push(found.title);
     else names.push(id);
@@ -454,6 +458,7 @@ function attachUpdatePanelsEventHandlers(canvas) {
         const data = await res.json();
         if (res.ok && data.success) {
           showToast(`Panel status changed to ${newStatus}.`);
+          window.dispatchEvent(new CustomEvent('rp:update-panels-updated'));
           await renderUpdatePanelsManagementTab(canvas);
         } else {
           showToast(data.error || 'Failed to update status');
@@ -482,6 +487,7 @@ function attachUpdatePanelsEventHandlers(canvas) {
         const data = await res.json();
         if (res.ok && data.success) {
           showToast(`Update panel deleted successfully.`);
+          window.dispatchEvent(new CustomEvent('rp:update-panels-updated'));
           await renderUpdatePanelsManagementTab(canvas);
         } else {
           showToast(data.error || 'Failed to delete panel');
@@ -592,6 +598,7 @@ async function persistPanelOrder(newOrder, canvas) {
         statusBadge.style.color = '#15803D';
       }
       showToast('Sidebar panel order updated successfully!');
+      window.dispatchEvent(new CustomEvent('rp:update-panels-updated'));
       // Re-render to update the # numbers and disabled up/down arrows
       setTimeout(() => renderUpdatePanelsView(canvas), 200);
     } else {
@@ -769,6 +776,15 @@ export function openUpdatePanelModal(panelId = null) {
             </div>
             
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:8px;">
+              <label style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:#FAF5EC; border:1px solid #E8DCCB; border-radius:6px; font-size:12.5px; color:#0B1F33; cursor:pointer; font-weight:700;">
+                <input type="checkbox" 
+                       class="up-category-cb" 
+                       value="forum_overview" 
+                       ${currentCategories.includes('forum_overview') || currentCategories.includes('forum') ? 'checked' : ''}
+                       style="width:15px; height:15px; cursor:pointer;">
+                <span>🏛️ Main Forum Overview Page</span>
+              </label>
+
               ${categories.map(cat => {
                 const isChecked = currentCategories.includes(cat.id);
                 return `
@@ -957,6 +973,7 @@ export function openUpdatePanelModal(panelId = null) {
       const data = await res.json();
       if (res.ok && data.success) {
         showToast(isEdit ? 'Update panel updated successfully!' : 'Update panel created successfully!');
+        window.dispatchEvent(new CustomEvent('rp:update-panels-updated'));
         closeModal();
         const canvas = document.getElementById('admin-main-canvas');
         if (canvas) {
