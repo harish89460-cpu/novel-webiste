@@ -1065,9 +1065,39 @@ export async function getLikesFromDb({ targetType, targetId, userId = null }) {
     userLiked = Boolean(userRow);
   }
 
+  const count = Number(countRow?.count || 0);
+
+  let reactors = [];
+  if (count > 0) {
+    const reactorRows = await query(`
+      SELECT l.user_id, l.created_at,
+             u.username,
+             COALESCE(p.display_name, u.username) AS name,
+             p.avatar
+      FROM likes l
+      JOIN users u ON l.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE l.target_type = ? AND l.target_id = ?
+      ORDER BY ${userId ? `(l.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}l.created_at DESC;
+    `, [targetType, targetId]);
+
+    reactors = reactorRows.map(r => ({
+      userId: r.user_id,
+      isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
+      username: r.username,
+      name: r.name || r.username,
+      avatar: r.avatar || '/profile.png',
+      emoji: '👍',
+      createdAt: r.created_at
+    }));
+  }
+
   return {
     success: true,
-    likesCount: Number(countRow?.count || 0),
+    likesCount: count,
+    total: count,
+    activeEmojis: count > 0 ? ['👍'] : [],
+    reactors,
     userLiked
   };
 }

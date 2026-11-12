@@ -519,6 +519,14 @@ export function initReader() {
         el.classList.remove('active');
       }
     });
+
+    // Synchronize compact Reaction Summary Panel below Like button
+    const container = document.getElementById('reader-like-container');
+    const targetType = data.targetType || (container ? container.getAttribute('data-target-type') : 'content') || 'content';
+    const targetId = data.targetId || (container ? container.getAttribute('data-target-id') : null);
+    if (targetId && typeof window.updateReactionSummaryPanel === 'function') {
+      window.updateReactionSummaryPanel(targetType, targetId, data);
+    }
   };
 }
 

@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS reactions (
   target_type VARCHAR(50) NOT NULL,
   target_id VARCHAR(100) NOT NULL,
   user_id INT NOT NULL,
-  emoji VARCHAR(20) NOT NULL,
+  emoji VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_reaction (target_type, target_id, user_id),
   CONSTRAINT fk_reactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

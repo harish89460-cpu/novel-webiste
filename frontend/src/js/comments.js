@@ -1042,6 +1042,15 @@ export async function renderReactionsWidget(containerId, targetType, targetId) {
           </div>
         ` : ''}
       </div>
+
+      <!-- Compact Reaction Summary Panel -->
+      ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({
+        targetType,
+        targetId,
+        total: totalCount,
+        activeEmojis: topEmojis,
+        reactors: reactionData.reactors || []
+      }) : ''}
     </div>
   `;
 }
@@ -1576,6 +1585,15 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId) {
               </button>
             ` : ''}
           </div>
+
+          <!-- Compact Like / Reaction Summary Panel for Comment -->
+          ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({
+            targetType: 'comment',
+            targetId: c.id,
+            total: likesCount,
+            activeEmojis: ['❤️'],
+            reactors: c.reactors || []
+          }) : ''}
         </div>
 
         <!-- Right-side Heart Like Button -->
@@ -2704,6 +2722,15 @@ window.handleCommentLike = async function(commentId, novelId, chapterNum, contai
       const serverCount = Number(data.likesCount || 0);
       countEl.textContent = `${serverCount} ${serverCount === 1 ? 'like' : 'likes'}`;
       countEl.style.display = serverCount > 0 ? '' : 'none';
+    }
+
+    // Immediately update compact Reaction Summary Panel for this comment
+    if (typeof window.updateReactionSummaryPanel === 'function') {
+      window.updateReactionSummaryPanel('comment', commentId, {
+        total: Number(data.likesCount || 0),
+        activeEmojis: Number(data.likesCount || 0) > 0 ? ['❤️'] : [],
+        reactors: data.reactors || []
+      });
     }
   } catch (err) {
     console.error('Like toggle error:', err);

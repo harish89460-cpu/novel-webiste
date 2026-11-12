@@ -16,6 +16,7 @@ if (typeof window !== 'undefined') {
 
 // Main Application Engine & Client Router
 import './timezone.js';
+import './reaction-summary.js';
 import {
   renderRichArticleContent,
   hydrateLinkPreviewCards,
@@ -1204,6 +1205,16 @@ async function renderReaderView(container, hash) {
               <span class="reader-main-share-label">Share</span>
             </button>
           </div>
+
+          <!-- Like / Reaction Summary Panel (Directly Below Like & Share) -->
+          ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({ targetType: 'content', targetId: novel.id }) : `
+            <div class="rp-reaction-summary-panel" id="rp-rx-panel-content-${novel.id}" data-target-type="content" data-target-id="${novel.id}" style="display:none;" onclick="window.openReactionDetailModal?.('content', '${novel.id}')">
+              <div class="rp-rx-summary-inner">
+                <span class="rp-rx-emojis-cluster" id="rp-rx-panel-content-${novel.id}-emojis"><span class="rp-rx-cluster-emoji">👍</span></span>
+                <span class="rp-rx-summary-text" id="rp-rx-panel-content-${novel.id}-text"></span>
+              </div>
+            </div>
+          `}
         </div>
         <div id="chapter-comments-widget"></div>
       </div>
@@ -6195,6 +6206,16 @@ async function renderContentReadingView(container, hash) {
                 <span class="reader-main-share-label">Share</span>
               </button>
             </div>
+
+            <!-- Like / Reaction Summary Panel (Directly Below Like & Share) -->
+            ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({ targetType: 'content', targetId: art.id }) : `
+              <div class="rp-reaction-summary-panel" id="rp-rx-panel-content-${art.id}" data-target-type="content" data-target-id="${art.id}" style="display:none;" onclick="window.openReactionDetailModal?.('content', '${art.id}')">
+                <div class="rp-rx-summary-inner">
+                  <span class="rp-rx-emojis-cluster" id="rp-rx-panel-content-${art.id}-emojis"><span class="rp-rx-cluster-emoji">👍</span></span>
+                  <span class="rp-rx-summary-text" id="rp-rx-panel-content-${art.id}-text"></span>
+                </div>
+              </div>
+            `}
           </div>
 
           <!-- Comments & Reviews Section -->

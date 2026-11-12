@@ -192,6 +192,15 @@ function renderSingleProfilePostHtml(post) {
           ` : ''}
         </div>
 
+        <!-- Like / Reaction Summary Panel for Profile Post -->
+        ${typeof window.renderReactionSummaryPanelHtml === 'function' ? window.renderReactionSummaryPanelHtml({
+          targetType: 'profile_post',
+          targetId: post.id,
+          total: Number(post.likesCount || 0),
+          activeEmojis: ['❤️'],
+          reactors: post.reactors || []
+        }) : ''}
+
         <!-- Expandable Comments Drawer -->
         <div class="profile-post-comments-wrap" id="pp-comments-${post.id}" style="display:none;">
           <div class="pp-comments-list" id="pp-comments-list-${post.id}">
@@ -364,6 +373,15 @@ window.handleLikeProfilePost = async (postId) => {
       if (btn) {
         btn.classList.toggle('liked', data.isLiked);
         btn.querySelector('span:first-child').textContent = data.isLiked ? '❤️' : '🤍';
+      }
+
+      // Update compact Reaction Summary Panel for profile post
+      if (typeof window.updateReactionSummaryPanel === 'function') {
+        window.updateReactionSummaryPanel('profile_post', postId, {
+          total: Number(data.likesCount || 0),
+          activeEmojis: Number(data.likesCount || 0) > 0 ? ['❤️'] : [],
+          reactors: data.reactors || []
+        });
       }
     }
   } catch (err) {

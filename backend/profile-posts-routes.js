@@ -84,18 +84,55 @@ export async function handleProfilePostsEndpoints(req, res, pathname, method, pa
       LIMIT ? OFFSET ?;
     `, [...params, limit, offset]);
 
-    // Check user likes
+    // Check user likes and batch-load reactors
     let likedPostIds = new Set();
-    if (currentUser && postRows.length > 0) {
-      const postIds = postRows.map(p => p.id);
-      const likesRows = await query(`
-        SELECT target_id 
-        FROM likes 
-        WHERE target_type = 'profile_post' 
-          AND user_id = ? 
-          AND target_id IN (${postIds.map(() => '?').join(',')});
-      `, [currentUser.id, ...postIds.map(String)]);
-      likedPostIds = new Set(likesRows.map(l => Number(l.target_id)));
+    let reactorsByPost = {};
+    if (postRows.length > 0) {
+      const postIds = postRows.map(p => String(p.id));
+      if (currentUser) {
+        const likesRows = await query(`
+          SELECT target_id 
+          FROM likes 
+          WHERE target_type = 'profile_post' 
+            AND user_id = ? 
+            AND target_id IN (${postIds.map(() => '?').join(',')});
+        `, [currentUser.id, ...postIds]);
+        likedPostIds = new Set(likesRows.map(l => Number(l.target_id)));
+      }
+
+      // Batch load top reactors for posts with likes
+      try {
+        const likedPostIdsList = postRows.filter(p => Number(p.likes_count || 0) > 0).map(p => String(p.id));
+        if (likedPostIdsList.length > 0) {
+          const placeholders = likedPostIdsList.map(() => '?').join(',');
+          const rRows = await query(`
+            SELECT l.target_id, l.user_id, l.created_at,
+                   u.username,
+                   COALESCE(p.display_name, u.username) AS name,
+                   p.avatar
+            FROM likes l
+            JOIN users u ON l.user_id = u.id
+            LEFT JOIN profiles p ON u.id = p.user_id
+            WHERE l.target_type = 'profile_post' AND l.target_id IN (${placeholders})
+            ORDER BY ${currentUser ? `(l.user_id = ${parseInt(currentUser.id, 10)}) DESC, ` : ''}l.created_at DESC;
+          `, likedPostIdsList);
+
+          for (const r of rRows) {
+            if (!reactorsByPost[r.target_id]) reactorsByPost[r.target_id] = [];
+            reactorsByPost[r.target_id].push({
+              userId: r.user_id,
+              isCurrentUser: Boolean(currentUser && Number(r.user_id) === Number(currentUser.id)),
+              username: r.username,
+              name: r.name || r.username,
+              avatar: r.avatar || '/profile.png',
+              emoji: '❤️',
+              createdAt: r.created_at
+            });
+          }
+        }
+      } catch (rErr) {
+        console.warn('[ProfilePosts] Error fetching like reactors:', rErr.message);
+      }
     }
 
     const posts = postRows.map(row => {
@@ -112,6 +149,7 @@ export async function handleProfilePostsEndpoints(req, res, pathname, method, pa
         likesCount: Number(row.likes_count || 0),
         commentsCount: Number(row.comments_count || 0),
         isLiked: likedPostIds.has(row.id),
+        reactors: reactorsByPost[String(row.id)] || [],
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         timeAgo: formatRelativeTime(row.created_at),
@@ -419,7 +457,40 @@ export async function handleProfilePostsEndpoints(req, res, pathname, method, pa
     const likesCount = Number(countRow?.count || 0);
     await query('UPDATE profile_posts SET likes_count = ? WHERE id = ?;', [likesCount, postId]);
 
-    return sendJson(res, { success: true, isLiked, likesCount }, 200);
+    // Load updated reactors
+    let reactors = [];
+    if (likesCount > 0) {
+      const rRows = await query(`
+        SELECT l.user_id, l.created_at,
+               u.username,
+               COALESCE(p.display_name, u.username) AS name,
+               p.avatar
+        FROM likes l
+        JOIN users u ON l.user_id = u.id
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE l.target_type = 'profile_post' AND l.target_id = ?
+        ORDER BY (l.user_id = ?) DESC, l.created_at DESC;
+      `, [String(postId), currentUser.id]);
+
+      reactors = rRows.map(r => ({
+        userId: r.user_id,
+        isCurrentUser: Boolean(Number(r.user_id) === Number(currentUser.id)),
+        username: r.username,
+        name: r.name || r.username,
+        avatar: r.avatar || '/profile.png',
+        emoji: '❤️',
+        createdAt: r.created_at
+      }));
+    }
+
+    return sendJson(res, {
+      success: true,
+      isLiked,
+      likesCount,
+      total: likesCount,
+      activeEmojis: likesCount > 0 ? ['❤️'] : [],
+      reactors
+    }, 200);
   }
 
   // 7. GET /api/profile-posts/:id/comments — Get Comments on a Profile Post

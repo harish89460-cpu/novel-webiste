@@ -283,8 +283,50 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
     isEdited: r.updated_at !== r.created_at,
     likesCount: Number(r.likes_count || 0),
     hasLiked: Boolean(r.user_liked && Number(r.user_liked) > 0),
+    reactors: [],
     replies: []
   }));
+
+  // Batch-populate reactors for comments that have likes
+  const likedCommentIds = allComments.filter(c => c.likesCount > 0).map(c => String(c.id));
+  if (likedCommentIds.length > 0) {
+    try {
+      const placeholders = likedCommentIds.map(() => '?').join(',');
+      const reactorRows = await query(`
+        SELECT l.target_id, l.user_id, l.created_at,
+               u.username,
+               COALESCE(p.display_name, u.username) AS name,
+               p.avatar
+        FROM likes l
+        JOIN users u ON l.user_id = u.id
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE l.target_type = 'comment' AND l.target_id IN (${placeholders})
+        ORDER BY ${userId ? `(l.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}l.created_at DESC;
+      `, likedCommentIds);
+
+      const reactorsByComment = {};
+      for (const r of reactorRows) {
+        if (!reactorsByComment[r.target_id]) reactorsByComment[r.target_id] = [];
+        reactorsByComment[r.target_id].push({
+          userId: r.user_id,
+          isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
+          username: r.username,
+          name: r.name || r.username,
+          avatar: r.avatar || '/profile.png',
+          emoji: '❤️',
+          createdAt: r.created_at
+        });
+      }
+
+      for (const c of allComments) {
+        if (reactorsByComment[String(c.id)]) {
+          c.reactors = reactorsByComment[String(c.id)];
+        }
+      }
+    } catch (likeErr) {
+      console.warn('[GetComments] Error fetching like reactors:', likeErr.message);
+    }
+  }
 
   const total = allComments.length;
   const pageLimit = limit !== null && limit !== undefined && Number(limit) > 0 ? Number(limit) : 7;
@@ -636,16 +678,47 @@ export async function toggleCommentLike({ commentId, userId }) {
     [targetId]
   );
 
+  // Fetch reactors for comment like summary
+  let reactors = [];
+  const count = Number(countRow?.count || 0);
+  if (count > 0) {
+    const reactorRows = await query(`
+      SELECT l.user_id, l.created_at,
+             u.username,
+             COALESCE(p.display_name, u.username) AS name,
+             p.avatar
+      FROM likes l
+      JOIN users u ON l.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE l.target_type = "comment" AND l.target_id = ?
+      ORDER BY ${userId ? `(l.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}l.created_at DESC;
+    `, [targetId]);
+
+    reactors = reactorRows.map(r => ({
+      userId: r.user_id,
+      isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
+      username: r.username,
+      name: r.name || r.username,
+      avatar: r.avatar || '/profile.png',
+      emoji: '❤️',
+      createdAt: r.created_at
+    }));
+  }
+
   return {
     success: true,
     commentId: Number(commentId),
-    likesCount: Number(countRow?.count || 0),
+    likesCount: count,
+    total: count,
+    activeEmojis: count > 0 ? ['❤️'] : [],
+    reactors,
     hasLiked: liked
   };
 }
 
 /**
  * Get reactions summary for a target (chapter, novel, content, etc.)
+ * Includes active distinct emojis, reactor user summary, and full list for modal
  */
 export async function getReactions({ targetType, targetId, userId = null }) {
   const rows = await query(`
@@ -676,13 +749,46 @@ export async function getReactions({ targetType, targetId, userId = null }) {
 
   const total = Object.values(counts).reduce((acc, c) => acc + c, 0);
 
+  // Fetch reactors ordered with current user first, then by most recent reaction
+  let reactors = [];
+  if (total > 0) {
+    const reactorRows = await query(`
+      SELECT r.user_id, r.emoji, r.created_at,
+             u.username,
+             COALESCE(p.display_name, u.username) AS name,
+             p.avatar
+      FROM reactions r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      WHERE r.target_type = ? AND r.target_id = ?
+      ORDER BY ${userId ? `(r.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}r.created_at DESC;
+    `, [targetType, targetId]);
+
+    reactors = reactorRows.map(r => ({
+      userId: r.user_id,
+      isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
+      username: r.username,
+      name: r.name || r.username,
+      avatar: r.avatar || '/profile.png',
+      emoji: r.emoji,
+      createdAt: r.created_at
+    }));
+  }
+
+  // Active top emojis for the summary badge
+  const activeEmojis = Object.keys(counts)
+    .filter(e => counts[e] > 0)
+    .sort((a, b) => counts[b] - counts[a]);
+
   return {
     success: true,
     targetType,
     targetId,
     counts,
+    activeEmojis,
     total,
     userReaction,
+    reactors,
     allowedEmojis: ALLOWED_EMOJIS,
     emojiLabels: EMOJI_LABELS
   };
