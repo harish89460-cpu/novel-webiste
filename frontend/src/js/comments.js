@@ -1583,7 +1583,7 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId) {
             targetType: 'comment',
             targetId: c.id,
             total: likesCount,
-            activeEmojis: ['❤️'],
+            activeEmojis: (c.activeEmojis && c.activeEmojis.length > 0) ? c.activeEmojis : ['❤️'],
             reactors: c.reactors || []
           }) : ''}
         </div>

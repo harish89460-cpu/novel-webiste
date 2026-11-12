@@ -1706,46 +1706,45 @@
 .rp-reaction-summary-panel {
   display: flex;
   align-items: center;
-  margin: 10px 0 8px 0;
-  padding: 6px 12px;
-  background: #F8FAFC;
-  border-left: 3.5px solid #DC2626;
-  border-top: 1px solid #E2E8F0;
-  border-right: 1px solid #E2E8F0;
-  border-bottom: 1px solid #E2E8F0;
-  border-radius: 0 4px 4px 0;
+  margin: 8px 0;
+  padding: 5px 10px;
+  background: #F6F6F6;
+  border-left: 3px solid #DB0B38;
+  border-top: 1px solid #E0E0E0;
+  border-right: 1px solid #E0E0E0;
+  border-bottom: 1px solid #E0E0E0;
+  border-radius: 0;
   box-sizing: border-box;
   width: 100%;
   cursor: pointer;
-  transition: background-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+  transition: background-color 0.15s ease;
   user-select: none;
 }
 
 .rp-reaction-summary-panel:hover {
-  background: #F1F5F9;
-  box-shadow: 0 2px 8px rgba(11, 31, 51, 0.05);
+  background: #EEEEEE;
 }
 
 .rp-reaction-summary-panel:active {
-  transform: translateY(1px);
+  background: #E8E8E8;
 }
 
 .rp-rx-summary-inner {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   font-size: 13.5px;
-  line-height: 1.45;
-  color: #007791;
+  line-height: 1.35;
+  color: #007A87;
   width: 100%;
 }
 
 .rp-rx-emojis-cluster {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  font-size: 16px;
+  gap: 3px;
+  font-size: 15px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -1753,19 +1752,18 @@
 .rp-rx-cluster-emoji {
   display: inline-block;
   line-height: 1;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12));
 }
 
 .rp-rx-summary-text {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
-  color: #007791;
+  color: #007A87;
   letter-spacing: 0.1px;
   word-break: break-word;
 }
 
 .rp-reaction-summary-panel:hover .rp-rx-summary-text {
-  color: #005A6E;
+  color: #005F6A;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -1773,23 +1771,26 @@
 /* Reader Reaction Section placement */
 .reader-reaction-section .rp-reaction-summary-panel {
   max-width: 580px;
-  margin: 16px auto 0;
+  margin: 14px auto 0;
   text-align: left;
 }
 
 /* Comment row & reply placement */
+.rp-ig-comment-bubble .rp-reaction-summary-panel,
 .rp-ig-comment-body .rp-reaction-summary-panel {
-  margin: 6px 0 4px 0;
-  padding: 6px 10px;
+  margin: 6px 0 2px 0;
+  padding: 4px 8px;
   font-size: 12.5px;
 }
 
+.rp-ig-comment-bubble .rp-reaction-summary-panel .rp-rx-summary-text,
 .rp-ig-comment-body .rp-reaction-summary-panel .rp-rx-summary-text {
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
+.rp-ig-comment-bubble .rp-reaction-summary-panel .rp-rx-emojis-cluster,
 .rp-ig-comment-body .rp-reaction-summary-panel .rp-rx-emojis-cluster {
-  font-size: 14.5px;
+  font-size: 14px;
 }
 
 /* Dark mode theme adaptations */
@@ -1829,7 +1830,7 @@
 
 @media (max-width: 640px) {
   .rp-reaction-summary-panel {
-    padding: 7px 10px;
+    padding: 5px 8px;
   }
   .rp-rx-summary-inner {
     font-size: 12.5px;
@@ -1839,7 +1840,7 @@
     font-size: 12px;
   }
   .rp-rx-emojis-cluster {
-    font-size: 15px;
+    font-size: 14px;
   }
 }
 

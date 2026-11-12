@@ -287,12 +287,44 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
     replies: []
   }));
 
-  // Batch-populate reactors for comments that have likes
-  const likedCommentIds = allComments.filter(c => c.likesCount > 0).map(c => String(c.id));
-  if (likedCommentIds.length > 0) {
+  // Batch-populate reactors & emojis for comments that have likes or reactions
+  const commentIds = allComments.map(c => String(c.id));
+  if (commentIds.length > 0) {
     try {
-      const placeholders = likedCommentIds.map(() => '?').join(',');
-      const reactorRows = await query(`
+      const placeholders = commentIds.map(() => '?').join(',');
+      const reactorsByComment = {};
+      const emojisByComment = {};
+
+      // 1. Genuine reactions from reactions table
+      const reactRows = await query(`
+        SELECT r.target_id, r.user_id, r.emoji, r.created_at,
+               u.username,
+               COALESCE(p.display_name, u.username) AS name,
+               p.avatar
+        FROM reactions r
+        JOIN users u ON r.user_id = u.id
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE r.target_type = 'comment' AND r.target_id IN (${placeholders})
+        ORDER BY ${userId ? `(r.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}r.created_at DESC;
+      `, commentIds);
+
+      for (const r of reactRows) {
+        if (!reactorsByComment[r.target_id]) reactorsByComment[r.target_id] = [];
+        if (!emojisByComment[r.target_id]) emojisByComment[r.target_id] = new Set();
+        emojisByComment[r.target_id].add(r.emoji || '👍');
+        reactorsByComment[r.target_id].push({
+          userId: r.user_id,
+          isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
+          username: r.username,
+          name: r.name || r.username,
+          avatar: r.avatar || '/profile.png',
+          emoji: r.emoji || '👍',
+          createdAt: r.created_at
+        });
+      }
+
+      // 2. Likes from likes table
+      const likeRows = await query(`
         SELECT l.target_id, l.user_id, l.created_at,
                u.username,
                COALESCE(p.display_name, u.username) AS name,
@@ -302,29 +334,37 @@ export async function getComments({ novelId, chapterNum = 0, userId = null, limi
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE l.target_type = 'comment' AND l.target_id IN (${placeholders})
         ORDER BY ${userId ? `(l.user_id = ${parseInt(userId, 10)}) DESC, ` : ''}l.created_at DESC;
-      `, likedCommentIds);
+      `, commentIds);
 
-      const reactorsByComment = {};
-      for (const r of reactorRows) {
-        if (!reactorsByComment[r.target_id]) reactorsByComment[r.target_id] = [];
-        reactorsByComment[r.target_id].push({
-          userId: r.user_id,
-          isCurrentUser: Boolean(userId && Number(r.user_id) === Number(userId)),
-          username: r.username,
-          name: r.name || r.username,
-          avatar: r.avatar || '/profile.png',
-          emoji: '❤️',
-          createdAt: r.created_at
-        });
+      for (const lr of likeRows) {
+        if (!reactorsByComment[lr.target_id]) reactorsByComment[lr.target_id] = [];
+        if (!emojisByComment[lr.target_id]) emojisByComment[lr.target_id] = new Set();
+        emojisByComment[lr.target_id].add('❤️');
+        if (!reactorsByComment[lr.target_id].some(ex => Number(ex.userId) === Number(lr.user_id))) {
+          reactorsByComment[lr.target_id].push({
+            userId: lr.user_id,
+            isCurrentUser: Boolean(userId && Number(lr.user_id) === Number(userId)),
+            username: lr.username,
+            name: lr.name || lr.username,
+            avatar: lr.avatar || '/profile.png',
+            emoji: '❤️',
+            createdAt: lr.created_at
+          });
+        }
       }
 
       for (const c of allComments) {
-        if (reactorsByComment[String(c.id)]) {
-          c.reactors = reactorsByComment[String(c.id)];
+        const cId = String(c.id);
+        if (reactorsByComment[cId]) {
+          c.reactors = reactorsByComment[cId];
+          c.activeEmojis = Array.from(emojisByComment[cId] || []);
+          if (!c.likesCount || c.likesCount < c.reactors.length) {
+            c.likesCount = c.reactors.length;
+          }
         }
       }
     } catch (likeErr) {
-      console.warn('[GetComments] Error fetching like reactors:', likeErr.message);
+      console.warn('[GetComments] Error fetching like/reaction reactors:', likeErr.message);
     }
   }
 

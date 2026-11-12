@@ -86,7 +86,15 @@ export function formatReactionSummaryText(reactors = [], total = 0) {
 export function renderReactionSummaryPanelHtml({ targetType, targetId, total = 0, activeEmojis = [], reactors = [], extraClass = '' }) {
   const panelId = `rp-rx-panel-${targetType}-${targetId}`;
   const isHidden = !total || total <= 0;
-  const emojis = (activeEmojis && activeEmojis.length > 0) ? activeEmojis.slice(0, 3) : ['👍'];
+  
+  let emojis = (activeEmojis && activeEmojis.length > 0) ? activeEmojis.slice(0, 3) : [];
+  if (!emojis.length && reactors && reactors.length > 0) {
+    emojis = Array.from(new Set(reactors.map(r => r.emoji).filter(Boolean))).slice(0, 3);
+  }
+  if (!emojis.length) {
+    emojis = ['👍'];
+  }
+  
   const summaryText = formatReactionSummaryText(reactors, total);
 
   return `
@@ -126,6 +134,9 @@ export function updateReactionSummaryPanel(targetType, targetId, reactionData = 
 
   if (!activeEmojis.length && reactionData.counts) {
     activeEmojis = Object.keys(reactionData.counts).filter(e => reactionData.counts[e] > 0);
+  }
+  if (!activeEmojis.length && reactors.length) {
+    activeEmojis = Array.from(new Set(reactors.map(r => r.emoji).filter(Boolean)));
   }
   if (!activeEmojis.length && total > 0) {
     activeEmojis = ['👍'];
