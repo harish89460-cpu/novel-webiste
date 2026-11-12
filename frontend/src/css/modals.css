@@ -1542,8 +1542,8 @@ button.btn-loading *,
    UNIVERSAL FIXED MODAL & DIALOG POSITIONING (Edit Thread, Article, Chapter)
    Guarantees all edit forms open in fixed viewport center, never near footer
    ============================================================================= */
-.modal-backdrop,
-.modal-overlay,
+.modal-backdrop.open,
+.modal-overlay.open,
 #edit-thread-modal,
 .rp-edit-thread-modal {
   position: fixed !important;
@@ -1564,6 +1564,12 @@ button.btn-loading *,
   padding: 16px !important;
   box-sizing: border-box !important;
   overflow-y: auto !important;
+}
+
+.modal-backdrop:not(.open):not(#edit-thread-modal):not(.rp-edit-thread-modal),
+.modal-overlay:not(.open):not(#edit-thread-modal):not(.rp-edit-thread-modal) {
+  display: none !important;
+  pointer-events: none !important;
 }
 
 .modal-dialog,
@@ -1596,8 +1602,8 @@ button.btn-loading *,
 }
 
 @media (max-width: 640px) {
-  .modal-backdrop,
-  .modal-overlay,
+  .modal-backdrop.open,
+  .modal-overlay.open,
   #edit-thread-modal,
   .rp-edit-thread-modal {
     padding: 8px !important;
