@@ -8,7 +8,7 @@
 html {
   font-size: 16px;
   scroll-behavior: smooth;
-  scroll-padding-top: 84px;
+  scroll-padding-top: calc(var(--header-height, 71px) + 14px);
   -webkit-text-size-adjust: 100%;
   width: 100%;
   max-width: 100%;

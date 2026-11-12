@@ -84,7 +84,7 @@
    ============================================================================ */
 .reader-toolbar {
   position: sticky;
-  top: 76px;
+  top: calc(var(--header-height, 71px) + 6px);
   z-index: 900;
   background: #FFFFFF;
   border: 1px solid rgba(200, 155, 60, 0.28);
@@ -852,7 +852,7 @@
 @media (min-width: 641px) and (max-width: 1024px) {
   .reader-toolbar {
     max-width: 92%;
-    top: 70px;
+    top: calc(var(--header-height, 65px) + 6px);
     padding: 8px 14px;
   }
   .reader-toolbar-inner {
