@@ -433,13 +433,15 @@ export async function getContentArticle(idOrSlug, currentUser = null, { incremen
     }
   }
 
+  const isOwner = Boolean(userId && Number(article.author_id) === Number(userId));
+
   // 2. Access checks for non-administrators
-  if (!isAdmin) {
+  if (!isAdmin && !isOwner) {
     // Draft / Unpublished check
     if (!article.is_published || article.status === 'unpublished' || article.status === 'draft') {
       return { 
         success: false, 
-        error: 'This content is currently unpublished or in draft status. Only administrators may view it.', 
+        error: 'This content is currently unpublished or in draft status. Only authors and administrators may view it.', 
         code: 'UNPUBLISHED' 
       };
     }
@@ -1552,8 +1554,9 @@ export async function updateContentArticle({
   sortOrder,
   adminId = 2
 }) {
-  const art = await queryOne(`SELECT * FROM content_articles WHERE id = ?;`, [id]);
+  const art = await queryOne(`SELECT * FROM content_articles WHERE id = ? OR unique_slug = ? LIMIT 1;`, [id, id]);
   if (!art) return { success: false, error: 'Content article not found.' };
+  const numericId = art.id;
 
   const isPublished = status !== undefined ? (status === 'published' ? 1 : 0) : art.is_published;
   const isDisabled = status !== undefined ? (status === 'disabled' ? 1 : 0) : art.is_disabled;
@@ -1581,11 +1584,11 @@ export async function updateContentArticle({
         sort_order = COALESCE(?, sort_order)
     WHERE id = ?;
   `, [
-    mainCategoryId || null,
-    subCategoryId || null,
+    (mainCategoryId !== undefined && mainCategoryId !== null && mainCategoryId !== '') ? Number(mainCategoryId) : null,
+    (subCategoryId !== undefined && subCategoryId !== null && subCategoryId !== '') ? Number(subCategoryId) : null,
     pId,
     title ? title.trim() : null,
-    uniqueSlug ? uniqueSlug.trim() : null,
+    (uniqueSlug !== undefined && uniqueSlug !== null && uniqueSlug.trim() !== '') ? uniqueSlug.trim() : null,
     content !== undefined ? content : null,
     summary !== undefined ? summary : null,
     coverImage !== undefined ? coverImage : null,
@@ -1597,7 +1600,7 @@ export async function updateContentArticle({
     isPublished,
     isDisabled,
     sortOrder !== undefined ? Number(sortOrder) : null,
-    id
+    numericId
   ]);
 
   await recordAdminAudit({

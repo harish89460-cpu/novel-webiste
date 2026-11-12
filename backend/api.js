@@ -469,30 +469,44 @@ export async function apiMiddleware(req, res, next) {
   // 7. User Activity Heartbeat
   if (pathname === '/user/heartbeat' && method === 'POST') {
     if (currentUser) {
-      await recordPresence({ userId: currentUser.id, isMember: true });
+      await recordPresence({ userId: currentUser.id, isMember: true }).catch(() => {});
     }
     return sendJson(res, { success: true }, 200);
   }
 
   // 7a. Real-Time Online Presence Ping / Heartbeat (Members & Guests)
   if ((pathname === '/presence/ping' || pathname === '/presence/heartbeat') && method === 'POST') {
-    const body = await readJsonBody(req).catch(() => ({}));
-    const guestId = body?.guestId || req.headers['x-guest-session-id'] || null;
+    try {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const guestId = body?.guestId || req.headers['x-guest-session-id'] || null;
 
-    if (currentUser) {
-      await recordPresence({ userId: currentUser.id, guestId, isMember: true });
-    } else if (guestId) {
-      await recordGuestVisitor({ visitorId: guestId, userAgent: req.headers['user-agent'] });
-      await recordPresence({ userId: null, guestId, isMember: false });
+      if (currentUser) {
+        await recordPresence({ userId: currentUser.id, guestId, isMember: true });
+      } else if (guestId) {
+        await recordGuestVisitor({ visitorId: guestId, userAgent: req.headers['user-agent'] }).catch(() => {});
+        await recordPresence({ userId: null, guestId, isMember: false });
+      }
+
+      const viewerId = currentUser ? currentUser.id : null;
+      const summary = await getOnlinePresenceSummary(viewerId);
+      return sendJson(res, {
+        success: true,
+        isMember: Boolean(currentUser),
+        ...summary
+      }, 200);
+    } catch (presenceErr) {
+      console.warn('[Presence Ping Warning]:', presenceErr.message);
+      return sendJson(res, {
+        success: true,
+        isMember: Boolean(currentUser),
+        membersOnline: 1,
+        guestsOnline: 0,
+        totalOnline: 1,
+        visibleMembers: [],
+        visibleMembersCount: 0,
+        hiddenMembersCount: 0
+      }, 200);
     }
-
-    const viewerId = currentUser ? currentUser.id : null;
-    const summary = await getOnlinePresenceSummary(viewerId);
-    return sendJson(res, {
-      success: true,
-      isMember: Boolean(currentUser),
-      ...summary
-    }, 200);
   }
 
   // 7b. Real-Time Online Presence Statistics (Public Reader)
@@ -2201,13 +2215,17 @@ export async function apiMiddleware(req, res, next) {
 
   if ((pathname.startsWith('/admin/content/articles/') || pathname.startsWith('/content/threads/')) && !pathname.endsWith('/status') && !pathname.endsWith('/toggle') && (method === 'PUT' || method === 'POST') && !pathname.endsWith('/delete')) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
-    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/content/threads/', ''), 10);
+    const rawIdParam = pathname.replace('/admin/content/articles/', '').replace('/content/threads/', '').trim();
+    let decodedIdParam = rawIdParam;
+    try { decodedIdParam = decodeURIComponent(rawIdParam).trim(); } catch (e) {}
+
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
     const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
     
-    // Check ownership for community thread editing
-    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    // Check ownership for community thread editing (lookup by id or unique_slug)
+    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ? OR unique_slug = ? OR unique_slug = ? LIMIT 1;', [rawIdParam, rawIdParam, decodedIdParam]);
     if (!existing) return sendJson(res, { success: false, error: 'Thread or article not found.' }, 404);
+    const id = existing.id;
 
     const isOwner = Number(existing.author_id) === Number(currentUser.id);
     if (!isAdmin && !isOwner) {
@@ -2225,13 +2243,17 @@ export async function apiMiddleware(req, res, next) {
 
   if ((pathname.startsWith('/admin/content/articles/') || pathname.startsWith('/content/threads/')) && (method === 'DELETE' || pathname.endsWith('/delete'))) {
     if (!currentUser) return sendJson(res, { success: false, error: 'Authentication required' }, 401);
-    const id = parseInt(pathname.replace('/admin/content/articles/', '').replace('/content/threads/', '').replace('/delete', ''), 10);
+    const rawIdParam = pathname.replace('/admin/content/articles/', '').replace('/content/threads/', '').replace('/delete', '').trim();
+    let decodedIdParam = rawIdParam;
+    try { decodedIdParam = decodeURIComponent(rawIdParam).trim(); } catch (e) {}
+
     const isAdmin = currentUser.isAdmin === true || ['admin', 'administrator', 'editor'].includes((currentUser.role || '').toLowerCase());
     const isWriter = currentUser.isWriter === true || (currentUser.role || '').toLowerCase() === 'writer';
 
-    // Check ownership for thread deletion
-    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ?;', [id]);
+    // Check ownership for thread deletion (lookup by id or unique_slug)
+    const existing = await queryOne('SELECT * FROM content_articles WHERE id = ? OR unique_slug = ? OR unique_slug = ? LIMIT 1;', [rawIdParam, rawIdParam, decodedIdParam]);
     if (!existing) return sendJson(res, { success: false, error: 'Thread or article not found.' }, 404);
+    const id = existing.id;
 
     const isOwner = Number(existing.author_id) === Number(currentUser.id);
     if (!isAdmin && !isOwner) {

@@ -1223,7 +1223,12 @@ export async function editMessage(messageId, userId, newRawContent) {
     return { success: false, error: 'Only text messages can be edited.', code: 'INVALID_TYPE' };
   }
 
-  const content = sanitizeMessageText(newRawContent);
+  let content = (newRawContent || '').trim();
+  if (/<[a-z][\s\S]*>/i.test(content)) {
+    content = sanitizeRichTextMessage(content);
+  } else {
+    content = sanitizeMessageText(content);
+  }
   if (!content || content.length === 0) {
     return { success: false, error: 'Message cannot be empty.' };
   }

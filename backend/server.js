@@ -21,6 +21,15 @@ const uploadsDir = path.resolve(__dirname, 'uploads');
 
 loadEnv();
 
+// Global process crash prevention guards registered early
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process Unhandled Rejection]:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process Uncaught Exception]:', err);
+});
+
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 

@@ -120,12 +120,25 @@ export function getDb() {
 }
 
 /**
- * Helper to execute parameterized queries
+ * Helper to execute parameterized queries with automatic deadlock retry
  */
-export async function query(sql, params = []) {
+export async function query(sql, params = [], retries = 3) {
   const pool = getDb();
-  const [rows] = await pool.query(sql, params);
-  return rows;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const [rows] = await pool.query(sql, params);
+      return rows;
+    } catch (err) {
+      const isDeadlock = err?.code === 'ER_LOCK_DEADLOCK' || err?.errno === 1213;
+      if (isDeadlock && attempt < retries) {
+        const delay = (attempt + 1) * 35 + Math.floor(Math.random() * 40);
+        console.warn(`[MySQL Deadlock Retry] Query deadlocked, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})...`);
+        await new Promise(res => setTimeout(res, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /**

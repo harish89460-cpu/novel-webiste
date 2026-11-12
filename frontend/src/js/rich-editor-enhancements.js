@@ -63,6 +63,66 @@ export async function getMembersForMention(query = '') {
 }
 
 /**
+ * Extract YouTube Video ID from any URL or string
+ */
+export function extractYouTubeVideoId(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const str = rawUrl.trim();
+
+  // 1. youtu.be/VIDEO_ID
+  const m1 = str.match(/(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+  if (m1) return m1[1];
+
+  // 2. youtube.com/watch?v=VIDEO_ID or &v=VIDEO_ID
+  const m2 = str.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?youtube\.com\/watch\?[^"'\s<>]*\bv=([a-zA-Z0-9_-]{11})/i);
+  if (m2) return m2[1];
+
+  // 3. youtube.com/embed/VIDEO_ID or youtube-nocookie.com/embed/VIDEO_ID
+  const m3 = str.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?youtube(?:-nocookie)?\.com\/embed\/([a-zA-Z0-9_-]{11})/i);
+  if (m3) return m3[1];
+
+  // 4. youtube.com/shorts/VIDEO_ID or /live/VIDEO_ID or /v/VIDEO_ID
+  const m4 = str.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?youtube\.com\/(?:shorts|live|v)\/([a-zA-Z0-9_-]{11})/i);
+  if (m4) return m4[1];
+
+  return null;
+}
+
+/**
+ * Render responsive YouTube embed card
+ */
+export function renderYouTubeEmbedCard(videoId, originalUrl = '') {
+  const safeId = escapeHtml(videoId);
+  const watchUrl = originalUrl ? escapeHtml(originalUrl) : `https://www.youtube.com/watch?v=${safeId}`;
+  return `
+    <div class="rp-embed-card rp-embed-video-card" data-embed-type="youtube" data-video-id="${safeId}">
+      <div class="rp-embed-video-wrap">
+        <iframe 
+          src="https://www.youtube-nocookie.com/embed/${safeId}" 
+          title="YouTube video player"
+          loading="lazy"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          referrerpolicy="strict-origin-when-cross-origin"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+          allowfullscreen
+          class="rp-embed-iframe">
+        </iframe>
+      </div>
+      <div class="rp-embed-meta-bar">
+        <span class="rp-embed-provider-badge youtube">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          YouTube Video
+        </span>
+        <a href="${watchUrl}" target="_blank" rel="noopener noreferrer" class="rp-embed-external-link" title="Open in YouTube">
+          Watch on YouTube ↗
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Classify URL and extract embed parameters
  */
 export function parseSmartUrl(rawUrl) {
@@ -285,6 +345,245 @@ function populateMetadata(card, data) {
     linkBox.prepend(thumbWrap);
     linkBox.classList.add('has-thumb');
   }
+}
+
+/**
+ * Universal content parser & renderer for Novel Viewer, Thread pages, and Previews.
+ * Embeds YouTube videos directly, transforms standalone web links to preview cards,
+ * ensures in-paragraph links are clickable and open safely in a new tab,
+ * and preserves rich text formatting.
+ */
+export function renderRichArticleContent(rawContent, options = {}) {
+  if (!rawContent || typeof rawContent !== 'string') return '';
+  let content = rawContent.trim();
+  if (!content) return '';
+
+  // 1. If plain text without block tags, wrap paragraphs in <p>
+  const hasBlockTags = /<(?:p|div|h[1-6]|blockquote|pre|ul|ol|table|section|article)\b/i.test(content);
+  if (!hasBlockTags) {
+    content = content
+      .split(/\r?\n\r?\n+/)
+      .filter(Boolean)
+      .map(para => `<p>${para.replace(/\r?\n/g, '<br>')}</p>`)
+      .join('');
+  }
+
+  // 2. Parse using DOMParser
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(content, 'text/html');
+  const body = doc.body;
+
+  // Track processed video IDs in this article to avoid duplicate embedded players for the same video in one block
+  const processedVideoIds = new Set();
+
+  // Helper to test if an element contains only a URL or whitespace
+  const isOnlyUrl = (el, url) => {
+    if (!el) return false;
+    const text = (el.textContent || '').replace(/\u00A0/g, ' ').trim();
+    const cleanUrl = url.replace(/^https?:\/\//i, '').replace(/\/$/, '').trim();
+    const cleanText = text.replace(/^https?:\/\//i, '').replace(/\/$/, '').trim();
+    return cleanText === cleanUrl || cleanText === '';
+  };
+
+  // 3. Process existing <a> tags
+  const anchors = Array.from(body.querySelectorAll('a[href]'));
+  for (const a of anchors) {
+    const href = (a.getAttribute('href') || '').trim();
+    if (!href) continue;
+
+    // A. Check if internal hash or route
+    if (href.startsWith('#') || href.startsWith('/#')) {
+      a.setAttribute('target', '_self');
+      continue;
+    }
+
+    // Ensure external links have safe attributes and styling
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+    if (!a.classList.contains('rp-mention-tag')) {
+      a.classList.add('reader-inline-link');
+    }
+
+    // B. Check if href is YouTube URL
+    const ytId = extractYouTubeVideoId(href);
+    if (ytId) {
+      const parent = a.parentElement;
+      const isSoloInParent = parent && (parent.tagName.toLowerCase() === 'p' || parent.tagName.toLowerCase() === 'div') && isOnlyUrl(parent, href);
+
+      if (isSoloInParent && !processedVideoIds.has(ytId)) {
+        processedVideoIds.add(ytId);
+        const cardWrapper = doc.createElement('div');
+        cardWrapper.innerHTML = renderYouTubeEmbedCard(ytId, href);
+        const newCard = cardWrapper.firstElementChild;
+        if (newCard && parent.parentNode) {
+          parent.replaceWith(newCard);
+        }
+      } else if (!processedVideoIds.has(ytId)) {
+        processedVideoIds.add(ytId);
+        // Anchor with custom text inside paragraph: preserve link and insert embed card right after paragraph
+        const cardWrapper = doc.createElement('div');
+        cardWrapper.innerHTML = renderYouTubeEmbedCard(ytId, href);
+        const newCard = cardWrapper.firstElementChild;
+        if (newCard) {
+          if (parent && parent.parentNode) {
+            parent.after(newCard);
+          } else if (a.parentNode) {
+            a.after(newCard);
+          }
+        }
+      }
+      continue;
+    }
+
+    // C. Non-YouTube external link:
+    // If standalone in its parent paragraph, add clickable link preview card
+    const parent = a.parentElement;
+    const isSolo = parent && (parent.tagName.toLowerCase() === 'p' || parent.tagName.toLowerCase() === 'div') && isOnlyUrl(parent, href);
+    if (isSolo && /^https?:\/\//i.test(href)) {
+      try {
+        const parsed = new URL(href);
+        const cardWrapper = doc.createElement('div');
+        cardWrapper.innerHTML = renderSmartEmbed({ type: 'link', url: href, host: parsed.hostname });
+        const newCard = cardWrapper.firstElementChild;
+        if (newCard && parent.parentNode) {
+          parent.replaceWith(newCard);
+        }
+      } catch {}
+    }
+  }
+
+  // 4. Process text nodes for raw URLs (standalone or in-sentence)
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+  const textNodesToProcess = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    // Skip if inside <a>, <script>, <style>, <iframe>, or .rp-embed-card
+    if (node.parentElement && (
+      node.parentElement.closest('a') ||
+      node.parentElement.closest('script') ||
+      node.parentElement.closest('style') ||
+      node.parentElement.closest('iframe') ||
+      node.parentElement.closest('.rp-embed-card')
+    )) {
+      continue;
+    }
+    if (node.nodeValue && /(?:https?:\/\/|www\.)[^\s<>"']+/i.test(node.nodeValue)) {
+      textNodesToProcess.push(node);
+    }
+  }
+
+  for (const tNode of textNodesToProcess) {
+    const parent = tNode.parentElement;
+    if (!parent) continue;
+
+    const val = tNode.nodeValue;
+    const urlRegex = /(https?:\/\/[^\s<>"']+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s<>"']*)/gi;
+    let match;
+    let lastIdx = 0;
+    const fragment = doc.createDocumentFragment();
+    let hasReplaced = false;
+
+    // Check if the entire parent is solo URL
+    const isSoloText = parent && (parent.tagName.toLowerCase() === 'p' || parent.tagName.toLowerCase() === 'div') && parent.childNodes.length === 1;
+
+    while ((match = urlRegex.exec(val)) !== null) {
+      hasReplaced = true;
+      const textBefore = val.slice(lastIdx, match.index);
+      if (textBefore) fragment.appendChild(doc.createTextNode(textBefore));
+
+      let matchedUrl = match[0];
+      const fullUrl = /^https?:\/\//i.test(matchedUrl) ? matchedUrl : 'https://' + matchedUrl;
+      const ytId = extractYouTubeVideoId(fullUrl);
+
+      if (ytId && isSoloText && !processedVideoIds.has(ytId)) {
+        processedVideoIds.add(ytId);
+        const cardWrapper = doc.createElement('div');
+        cardWrapper.innerHTML = renderYouTubeEmbedCard(ytId, fullUrl);
+        const newCard = cardWrapper.firstElementChild;
+        if (newCard && parent.parentNode) {
+          parent.replaceWith(newCard);
+          fragment.textContent = '';
+        }
+        break;
+      } else if (ytId) {
+        const link = doc.createElement('a');
+        link.href = fullUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'reader-inline-link';
+        link.textContent = matchedUrl;
+        fragment.appendChild(link);
+
+        if (!processedVideoIds.has(ytId)) {
+          processedVideoIds.add(ytId);
+          const cardWrapper = doc.createElement('div');
+          cardWrapper.innerHTML = renderYouTubeEmbedCard(ytId, fullUrl);
+          const newCard = cardWrapper.firstElementChild;
+          if (newCard && parent && parent.parentNode) {
+            parent.after(newCard);
+          }
+        }
+      } else {
+        // Other website URL
+        if (isSoloText) {
+          try {
+            const parsed = new URL(fullUrl);
+            const cardWrapper = doc.createElement('div');
+            cardWrapper.innerHTML = renderSmartEmbed({ type: 'link', url: fullUrl, host: parsed.hostname });
+            const newCard = cardWrapper.firstElementChild;
+            if (newCard && parent.parentNode) {
+              parent.replaceWith(newCard);
+              fragment.textContent = '';
+              break;
+            }
+          } catch {}
+        }
+
+        const link = doc.createElement('a');
+        link.href = fullUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'reader-inline-link';
+        link.textContent = matchedUrl;
+        fragment.appendChild(link);
+      }
+      lastIdx = urlRegex.lastIndex;
+    }
+
+    if (hasReplaced && fragment.childNodes.length > 0) {
+      const rest = val.slice(lastIdx);
+      if (rest) fragment.appendChild(doc.createTextNode(rest));
+      if (tNode.parentNode) {
+        parent.replaceChild(fragment, tNode);
+      }
+    }
+  }
+
+  // 5. Transform existing standalone iframes to responsive wrapper
+  body.querySelectorAll('iframe').forEach(iframe => {
+    if (!iframe.closest('.rp-embed-video-wrap')) {
+      const src = iframe.getAttribute('src') || '';
+      const ytId = extractYouTubeVideoId(src);
+      if (ytId) {
+        const cardWrapper = doc.createElement('div');
+        cardWrapper.innerHTML = renderYouTubeEmbedCard(ytId, src);
+        const newCard = cardWrapper.firstElementChild;
+        if (newCard && iframe.parentNode) {
+          iframe.replaceWith(newCard);
+        }
+      } else {
+        iframe.classList.add('rp-embed-iframe');
+        const wrap = doc.createElement('div');
+        wrap.className = 'rp-embed-video-wrap';
+        if (iframe.parentNode) {
+          iframe.parentNode.insertBefore(wrap, iframe);
+          wrap.appendChild(iframe);
+        }
+      }
+    }
+  });
+
+  return body.innerHTML;
 }
 
 /**
@@ -746,5 +1045,9 @@ if (typeof window !== 'undefined') {
   window.parseSmartUrl = parseSmartUrl;
   window.renderSmartEmbed = renderSmartEmbed;
   window.formatRichContent = formatRichContent;
+  window.extractYouTubeVideoId = extractYouTubeVideoId;
+  window.renderYouTubeEmbedCard = renderYouTubeEmbedCard;
+  window.renderRichArticleContent = renderRichArticleContent;
+  window.hydrateLinkPreviewCards = hydrateLinkPreviewCards;
 }
 

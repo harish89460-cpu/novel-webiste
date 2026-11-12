@@ -371,9 +371,40 @@
   line-height: 1.35;
 }
 
-.reader-body a {
-  color: var(--reader-gold);
-  text-decoration: underline;
+.reader-body a,
+.reader-body-protected a,
+.reader-inline-link {
+  color: var(--reader-gold, #C89B3C) !important;
+  text-decoration: underline !important;
+  font-weight: 600;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+  transition: color 0.15s ease;
+}
+
+.reader-body a:hover,
+.reader-body-protected a:hover,
+.reader-inline-link:hover {
+  color: #B88635 !important;
+}
+
+/* Embedded Media Cards inside Reader & Protected Content */
+.reader-body .rp-embed-card,
+.reader-body-protected .rp-embed-card {
+  margin: 22px auto !important;
+  max-width: 100% !important;
+  pointer-events: auto !important;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+}
+
+.reader-body iframe,
+.reader-body-protected iframe,
+.reader-body .rp-embed-iframe,
+.reader-body-protected .rp-embed-iframe {
+  pointer-events: auto !important;
 }
 
 /* Decorative Chapter Divider */

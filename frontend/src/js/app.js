@@ -4,6 +4,11 @@ export function escapeQuote(str) {
   return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
 }
 
+export function escapeQuotes(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\\'");
+}
+
 if (typeof window !== 'undefined') {
   window.escapeQuote = escapeQuote;
   window.escapeQuotes = escapeQuotes;
@@ -11,6 +16,12 @@ if (typeof window !== 'undefined') {
 
 // Main Application Engine & Client Router
 import './timezone.js';
+import {
+  renderRichArticleContent,
+  hydrateLinkPreviewCards,
+  renderYouTubeEmbedCard,
+  extractYouTubeVideoId
+} from './rich-editor-enhancements.js';
 
 import {
   getSidebarPosts,
@@ -1094,8 +1105,7 @@ async function renderReaderView(container, hash) {
 
   // Access Granted: Render full chapter
   const rawStory = access.content || '';
-  const isHtml = rawStory.includes('<p>') || rawStory.includes('<div') || rawStory.includes('<h');
-  const storyBody = isHtml ? rawStory : rawStory.split('\n\n').map(p => `<p>${p}</p>`).join('');
+  const storyBody = renderRichArticleContent(rawStory);
 
   const currentMode = localStorage.getItem('rp_reader_mode') || 'light';
   const currentFontSize = parseFloat(localStorage.getItem('rp_font_size') || '1.15');
@@ -1215,17 +1225,35 @@ async function renderReaderView(container, hash) {
   // Attach Content Protection strictly to the novel reading content area
   const readerContent = document.getElementById('reader-body-content');
   if (readerContent) {
+    hydrateLinkPreviewCards(readerContent);
+
     const handleBlockedCopy = (e) => {
+      if (e.target && (e.target.closest('a') || e.target.closest('iframe') || e.target.closest('.rp-embed-card') || e.target.closest('button'))) {
+        return;
+      }
       e.preventDefault();
       showToast('Content copying is restricted. 🔒');
     };
     readerContent.addEventListener('copy', handleBlockedCopy);
     readerContent.addEventListener('cut', handleBlockedCopy);
-    readerContent.addEventListener('contextmenu', handleBlockedCopy);
-    readerContent.addEventListener('selectstart', (e) => e.preventDefault());
+    readerContent.addEventListener('contextmenu', (e) => {
+      if (e.target && (e.target.closest('a') || e.target.closest('iframe') || e.target.closest('.rp-embed-card') || e.target.closest('button'))) {
+        return;
+      }
+      handleBlockedCopy(e);
+    });
+    readerContent.addEventListener('selectstart', (e) => {
+      if (e.target && (e.target.closest('a') || e.target.closest('iframe') || e.target.closest('.rp-embed-card') || e.target.closest('button'))) {
+        return;
+      }
+      e.preventDefault();
+    });
 
     // Prevent keyboard shortcuts (Ctrl+C, Ctrl+A, Ctrl+X, Ctrl+U, Cmd+C, Cmd+A, etc.) inside story text
     readerContent.addEventListener('keydown', (e) => {
+      if (e.target && (e.target.closest('a') || e.target.closest('iframe') || e.target.closest('.rp-embed-card') || e.target.closest('button'))) {
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && ['c', 'C', 'x', 'X', 'a', 'A', 'u', 'U'].includes(e.key)) {
         handleBlockedCopy(e);
       }
@@ -4020,9 +4048,7 @@ function renderNovelCard(n, mode = 'read') {
   `;
 }
 
-function escapeQuotes(str) {
-  return String(str || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
-}
+
 
 function renderAudioNovelCard(audioItem) {
   if (!audioItem) return '';
@@ -5090,20 +5116,40 @@ window.submitThreadPosting = async (catId, subId) => {
 
 
 // ============================================================================
-// CLEAN RICH-TEXT LINK INSERTION DIALOG (Text & URL Validation)
+// CLEAN RICH-TEXT LINK INSERTION & EDITING DIALOG (Text & URL Validation)
 // ============================================================================
 window.openLinkInsertionModal = function(targetEditor) {
   if (!targetEditor) return;
+  const isContentEditable = targetEditor.getAttribute && targetEditor.getAttribute('contenteditable') === 'true';
 
   // Capture selection or active range
   const sel = window.getSelection();
   let selectedText = '';
   let savedRange = null;
+  let existingLinkNode = null;
 
-  if (sel && sel.rangeCount > 0) {
+  if (isContentEditable && sel && sel.rangeCount > 0) {
     savedRange = sel.getRangeAt(0).cloneRange();
     selectedText = sel.toString().trim();
+
+    // Check if anchor or cursor is inside an existing <a> element inside targetEditor
+    let node = sel.anchorNode;
+    while (node && node !== targetEditor) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === 'a') {
+        existingLinkNode = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+  } else if (!isContentEditable && targetEditor.value !== undefined) {
+    const start = targetEditor.selectionStart || 0;
+    const end = targetEditor.selectionEnd || 0;
+    selectedText = targetEditor.value.substring(start, end).trim();
   }
+
+  const existingHref = existingLinkNode ? (existingLinkNode.getAttribute('href') || '') : '';
+  const existingText = existingLinkNode ? (existingLinkNode.textContent || '') : selectedText;
+  const isEditing = Boolean(existingLinkNode);
 
   const modalId = 'tc-link-modal-popup';
   let modal = document.getElementById(modalId);
@@ -5115,11 +5161,11 @@ window.openLinkInsertionModal = function(targetEditor) {
   modal.style.cssText = 'position:fixed; inset:0; background:rgba(11,31,51,0.55); z-index:999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(2px); padding:16px;';
 
   modal.innerHTML = `
-    <div style="background:#FFFFFF; border-radius:12px; width:100%; max-width:440px; box-shadow:0 12px 36px rgba(0,0,0,0.22); overflow:hidden; border:1px solid #E2E8F0; font-family:var(--font-sans, inherit);">
+    <div style="background:#FFFFFF; border-radius:12px; width:100%; max-width:460px; box-shadow:0 12px 36px rgba(0,0,0,0.22); overflow:hidden; border:1px solid #E2E8F0; font-family:var(--font-sans, inherit);">
       <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;">
         <div style="font-weight:700; font-size:15px; color:#0F172A; display:flex; align-items:center; gap:8px;">
           <span style="font-size:16px;">🔗</span>
-          <span>Insert Link</span>
+          <span>${isEditing ? 'Edit Link' : 'Insert Link'}</span>
         </div>
         <button type="button" id="tc-link-close-btn" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748B; padding:0; line-height:1;">&times;</button>
       </div>
@@ -5131,19 +5177,30 @@ window.openLinkInsertionModal = function(targetEditor) {
           <label style="display:block; font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px;">
             Link Text <span style="font-weight:400; color:#64748B;">(Text displayed to readers)</span>
           </label>
-          <input type="text" id="tc-link-text-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="e.g. Read novel here" value="${escapeHtml(selectedText)}" />
+          <input type="text" id="tc-link-text-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="e.g. Read novel here" value="${escapeHtml(existingText)}" />
         </div>
 
         <div style="margin-bottom:18px;">
           <label style="display:block; font-size:12.5px; font-weight:700; color:#334155; margin-bottom:6px;">
             Web Address (URL) <span style="color:#DC2626;">*</span>
           </label>
-          <input type="text" id="tc-link-url-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="https://example.com or /#forum" />
+          <input type="text" id="tc-link-url-val" class="form-input" style="width:100%; box-sizing:border-box; padding:9px 12px; font-size:14px; border:1px solid #CBD5E1; border-radius:6px; outline:none;" placeholder="https://example.com or /#forum" value="${escapeHtml(existingHref)}" />
         </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #F1F5F9; padding-top:14px;">
-          <button type="button" class="btn btn-outline btn-sm" id="tc-link-cancel-btn">Cancel</button>
-          <button type="button" class="btn btn-gold btn-sm" id="tc-link-submit-btn" style="font-weight:700; padding:7px 20px;">Insert Link</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #F1F5F9; padding-top:14px;">
+          <div>
+            ${isEditing ? `
+              <button type="button" class="btn btn-outline btn-sm" id="tc-link-unlink-btn" style="color:#DC2626; border-color:#FCA5A5; font-size:12px; padding:6px 12px;">
+                🗑️ Remove Link
+              </button>
+            ` : '<span></span>'}
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-outline btn-sm" id="tc-link-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-gold btn-sm" id="tc-link-submit-btn" style="font-weight:700; padding:7px 20px;">
+              ${isEditing ? 'Update Link' : 'Insert Link'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -5157,12 +5214,17 @@ window.openLinkInsertionModal = function(targetEditor) {
   const closeBtn = document.getElementById('tc-link-close-btn');
   const cancelBtn = document.getElementById('tc-link-cancel-btn');
   const submitBtn = document.getElementById('tc-link-submit-btn');
+  const unlinkBtn = document.getElementById('tc-link-unlink-btn');
 
-  if (selectedText) {
-    urlInput?.focus();
-  } else {
-    textInput?.focus();
-  }
+  setTimeout(() => {
+    if (isEditing) {
+      urlInput?.focus();
+    } else if (existingText) {
+      urlInput?.focus();
+    } else {
+      textInput?.focus();
+    }
+  }, 40);
 
   function closeModal() {
     modal.remove();
@@ -5170,6 +5232,17 @@ window.openLinkInsertionModal = function(targetEditor) {
 
   closeBtn?.addEventListener('click', closeModal);
   cancelBtn?.addEventListener('click', closeModal);
+
+  if (unlinkBtn && existingLinkNode) {
+    unlinkBtn.addEventListener('click', () => {
+      const textNode = document.createTextNode(existingLinkNode.textContent);
+      existingLinkNode.parentNode?.replaceChild(textNode, existingLinkNode);
+      closeModal();
+      targetEditor.focus();
+      targetEditor.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast('Link removed.');
+    });
+  }
 
   submitBtn?.addEventListener('click', () => {
     let rawUrl = (urlInput?.value || '').trim();
@@ -5195,15 +5268,60 @@ window.openLinkInsertionModal = function(targetEditor) {
     closeModal();
     targetEditor.focus();
 
-    // Restore range if available
-    if (savedRange && sel) {
-      sel.removeAllRanges();
-      sel.addRange(savedRange);
+    if (isContentEditable) {
+      if (isEditing && existingLinkNode) {
+        existingLinkNode.setAttribute('href', rawUrl);
+        existingLinkNode.setAttribute('target', rawUrl.startsWith('#') ? '_self' : '_blank');
+        existingLinkNode.setAttribute('rel', 'noopener noreferrer');
+        existingLinkNode.textContent = displayText;
+      } else {
+        // Restore range if available
+        if (savedRange && sel) {
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+        }
+
+        const a = document.createElement('a');
+        a.href = rawUrl;
+        a.target = rawUrl.startsWith('#') ? '_self' : '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'reader-inline-link';
+        a.style.color = '#C89B3C';
+        a.style.textDecoration = 'underline';
+        a.style.fontWeight = '600';
+        a.textContent = displayText;
+
+        if (savedRange && !savedRange.collapsed) {
+          savedRange.deleteContents();
+          savedRange.insertNode(a);
+        } else if (savedRange) {
+          savedRange.insertNode(a);
+        } else {
+          targetEditor.appendChild(a);
+        }
+
+        // Add space after link so typing continues outside
+        const spaceNode = document.createTextNode('\u00A0');
+        a.after(spaceNode);
+
+        const newSel = window.getSelection();
+        const newRange = document.createRange();
+        newRange.setStartAfter(spaceNode);
+        newRange.collapse(true);
+        newSel.removeAllRanges();
+        newSel.addRange(newRange);
+      }
+    } else if (targetEditor.value !== undefined) {
+      const start = targetEditor.selectionStart || 0;
+      const end = targetEditor.selectionEnd || 0;
+      const inserted = displayText === rawUrl ? rawUrl : `${displayText} (${rawUrl})`;
+      const val = targetEditor.value;
+      targetEditor.value = val.substring(0, start) + inserted + ' ' + val.substring(end);
+      const newPos = start + inserted.length + 1;
+      targetEditor.setSelectionRange(newPos, newPos);
     }
 
-    const safeUrl = escapeQuotes(rawUrl);
-    const linkHtml = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#C89B3C; text-decoration:underline; font-weight:600;">${escapeHtml(displayText)}</a>&nbsp;`;
-    document.execCommand('insertHTML', false, linkHtml);
+    targetEditor.dispatchEvent(new Event('input', { bubbles: true }));
   });
 };
 
@@ -5402,7 +5520,8 @@ window.initInlineThreadComposer = function(subId, catId) {
       previewBtn.innerHTML = '👁️ Preview';
       contentArea.focus();
     } else {
-      previewPane.innerHTML = contentArea.innerHTML || '<p style="color:#94A3B8; font-style:italic;">No message content entered yet.</p>';
+      previewPane.innerHTML = renderRichArticleContent(contentArea.innerHTML || '<p style="color:#94A3B8; font-style:italic;">No message content entered yet.</p>');
+      hydrateLinkPreviewCards(previewPane);
       contentArea.style.display = 'none';
       previewPane.style.display = 'block';
       previewBtn.innerHTML = '✏️ Edit View';
@@ -5484,13 +5603,19 @@ window.initInlineThreadComposer = function(subId, catId) {
 // Edit Thread Modal
 window.openEditThreadModal = async function(threadId) {
   const token = localStorage.getItem('rp_auth_token');
-  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
 
   try {
-    const res = await fetch(`/api/content/articles/${threadId}`, { headers });
+    const res = await fetch(`/api/content/articles/${encodeURIComponent(threadId)}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load thread details.');
     const art = data.article;
+    const realId = art.id;
 
     const modalId = 'edit-thread-modal';
     let modal = document.getElementById(modalId);
@@ -5502,26 +5627,52 @@ window.openEditThreadModal = async function(threadId) {
     }
 
     modal.innerHTML = `
-      <div class="modal-dialog" style="max-width:700px; width:95%; background:#FFFFFF; border-radius:12px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.15);">
+      <div class="modal-dialog" style="max-width:760px; width:95%; background:#FFFFFF; border-radius:12px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.18);">
         <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;">
-          <h3 style="margin:0; font-family:var(--font-serif); font-size:1.25rem; color:#0B1F33;">✏️ Edit Thread</h3>
-          <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748B;">&times;</button>
+          <h3 style="margin:0; font-family:var(--font-serif); font-size:1.25rem; color:#0B1F33; display:flex; align-items:center; gap:8px;">
+            <span>✏️</span> Edit Thread
+          </h3>
+          <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748B; line-height:1;">&times;</button>
         </div>
         <div style="padding:20px;">
-          <div id="modal-edit-error" style="display:none; background:#FEF2F2; color:#991B1B; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:14px; font-weight:600;"></div>
+          <div id="modal-edit-error" style="display:none; background:#FEF2F2; color:#991B1B; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:14px; font-weight:600; border:1px solid #FCA5A5;"></div>
+          
           <div style="margin-bottom:16px;">
-            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Title</label>
+            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Title <span style="color:#DC2626;">*</span></label>
             <input type="text" id="modal-edit-title" class="form-input" style="width:100%; box-sizing:border-box; padding:10px 14px; font-size:15px;" value="${escapeQuote(art.title)}" />
           </div>
+
           <div style="margin-bottom:20px;">
-            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Message Content</label>
-            <div id="modal-edit-content" style="min-height:160px; max-height:360px; overflow-y:auto; border:1px solid #CBD5E1; border-radius:8px; padding:12px; font-size:14px; line-height:1.6;" contenteditable="true">
+            <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px;">Thread Message &amp; Content</label>
+            
+            <!-- Rich Formatting Toolbar -->
+            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; background:#F8FAFC; border:1px solid #CBD5E1; border-bottom:none; border-radius:8px 8px 0 0;">
+              <button type="button" class="btn btn-outline btn-xs" data-edit-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+              <button type="button" class="btn btn-outline btn-xs" data-edit-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+              <button type="button" class="btn btn-outline btn-xs" data-edit-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+              <button type="button" class="btn btn-outline btn-xs" data-edit-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+              <span style="color:#CBD5E1;">|</span>
+              <button type="button" class="btn btn-outline btn-xs" id="modal-edit-link-btn" title="Insert or Edit Link">🔗 Link</button>
+              <button type="button" class="btn btn-outline btn-xs" id="modal-edit-img-btn" title="Upload & Insert Image">🖼️ Image</button>
+              <button type="button" class="btn btn-outline btn-xs" data-edit-cmd="removeFormat" title="Clear Formatting">🧹 Clear</button>
+            </div>
+
+            <!-- Contenteditable Editor Surface -->
+            <div id="modal-edit-content" style="min-height:190px; max-height:360px; overflow-y:auto; border:1px solid #CBD5E1; border-radius:0 0 8px 8px; padding:14px; font-size:14.5px; line-height:1.7; outline:none;" contenteditable="true">
               ${art.content || ''}
             </div>
+
+            <input type="file" id="modal-edit-file-input" accept="image/*" style="display:none;" />
           </div>
-          <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #F1F5F9; padding-top:16px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
-            <button type="button" class="btn btn-gold btn-sm" id="modal-edit-save-btn">Save Changes</button>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #F1F5F9; padding-top:16px;">
+            <div style="font-size:12px; color:#64748B;">
+              Editing thread ID: <strong>${realId}</strong>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+              <button type="button" class="btn btn-gold btn-sm" id="modal-edit-save-btn" style="font-weight:700; padding:8px 22px;">Save Changes</button>
+            </div>
           </div>
         </div>
       </div>
@@ -5532,11 +5683,75 @@ window.openEditThreadModal = async function(threadId) {
       window.setupSmartEditor(editContent);
     }
 
-    document.getElementById('modal-edit-link-btn')?.addEventListener('click', () => {
-      const editContent = document.getElementById('modal-edit-content');
-      window.openLinkInsertionModal(editContent);
+    // Attach toolbar execCommand listeners
+    modal.querySelectorAll('button[data-edit-cmd]').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const cmd = btn.getAttribute('data-edit-cmd');
+        if (cmd) {
+          document.execCommand(cmd, false, null);
+          editContent?.focus();
+        }
+      });
     });
 
+    // Link insertion button
+    document.getElementById('modal-edit-link-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (editContent) {
+        window.openLinkInsertionModal(editContent);
+      }
+    });
+
+    // Image upload button
+    const fileInput = document.getElementById('modal-edit-file-input');
+    document.getElementById('modal-edit-img-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const uploadHeaders = {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        };
+
+        const upRes = await fetch('/api/upload/image', {
+          method: 'POST',
+          headers: uploadHeaders,
+          body: JSON.stringify({
+            data: base64Data,
+            folder: 'comments',
+            filename: file.name
+          })
+        });
+
+        const upData = await upRes.json();
+        if (upData.success && upData.url) {
+          editContent.focus();
+          document.execCommand('insertHTML', false, `<p><img src="${upData.url}" alt="${escapeHtml(file.name)}" style="max-width:100%; border-radius:8px; margin:8px 0;" /></p><p><br></p>`);
+          showToast('Image inserted! 🖼️');
+        } else {
+          showToast(upData.error || 'Failed to upload image.');
+        }
+      } catch (err) {
+        showToast('Upload error: ' + err.message);
+      }
+      fileInput.value = '';
+    });
+
+    // Save Changes button
     document.getElementById('modal-edit-save-btn').addEventListener('click', async () => {
       const newTitle = document.getElementById('modal-edit-title').value.trim();
       const newContent = document.getElementById('modal-edit-content').innerHTML.trim();
@@ -5552,7 +5767,7 @@ window.openEditThreadModal = async function(threadId) {
       saveBtn.textContent = 'Saving...';
 
       try {
-        const updateRes = await fetch(`/api/content/threads/${threadId}`, {
+        const updateRes = await fetch(`/api/content/threads/${realId}`, {
           method: 'PUT',
           headers,
           body: JSON.stringify({
@@ -5565,7 +5780,18 @@ window.openEditThreadModal = async function(threadId) {
 
         showToast('Thread updated successfully! ✨');
         modal.remove();
-        window.location.reload();
+
+        // Refresh view
+        if (window.location.hash.startsWith('#thread') || window.location.hash.startsWith('#content')) {
+          const main = document.getElementById('main-content');
+          if (main && typeof renderContentReadingView === 'function') {
+            await renderContentReadingView(main, window.location.hash);
+          } else {
+            window.location.reload();
+          }
+        } else {
+          window.location.reload();
+        }
       } catch (e) {
         errBox.textContent = e.message || 'Error updating thread.';
         errBox.style.display = 'block';
@@ -5693,8 +5919,7 @@ async function renderContentReadingView(container, hash) {
     const commentsCount = Number(art.commentsCount || 0);
 
     const rawNovelStory = art.linkedChapter?.content || (art.linkedNovel ? (art.linkedNovel.description || art.linkedNovel.synopsis) : '') || art.content || '';
-    const isHtml = rawNovelStory.includes('<p>') || rawNovelStory.includes('<div') || rawNovelStory.includes('<h');
-    const storyBody = isHtml ? rawNovelStory : rawNovelStory.split('\n\n').filter(Boolean).map(p => `<p>${p}</p>`).join('');
+    const storyBody = renderRichArticleContent(rawNovelStory);
     const currentMode = localStorage.getItem('rp_reader_mode') || 'light';
 
     // Synchronize document head metadata with the current reading content
@@ -5791,9 +6016,10 @@ async function renderContentReadingView(container, hash) {
               </div>
 
               ${(function() {
-                const user = window.CURRENT_USER;
+                const user = window.CURRENT_USER || (function() { try { return JSON.parse(localStorage.getItem('rp_user')); } catch (e) { return null; } })();
                 const isAdmin = Boolean(user && (user.isAdmin || ['admin', 'administrator', 'editor'].includes((user.role || '').toLowerCase())));
-                const isOwner = Boolean(user && Number(user.id) === Number(art.authorId));
+                const authorId = Number(art.authorId ?? art.author_id ?? 0);
+                const isOwner = Boolean(user && authorId > 0 && Number(user.id) === authorId);
                 if (isAdmin || isOwner) {
                   return `
                     <div style="display:inline-flex; align-items:center; gap:8px;">
@@ -5894,16 +6120,36 @@ async function renderContentReadingView(container, hash) {
       </div>
     `;
 
-    // Attach read-only protection listeners
+    // Attach read-only protection listeners (transparent to links, iframes, embed cards, and buttons)
     const readerContent = document.getElementById('reader-body-content');
     if (readerContent) {
+      hydrateLinkPreviewCards(readerContent);
+
+      const isInteractiveTarget = (target) => {
+        return Boolean(target && (
+          target.closest('a') ||
+          target.closest('button') ||
+          target.closest('iframe') ||
+          target.closest('.rp-embed-card') ||
+          target.closest('.rp-embed-link-card')
+        ));
+      };
+
       const handleBlockedCopy = (e) => {
+        if (isInteractiveTarget(e.target)) return;
         e.preventDefault();
         showToast('Content copying is restricted. 🔒');
       };
+
       readerContent.addEventListener('copy', handleBlockedCopy);
-      readerContent.addEventListener('contextmenu', handleBlockedCopy);
-      readerContent.addEventListener('selectstart', (e) => e.preventDefault());
+      readerContent.addEventListener('contextmenu', (e) => {
+        if (isInteractiveTarget(e.target)) return;
+        e.preventDefault();
+      });
+      readerContent.addEventListener('selectstart', (e) => {
+        if (isInteractiveTarget(e.target)) return;
+        e.preventDefault();
+      });
     }
 
     // Mount novel-style comments widget
@@ -6304,8 +6550,8 @@ async function renderStoryReadingView(container, hash) {
           ` : ''}
 
           <!-- Formatted Rich-Text Story Body -->
-          <div class="content-reading-body story-reading-body" style="font-family:'Lora', 'Georgia', serif; font-size:1.1rem; line-height:1.85; color:#1E293B;">
-            ${story.content || ''}
+          <div class="content-reading-body story-reading-body" id="story-reading-body-content" style="font-family:'Lora', 'Georgia', serif; font-size:1.1rem; line-height:1.85; color:#1E293B;">
+            ${renderRichArticleContent(story.content || '')}
           </div>
 
           <!-- Elegant Finishing Flourish -->
@@ -6351,6 +6597,12 @@ async function renderStoryReadingView(container, hash) {
         </section>
       </div>
     `;
+
+    // Hydrate any link preview cards inside short story
+    const storyContentEl = document.getElementById('story-reading-body-content');
+    if (storyContentEl) {
+      hydrateLinkPreviewCards(storyContentEl);
+    }
 
     // Load live story comments
     window.loadStoryComments(story.id);

@@ -835,7 +835,7 @@ function renderPostCard(msg) {
   } else {
     // Rich content
     if (msg.content) {
-      bodyHtml += `<div class="dm-post-html" id="dm-post-content-${msgId}">${renderSafeMessageContent(msg.content)}</div>`;
+      bodyHtml += `<div class="dm-post-html" id="dm-post-content-${msgId}" data-raw-content="${(typeof escapeQuote === 'function' ? escapeQuote(msg.content) : String(msg.content).replace(/"/g, '&quot;'))}">${renderSafeMessageContent(msg.content)}</div>`;
     }
 
     // Image attachment
@@ -1582,11 +1582,18 @@ export function formatDmAlign(align) {
   if (editor) editor.focus();
 }
 
+let dmSavedRange = null;
+
 export function openDmLinkDialog() {
   const modal = document.getElementById('dm-link-modal');
   if (!modal) return;
-  modal.style.display = 'flex';
   const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    dmSavedRange = sel.getRangeAt(0).cloneRange();
+  } else {
+    dmSavedRange = null;
+  }
+  modal.style.display = 'flex';
   const textInput = document.getElementById('dm-link-text-input');
   const urlInput = document.getElementById('dm-link-url-input');
   if (textInput) {
@@ -1600,6 +1607,7 @@ export function openDmLinkDialog() {
 export function closeDmLinkDialog() {
   const modal = document.getElementById('dm-link-modal');
   if (modal) modal.style.display = 'none';
+  dmSavedRange = null;
 }
 
 export function confirmDmLink() {
@@ -1618,8 +1626,20 @@ export function confirmDmLink() {
   }
   if (!text) text = url;
 
+  const editor = document.getElementById('dm-message-editor');
+  if (editor) {
+    editor.focus();
+  }
+
+  if (dmSavedRange) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(dmSavedRange);
+  }
+
   const html = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   document.execCommand('insertHTML', false, html);
+  dmSavedRange = null;
   closeDmLinkDialog();
 }
 
@@ -2400,15 +2420,16 @@ export async function deleteConversationUi(convId) {
 export function startEditChatMessage(msgId) {
   const postBody = document.getElementById(`dm-post-content-${msgId}`);
   if (!postBody) return;
-  const currentText = postBody.innerText.trim();
-  const newText = prompt('Edit your direct message:', currentText);
-  if (newText === null || newText.trim() === currentText) return;
+  const currentContent = postBody.getAttribute('data-raw-content') || postBody.innerText.trim();
+  const newText = prompt('Edit your direct message:', currentContent);
+  if (newText === null || newText.trim() === currentContent.trim()) return;
 
   chatApi(`/api/chat/messages/${msgId}`, {
     method: 'PUT',
     body: JSON.stringify({ content: newText.trim() })
   }).then(res => {
     if (res?.success) {
+      postBody.setAttribute('data-raw-content', newText.trim());
       postBody.innerHTML = renderSafeMessageContent(newText.trim());
       showToast('Message updated ✨');
     }

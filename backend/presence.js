@@ -21,6 +21,10 @@ export function sanitizeGuestId(rawId) {
   return null;
 }
 
+// Cleanup throttling to prevent table lock contention
+let lastPresenceCleanupTime = 0;
+const PRESENCE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Record or update active presence for a member or guest
  * 
@@ -30,50 +34,54 @@ export function sanitizeGuestId(rawId) {
  * @param {boolean} params.isMember - Whether user is authenticated
  */
 export async function recordPresence({ userId = null, guestId = null, isMember = false }) {
-  const cleanGuest = sanitizeGuestId(guestId);
+  try {
+    const cleanGuest = sanitizeGuestId(guestId);
 
-  if (isMember && userId && Number.isInteger(Number(userId)) && Number(userId) > 0) {
-    const validUserId = Number(userId);
-    const memberSessionKey = `member_${validUserId}`;
+    if (isMember && userId && Number.isInteger(Number(userId)) && Number(userId) > 0) {
+      const validUserId = Number(userId);
+      const memberSessionKey = `member_${validUserId}`;
 
-    // If a guest session was transitioned to member, remove stale guest record
-    if (cleanGuest) {
-      try {
-        await query('DELETE FROM user_presence WHERE session_key = ?;', [`guest_${cleanGuest}`]);
-      } catch (err) {
-        console.error('Failed to cleanup transitioned guest session:', err.message);
+      // If a guest session was transitioned to member, remove stale guest record
+      if (cleanGuest) {
+        try {
+          await query('DELETE FROM user_presence WHERE session_key = ?;', [`guest_${cleanGuest}`]);
+        } catch {
+          // Non-critical cleanup
+        }
       }
+
+      // Upsert member presence
+      await query(`
+        INSERT INTO user_presence (session_key, user_id, visitor_type, last_activity)
+        VALUES (?, ?, 'member', CURRENT_TIMESTAMP)
+        ON DUPLICATE KEY UPDATE 
+          last_activity = CURRENT_TIMESTAMP, 
+          visitor_type = 'member', 
+          user_id = VALUES(user_id);
+      `, [memberSessionKey, validUserId]);
+
+      // Touch user activity in activity_status table
+      try {
+        await touchHeartbeat(validUserId);
+      } catch {}
+
+      return { sessionKey: memberSessionKey, visitorType: 'member' };
     }
 
-    // Upsert member presence
-    await query(`
-      INSERT INTO user_presence (session_key, user_id, visitor_type, last_activity)
-      VALUES (?, ?, 'member', CURRENT_TIMESTAMP)
-      ON DUPLICATE KEY UPDATE 
-        last_activity = CURRENT_TIMESTAMP, 
-        visitor_type = 'member', 
-        user_id = VALUES(user_id);
-    `, [memberSessionKey, validUserId]);
+    // Guest presence
+    if (cleanGuest) {
+      const guestSessionKey = `guest_${cleanGuest}`;
+      await query(`
+        INSERT INTO user_presence (session_key, user_id, visitor_type, last_activity)
+        VALUES (?, NULL, 'guest', CURRENT_TIMESTAMP)
+        ON DUPLICATE KEY UPDATE 
+          last_activity = CURRENT_TIMESTAMP;
+      `, [guestSessionKey]);
 
-    // Touch user activity in activity_status table
-    try {
-      await touchHeartbeat(validUserId);
-    } catch {}
-
-    return { sessionKey: memberSessionKey, visitorType: 'member' };
-  }
-
-  // Guest presence
-  if (cleanGuest) {
-    const guestSessionKey = `guest_${cleanGuest}`;
-    await query(`
-      INSERT INTO user_presence (session_key, user_id, visitor_type, last_activity)
-      VALUES (?, NULL, 'guest', CURRENT_TIMESTAMP)
-      ON DUPLICATE KEY UPDATE 
-        last_activity = CURRENT_TIMESTAMP;
-    `, [guestSessionKey]);
-
-    return { sessionKey: guestSessionKey, visitorType: 'guest' };
+      return { sessionKey: guestSessionKey, visitorType: 'guest' };
+    }
+  } catch (err) {
+    console.warn('[Presence] Notice: Handled presence update smoothly:', err.message);
   }
 
   return null;
@@ -83,13 +91,17 @@ export async function recordPresence({ userId = null, guestId = null, isMember =
  * Remove active presence (e.g. on logout or session invalidation)
  */
 export async function removePresence({ userId = null, guestId = null }) {
-  if (userId) {
-    const memberSessionKey = `member_${userId}`;
-    await query('DELETE FROM user_presence WHERE session_key = ?;', [memberSessionKey]);
-  }
-  const cleanGuest = sanitizeGuestId(guestId);
-  if (cleanGuest) {
-    await query('DELETE FROM user_presence WHERE session_key = ?;', [`guest_${cleanGuest}`]);
+  try {
+    if (userId) {
+      const memberSessionKey = `member_${userId}`;
+      await query('DELETE FROM user_presence WHERE session_key = ?;', [memberSessionKey]);
+    }
+    const cleanGuest = sanitizeGuestId(guestId);
+    if (cleanGuest) {
+      await query('DELETE FROM user_presence WHERE session_key = ?;', [`guest_${cleanGuest}`]);
+    }
+  } catch (err) {
+    console.warn('[Presence] Handled presence remove error:', err.message);
   }
 }
 
@@ -99,77 +111,92 @@ export async function removePresence({ userId = null, guestId = null }) {
  * @param {number|null} viewerId - ID of requesting user (for self privacy bypass)
  */
 export async function getOnlinePresenceSummary(viewerId = null) {
-  // Prune dead sessions older than 15 minutes to keep table compact
+  // Prune dead sessions periodically in the background (at most once every 5 minutes)
+  const now = Date.now();
+  if (now - lastPresenceCleanupTime > PRESENCE_CLEANUP_INTERVAL_MS) {
+    lastPresenceCleanupTime = now;
+    query('DELETE FROM user_presence WHERE last_activity < DATE_SUB(NOW(), INTERVAL 15 MINUTE);').catch(err => {
+      console.warn('[Presence] Background session pruning notice:', err.message);
+    });
+  }
+
   try {
-    await query('DELETE FROM user_presence WHERE last_activity < DATE_SUB(NOW(), INTERVAL 15 MINUTE);');
-  } catch (err) {
-    console.error('Presence cleanup warning:', err.message);
-  }
+    // Count active members and active guests within the inactivity timeout
+    const countRow = await queryOne(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN visitor_type = 'member' THEN 1 ELSE 0 END), 0) AS members_count,
+        COALESCE(SUM(CASE WHEN visitor_type = 'guest' THEN 1 ELSE 0 END), 0) AS guests_count
+      FROM user_presence
+      WHERE last_activity >= DATE_SUB(NOW(), INTERVAL ? SECOND);
+    `, [PRESENCE_TIMEOUT_SECONDS]);
 
-  // Count active members and active guests within the inactivity timeout
-  const countRow = await queryOne(`
-    SELECT 
-      COALESCE(SUM(CASE WHEN visitor_type = 'member' THEN 1 ELSE 0 END), 0) AS members_count,
-      COALESCE(SUM(CASE WHEN visitor_type = 'guest' THEN 1 ELSE 0 END), 0) AS guests_count
-    FROM user_presence
-    WHERE last_activity >= DATE_SUB(NOW(), INTERVAL ? SECOND);
-  `, [PRESENCE_TIMEOUT_SECONDS]);
+    const membersOnline = Number(countRow?.members_count || 0);
+    const guestsOnline = Number(countRow?.guests_count || 0);
+    const totalOnline = membersOnline + guestsOnline;
 
-  const membersOnline = Number(countRow?.members_count || 0);
-  const guestsOnline = Number(countRow?.guests_count || 0);
-  const totalOnline = membersOnline + guestsOnline;
+    // Retrieve active authenticated members
+    const memberRows = await query(`
+      SELECT 
+        u.id, 
+        u.username, 
+        u.role,
+        p.display_name, 
+        p.avatar, 
+        p.title,
+        COALESCE(a.is_enabled, 1) AS activity_status_enabled,
+        op.last_activity
+      FROM user_presence op
+      JOIN users u ON op.user_id = u.id
+      LEFT JOIN profiles p ON u.id = p.user_id
+      LEFT JOIN activity_status a ON u.id = a.user_id
+      WHERE op.visitor_type = 'member' 
+        AND op.last_activity >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+      ORDER BY op.last_activity DESC
+      LIMIT 60;
+    `, [PRESENCE_TIMEOUT_SECONDS]);
 
-  // Retrieve active authenticated members
-  const memberRows = await query(`
-    SELECT 
-      u.id, 
-      u.username, 
-      u.role,
-      p.display_name, 
-      p.avatar, 
-      p.title,
-      COALESCE(a.is_enabled, 1) AS activity_status_enabled,
-      op.last_activity
-    FROM user_presence op
-    JOIN users u ON op.user_id = u.id
-    LEFT JOIN profiles p ON u.id = p.user_id
-    LEFT JOIN activity_status a ON u.id = a.user_id
-    WHERE op.visitor_type = 'member' 
-      AND op.last_activity >= DATE_SUB(NOW(), INTERVAL ? SECOND)
-    ORDER BY op.last_activity DESC
-    LIMIT 60;
-  `, [PRESENCE_TIMEOUT_SECONDS]);
+    const visibleMembers = [];
+    let hiddenMembersCount = 0;
 
-  const visibleMembers = [];
-  let hiddenMembersCount = 0;
+    for (const row of (memberRows || [])) {
+      const isSelf = viewerId && Number(viewerId) === Number(row.id);
+      const canShow = Boolean(row.activity_status_enabled) || isSelf;
 
-  for (const row of memberRows) {
-    const isSelf = viewerId && Number(viewerId) === Number(row.id);
-    const canShow = Boolean(row.activity_status_enabled) || isSelf;
-
-    if (canShow) {
-      visibleMembers.push({
-        id: row.id,
-        username: row.username,
-        displayName: row.display_name || row.username,
-        avatar: sanitizeAvatar(row.avatar),
-        role: row.role || 'Member',
-        title: row.title || row.role || 'Member',
-        isOnline: true,
-        lastSeen: row.last_activity
-      });
-    } else {
-      hiddenMembersCount++;
+      if (canShow) {
+        visibleMembers.push({
+          id: row.id,
+          username: row.username,
+          displayName: row.display_name || row.username,
+          avatar: sanitizeAvatar(row.avatar),
+          role: row.role || 'Member',
+          title: row.title || row.role || 'Member',
+          isOnline: true,
+          lastSeen: row.last_activity
+        });
+      } else {
+        hiddenMembersCount++;
+      }
     }
-  }
 
-  return {
-    membersOnline,
-    guestsOnline,
-    totalOnline,
-    visibleMembers,
-    visibleMembersCount: visibleMembers.length,
-    hiddenMembersCount,
-    timeoutSeconds: PRESENCE_TIMEOUT_SECONDS
-  };
+    return {
+      membersOnline,
+      guestsOnline,
+      totalOnline,
+      visibleMembers,
+      visibleMembersCount: visibleMembers.length,
+      hiddenMembersCount,
+      timeoutSeconds: PRESENCE_TIMEOUT_SECONDS
+    };
+  } catch (err) {
+    console.warn('[Presence] Summary query fallback:', err.message);
+    return {
+      membersOnline: 1,
+      guestsOnline: 0,
+      totalOnline: 1,
+      visibleMembers: [],
+      visibleMembersCount: 0,
+      hiddenMembersCount: 0,
+      timeoutSeconds: PRESENCE_TIMEOUT_SECONDS
+    };
+  }
 }

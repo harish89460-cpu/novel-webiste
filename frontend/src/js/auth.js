@@ -8,7 +8,12 @@ import { updateUnreadMessageBadge } from './messaging.js';
 import { updateAuthorWriterHeader } from './author-header.js';
 
 window.IS_LOGGED_IN = Boolean(localStorage.getItem('rp_auth_token'));
-window.CURRENT_USER = null;
+try {
+  const cachedUser = localStorage.getItem('rp_user');
+  window.CURRENT_USER = cachedUser ? JSON.parse(cachedUser) : null;
+} catch (e) {
+  window.CURRENT_USER = null;
+}
 
 export function initAuth() {
   window.openAuthModal = (view = 'login') => {
@@ -404,6 +409,9 @@ window.handleLoginSubmit = async () => {
       }
 
       localStorage.setItem('rp_auth_token', data.token);
+      if (data.user) {
+        localStorage.setItem('rp_user', JSON.stringify(data.user));
+      }
       window.CURRENT_USER = data.user;
       window.IS_LOGGED_IN = true;
       window.closeAuthModal();
@@ -496,6 +504,9 @@ window.handleLoginSubmit = async () => {
       }
 
       localStorage.setItem('rp_auth_token', data.token);
+      if (data.user) {
+        localStorage.setItem('rp_user', JSON.stringify(data.user));
+      }
       window.CURRENT_USER = data.user;
       window.IS_LOGGED_IN = true;
       window.closeAuthModal();
@@ -903,6 +914,7 @@ window.handleLoginSubmit = async () => {
     }
     localStorage.removeItem('rp_auth_token');
     localStorage.removeItem('rp_user_role');
+    localStorage.removeItem('rp_user');
     sessionStorage.clear();
     window.CURRENT_USER = null;
     window.IS_LOGGED_IN = false;
@@ -1040,12 +1052,16 @@ export async function checkAuthSession() {
       if (data.authenticated && data.user) {
         window.CURRENT_USER = data.user;
         window.IS_LOGGED_IN = true;
+        try {
+          localStorage.setItem('rp_user', JSON.stringify(data.user));
+        } catch (e) {}
         updateHeaderUserArea();
         connectRealtimeNotificationStream();
         updateNotificationBadge();
         updateUnreadMessageBadge();
       } else {
         localStorage.removeItem('rp_auth_token');
+        localStorage.removeItem('rp_user');
         window.IS_LOGGED_IN = false;
         window.CURRENT_USER = null;
       }

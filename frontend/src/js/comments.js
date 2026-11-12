@@ -1183,6 +1183,24 @@ function stripHtml(html) {
   return tmp.textContent || tmp.innerText || '';
 }
 
+function commentHtmlToText(html) {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const anchors = tmp.querySelectorAll('a');
+  anchors.forEach(a => {
+    const href = a.getAttribute('href') || '';
+    const text = (a.textContent || '').trim();
+    if (!href) return;
+    if (!text || text === href) {
+      a.replaceWith(document.createTextNode(href));
+    } else {
+      a.replaceWith(document.createTextNode(`${text} (${href})`));
+    }
+  });
+  return tmp.textContent || tmp.innerText || '';
+}
+
 window._rpExpandedReplies = window._rpExpandedReplies || new Set();
 
 export async function renderCommentsWidget(containerId, novelId, chapterNum = 0, targetPage = null) {
@@ -1530,7 +1548,7 @@ function renderSingleIgComment(c, novelId, chapterNum, containerId) {
 
           <!-- Inline Edit Box (Hidden by Default) -->
           <div class="rp-ig-edit-box" id="ig-edit-box-${c.id}" style="display:none;">
-            <textarea class="rp-ig-edit-textarea" id="ig-edit-textarea-${c.id}" rows="2">${stripHtml(c.content)}</textarea>
+            <textarea class="rp-ig-edit-textarea" id="ig-edit-textarea-${c.id}" rows="2">${escapeHtml(commentHtmlToText(c.content))}</textarea>
             <div style="display:flex; gap:8px; justify-content:flex-end;">
               <button type="button" class="btn btn-outline btn-sm" onclick="handleCommentCancelEdit(${c.id})">Cancel</button>
               <button type="button" class="btn btn-gold btn-sm" onclick="handleCommentSave(${c.id}, '${escapeQuotes(novelId)}', '${escapeQuotes(chapterNum)}', '${escapeQuotes(containerId)}')">Save</button>
