@@ -678,8 +678,8 @@ body.author-page-view .site-header {
   left: 0;
   right: 0;
   width: 100%;
-  background: #FFFFFF;
-  border-bottom: 1px solid var(--color-border);
+  background: #E5F5F1;
+  border-bottom: 1px solid #CDE7E0;
   z-index: 1000;
   box-shadow: 0 1px 4px rgba(11, 31, 51, 0.04);
 }

@@ -55,19 +55,19 @@
   right: 0;
   width: 100%;
   max-width: 100%;
-  background: #FFFFFF;
-  border-bottom: 1px solid var(--color-border);
+  background: #E5F5F1;
+  border-bottom: 1px solid #CDE7E0;
   z-index: 1000;
   box-sizing: border-box;
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
 }
 
 .site-header.scrolled {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(229, 245, 241, 0.98);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 4px 20px rgba(16, 42, 67, 0.08);
-  border-bottom-color: rgba(200, 155, 60, 0.35);
+  border-bottom-color: #B2DFD6;
 }
 
 /* WordPress Admin Bar Compatibility */
@@ -953,15 +953,15 @@ img.custom-logo,
 }
 
 /* ==========================================================================
-   Site Footer - Compact Royal Purple Theme with Elegant Gold Accents
+   Site Footer - Soft Ivory Mint Theme (#E5F5F1)
    ========================================================================== */
 .site-footer {
-  background: linear-gradient(180deg, #1B072E 0%, #10031F 100%);
-  color: #FFFFFF;
+  background: #E5F5F1;
+  color: #0B1F33;
   padding-top: 18px;
   padding-bottom: 12px;
-  border-top: 2px solid #C5A059;
-  box-shadow: 0 -4px 20px rgba(16, 3, 31, 0.5);
+  border-top: 1px solid #CDE7E0;
+  box-shadow: 0 -2px 10px rgba(11, 31, 51, 0.03);
   position: relative;
   font-size: 12.5px;
   line-height: 1.5;
@@ -1048,7 +1048,7 @@ img.custom-logo,
   font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
   font-size: 15.5px;
   font-weight: 700;
-  color: #FFFFFF;
+  color: #0B1F33;
   letter-spacing: 0.3px;
   text-decoration: none;
   line-height: 1.2;
@@ -1056,12 +1056,12 @@ img.custom-logo,
 }
 
 .footer-brand-title:hover {
-  color: #E6C280;
+  color: #8C6116;
 }
 
 .footer-brand-tagline {
   font-size: 11px;
-  color: #D2C7E5;
+  color: #4A6375;
   letter-spacing: 0.2px;
   margin-top: 1px;
 }
@@ -1083,7 +1083,7 @@ img.custom-logo,
 }
 
 .footer-link-item {
-  color: #EDE8F7;
+  color: #1A384F;
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
@@ -1094,12 +1094,12 @@ img.custom-logo,
 }
 
 .footer-link-item:hover {
-  color: #E6C280;
+  color: #8C6116;
   transform: translateY(-1px);
 }
 
 .footer-link-sep {
-  color: rgba(212, 175, 55, 0.45);
+  color: #94A3B8;
   font-size: 9px;
   user-select: none;
 }
@@ -1116,9 +1116,9 @@ img.custom-logo,
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  color: #E6C280;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  color: #1A384F;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1128,16 +1128,16 @@ img.custom-logo,
 }
 
 .footer-social-btn:hover {
-  background: #D4AF37;
-  color: #1A072E;
-  border-color: #D4AF37;
+  background: #D5F2ED;
+  color: #0B1F33;
+  border-color: #A879CC;
   transform: translateY(-2px);
-  box-shadow: 0 3px 8px rgba(212, 175, 55, 0.35);
+  box-shadow: 0 3px 8px rgba(11, 31, 51, 0.12);
 }
 
 /* Footer Bottom Bar */
 .footer-bottom-bar {
-  border-top: 1px solid rgba(212, 175, 55, 0.2);
+  border-top: 1px solid #CBD5E1;
   padding-top: 8px;
   display: flex;
   flex-direction: column;
@@ -1145,7 +1145,7 @@ img.custom-logo,
   justify-content: space-between;
   gap: 4px;
   font-size: 11px;
-  color: rgba(237, 232, 247, 0.75);
+  color: #4A6375;
 }
 
 @media (min-width: 768px) {
@@ -1155,7 +1155,7 @@ img.custom-logo,
 }
 
 .footer-bottom-bar a {
-  color: #E6C280;
+  color: #1A384F;
   text-decoration: none;
 }
 

@@ -1793,8 +1793,8 @@ async function renderForumView(container, hash = '') {
 
               return `
                 <div class="forms-category-section" id="cat-sec-${escapeHtml(cat.id)}">
-                  <!-- Royal-Purple Header Bar -->
-                  <div class="forms-cat-header-bar" style="background: linear-gradient(90deg, #1A0B2E 0%, ${escapeHtml(cat.color || '#2E1065')} 60%, #3B0764 100%);">
+                  <!-- Main Category Header Bar -->
+                  <div class="forms-cat-header-bar" style="background: #A879CC;">
                     <div class="forms-cat-title-group">
                       <div class="forms-cat-icon">${cat.icon || '💬'}</div>
                       <div>
@@ -1806,30 +1806,6 @@ async function renderForumView(container, hash = '') {
                     <div class="forms-cat-actions">
                       <span class="forms-cat-pill">${subs.length > 0 ? `${subs.length} ${subs.length === 1 ? 'Section' : 'Sections'}` : `${novels.length} Novels`}</span>
                     </div>
-                  </div>
-
-                  <!-- Aligned Summary Header Row Above Content List -->
-                  <div class="forum-summary-bar" style="margin:12px 16px 14px;">
-                    <div class="forum-summary-stats">
-                      <span class="forum-summary-stat-item">
-                        <strong>${subs.length > 0 ? subs.length : novels.length}</strong> ${subs.length > 0 ? (subs.length === 1 ? 'Subcategory' : 'Subcategories') : (novels.length === 1 ? 'Novel' : 'Novels')}
-                      </span>
-                      ${subs.length > 0 ? `
-                        <span>•</span>
-                        <span class="forum-summary-stat-item"><strong>${totalCatItems}</strong> ${totalCatItems === 1 ? 'Title' : 'Titles'}</span>
-                      ` : ''}
-                      <span>•</span>
-                      <span class="forum-summary-stat-item"><strong>${totalCatComments}</strong> Comments</span>
-                      <span>•</span>
-                      <span class="forum-summary-stat-item"><strong>${Number(totalCatViews).toLocaleString()}</strong> Views</span>
-                    </div>
-                    ${(isCatLeaf && latestTitle) ? `
-                      <div class="forum-summary-latest">
-                        <span>Latest:</span>
-                        <a href="${latestLink}">${escapeHtml(latestTitle)}</a>
-                        ${latestDate ? `<span>(${formatLastSeen(latestDate)})</span>` : ''}
-                      </div>
-                    ` : ''}
                   </div>
 
                   <!-- Dedicated Category Threads & Composer (Dedicated Category Page) -->

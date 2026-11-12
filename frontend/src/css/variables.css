@@ -1,4 +1,12 @@
 :root {
+  /* Exact Theme Palette (Reference Colors) */
+  --color-header-bg: #E5F5F1;
+  --color-footer-bg: #E5F5F1;
+  --color-category-header-bg: #A879CC;
+  --color-section-header-bg: #E5F5F1;
+  --color-panel-title-bg: #D5F2ED;
+  --color-panel-content-bg: #FFFFFF;
+
   /* Core Colors */
   --color-bg-primary: #FFFFFF;
   --color-navy-primary: #102A43;

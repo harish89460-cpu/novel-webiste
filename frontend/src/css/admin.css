@@ -522,8 +522,8 @@
 }
 
 body.admin-view .site-header {
-  border-bottom: 1px solid var(--color-border);
-  background: #FFFFFF;
+  border-bottom: 1px solid #CDE7E0;
+  background: #E5F5F1;
 }
 
 /* Admin Mode Header Alignment & Navigation */
