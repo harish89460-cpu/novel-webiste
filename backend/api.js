@@ -170,21 +170,50 @@ import {
 
 function readJsonBody(req, maxBytes = 55 * 1024 * 1024) {
   return new Promise((resolve) => {
+    if (req.body && typeof req.body === 'object') {
+      return resolve(req.body);
+    }
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    if (contentLength === 0 && !req.headers['transfer-encoding']) {
+      return resolve({});
+    }
+    if (req.readableEnded) {
+      return resolve({});
+    }
+
     let body = '';
-    req.on('data', chunk => {
-      body += chunk;
-      if (body.length > maxBytes) {
-        req.destroy();
-      }
-    });
-    req.on('end', () => {
+    let settled = false;
+
+    const done = () => {
+      if (settled) return;
+      settled = true;
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch {
         resolve({});
       }
+    };
+
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        req.destroy();
+        done();
+      } else if (contentLength > 0 && Buffer.byteLength(body, 'utf8') >= contentLength) {
+        done();
+      }
     });
-    req.on('error', () => resolve({}));
+
+    req.on('end', done);
+    req.on('error', () => {
+      if (!settled) {
+        settled = true;
+        resolve({});
+      }
+    });
+
+    // Fallback safety timeout (8 seconds)
+    setTimeout(done, 8000);
   });
 }
 
