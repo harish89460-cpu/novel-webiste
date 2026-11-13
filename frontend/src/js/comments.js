@@ -1053,9 +1053,13 @@ export async function renderReactionsWidget(containerId, targetType, targetId) {
 window.handleLikeButtonClick = async function(targetType, targetId, containerId) {
   const isGuest = !window.IS_LOGGED_IN;
   if (isGuest) {
-    showToast('Please log in to like this chapter! ✨');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to like this chapter! ✨', window.location.hash);
+    } else {
+      showToast('Please log in to like this chapter! ✨');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
     }
     return;
   }
@@ -1130,12 +1134,16 @@ window.handleReactionSelect = async function(targetType, targetId, emoji, contai
   const isGuest = !window.IS_LOGGED_IN;
 
   if (isGuest) {
-    showToast('Please log in to react to this chapter! ✨');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
-    }
     const picker = document.getElementById(`emoji-picker-${containerId}`);
     if (picker) picker.style.display = 'none';
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to react to this chapter! ✨', window.location.hash);
+    } else {
+      showToast('Please log in to react to this chapter! ✨');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
+    }
     return;
   }
 
@@ -2395,9 +2403,13 @@ window.handleImageFileSelected = async function(event, editorId) {
 };
 
 window.handleGuestCommentFocus = function() {
-  showToast('Please log in to post your comment! 💬');
-  if (typeof window.openAuthModal === 'function') {
-    window.openAuthModal('login');
+  if (typeof window.requireAuthOrRedirect === 'function') {
+    window.requireAuthOrRedirect('Please log in to post your comment! 💬', window.location.hash);
+  } else {
+    showToast('Please log in to post your comment! 💬');
+    if (typeof window.openAuthModal === 'function') {
+      window.openAuthModal('login');
+    }
   }
 };
 
@@ -2408,9 +2420,13 @@ window.handleCommentSubmit = async function(novelId, chapterNum, containerId) {
   const isGuest = !window.IS_LOGGED_IN;
 
   if (isGuest) {
-    showToast('Please log in to post a comment! 💬');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to post a comment! 💬', window.location.hash);
+    } else {
+      showToast('Please log in to post a comment! 💬');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
     }
     return;
   }
@@ -2501,9 +2517,13 @@ window.changeCommentsPage = async function(containerId, novelId, chapterNum, pag
 
 window.openCommentReply = function(commentId, authorName) {
   if (!window.IS_LOGGED_IN) {
-    showToast('Please log in to reply to comments.');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to reply to comments.', window.location.hash);
+    } else {
+      showToast('Please log in to reply to comments.');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
     }
     return;
   }
@@ -2550,9 +2570,13 @@ window.closeCommentReply = function(commentId) {
 
 window.handleReplySubmit = async function(parentId, novelId, chapterNum, containerId) {
   if (!window.IS_LOGGED_IN) {
-    showToast('Please log in to post a reply.');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to post a reply.', window.location.hash);
+    } else {
+      showToast('Please log in to post a reply.');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
     }
     return;
   }
@@ -2658,9 +2682,13 @@ window.toggleReplies = function(commentId) {
 
 window.handleCommentLike = async function(commentId, novelId, chapterNum, containerId) {
   if (!window.IS_LOGGED_IN) {
-    showToast('Please log in to like this comment.');
-    if (typeof window.openAuthModal === 'function') {
-      window.openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to like this comment.', window.location.hash);
+    } else {
+      showToast('Please log in to like this comment.');
+      if (typeof window.openAuthModal === 'function') {
+        window.openAuthModal('login');
+      }
     }
     return;
   }

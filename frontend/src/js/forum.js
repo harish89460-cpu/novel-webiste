@@ -56,9 +56,13 @@ export function initForum() {
   window.submitForumReply = async (topicId) => {
     const isGuest = !window.IS_LOGGED_IN;
     if (isGuest) {
-      showToast('Please log in to reply.');
-      if (typeof window.openAuthModal === 'function') {
-        window.openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to reply.', window.location.hash);
+      } else {
+        showToast('Please log in to reply.');
+        if (typeof window.openAuthModal === 'function') {
+          window.openAuthModal('login');
+        }
       }
       return;
     }
@@ -120,9 +124,13 @@ export function initForum() {
    */
   window.toggleReaction = async (topicId, postId, emoji) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to react.');
-      if (typeof window.openAuthModal === 'function') {
-        window.openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to react.', window.location.hash);
+      } else {
+        showToast('Please log in to react.');
+        if (typeof window.openAuthModal === 'function') {
+          window.openAuthModal('login');
+        }
       }
       return;
     }
@@ -175,9 +183,13 @@ export function initForum() {
    */
   window.openNewTopicModalForCategory = (categoryId, categoryTitle) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to start a new discussion.');
-      if (typeof window.openAuthModal === 'function') {
-        window.openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to start a new discussion.', window.location.hash);
+      } else {
+        showToast('Please log in to start a new discussion.');
+        if (typeof window.openAuthModal === 'function') {
+          window.openAuthModal('login');
+        }
       }
       return;
     }
@@ -203,9 +215,13 @@ export function initForum() {
    */
   window.toggleNewTopicForm = () => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to start a new discussion.');
-      if (typeof window.openAuthModal === 'function') {
-        window.openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to start a new discussion.', window.location.hash);
+      } else {
+        showToast('Please log in to start a new discussion.');
+        if (typeof window.openAuthModal === 'function') {
+          window.openAuthModal('login');
+        }
       }
       return;
     }
@@ -226,9 +242,13 @@ export function initForum() {
    */
   window.submitNewForumTopic = async (categoryId) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to create a discussion.');
-      if (typeof window.openAuthModal === 'function') {
-        window.openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to create a discussion.', window.location.hash);
+      } else {
+        showToast('Please log in to create a discussion.');
+        if (typeof window.openAuthModal === 'function') {
+          window.openAuthModal('login');
+        }
       }
       return;
     }

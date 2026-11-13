@@ -2,19 +2,19 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/$1"
+      "destination": "https://coaching-persistent-mailed-linda.trycloudflare.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/uploads/$1"
+      "destination": "https://coaching-persistent-mailed-linda.trycloudflare.com/uploads/$1"
     },
     {
       "source": "/share",
-      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/share"
+      "destination": "https://coaching-persistent-mailed-linda.trycloudflare.com/api/share"
     },
     {
       "source": "/share/(.*)",
-      "destination": "https://independent-flood-thick-delicious.trycloudflare.com/api/share/$1"
+      "destination": "https://coaching-persistent-mailed-linda.trycloudflare.com/api/share/$1"
     },
     {
       "source": "/((?!assets/).*)",

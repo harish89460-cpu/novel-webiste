@@ -443,9 +443,13 @@ export function initReader() {
     if (!resolvedId) return;
 
     const token = localStorage.getItem('rp_auth_token');
-    if (!token) {
+    if (!token && !window.IS_LOGGED_IN) {
       window.toggleReaderEmojiPopup(null, false);
-      showToast('Please log in to react to this novel ✨');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to react to this novel ✨', window.location.hash);
+      } else {
+        showToast('Please log in to react to this novel ✨');
+      }
       return;
     }
 

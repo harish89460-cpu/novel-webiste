@@ -286,13 +286,14 @@ export async function getSidebarPostsFromDb(limit = 7) {
     WHERE t.is_published = 1 AND t.visibility = 'public';
   `);
 
-  // 2. Content Articles (General Notes, Announcements, Tea Time, Custom Articles)
+  // 2. Content Articles (General Notes, Announcements, Community Threads - EXCLUDING NOVELS)
   const articleRows = await query(`
     SELECT 
       a.id,
       a.unique_slug,
       a.title,
       'article' AS item_type,
+      a.content_type,
       a.main_category_id,
       a.sub_category_id,
       COALESCE(a.views_count, 0) AS views_count,
@@ -311,7 +312,10 @@ export async function getSidebarPostsFromDb(limit = 7) {
     FROM content_articles a
     LEFT JOIN users au ON a.author_id = au.id
     LEFT JOIN profiles ap ON au.id = ap.user_id
-    WHERE a.is_published = 1 AND a.is_disabled = 0;
+    WHERE a.is_published = 1 
+      AND a.is_disabled = 0
+      AND (a.content_type IS NULL OR (LOWER(a.content_type) != 'novel' AND LOWER(a.content_type) != 'audio_novel'))
+      AND (a.main_category_id IS NULL OR LOWER(a.main_category_id) != 'rudhra_prarthana_tamil_novels');
   `);
 
   // Gather user profiles for accurate "Last updated by"

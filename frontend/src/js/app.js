@@ -180,39 +180,56 @@ export function initApp() {
 export async function renderAppView() {
   let hash = window.location.hash;
 
-  // Direct pathname normalization for admin routes (e.g. /admin, /admin/dashboard, /admin/novels, /admin/login)
-  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms' || hash === '#forum') && window.location.pathname.startsWith('/admin')) {
+  // Direct pathname normalization for direct browser URLs and refreshes on Vercel
+  if (!hash || hash === '#home' || hash === '#' || hash === '' || hash === '#forms' || hash === '#forum') {
     const pathname = window.location.pathname.replace(/\/+$/, '');
-    if (pathname === '/admin/login') {
-      hash = '#admin-login';
-    } else if (pathname === '/admin' || pathname === '/admin/dashboard') {
-      hash = '#admin';
-    } else {
-      const sub = pathname.replace('/admin/', '').split('/')[0];
-      const tabMap = {
-        novels: 'novels',
-        episodes: 'episodes',
-        editor: 'editor',
-        schedule: 'scheduler',
-        scheduler: 'scheduler',
-        settings: 'settings',
-        overview: 'overview',
-        media: 'media',
-        'writer-chats': 'writer-chats'
-      };
-      const tab = tabMap[sub] || 'overview';
-      hash = `#admin?tab=${tab}`;
-    }
-  }
-
-  // Direct pathname normalization for writer routes (e.g. /writer, /writer/dashboard, /writer/editor)
-  if ((!hash || hash === '#home' || hash === '#' || hash === '#forms' || hash === '#forum') && window.location.pathname.startsWith('/writer')) {
-    const pathname = window.location.pathname.replace(/\/+$/, '');
-    if (pathname === '/writer' || pathname === '/writer/dashboard') {
-      hash = '#writer';
-    } else {
-      const sub = pathname.replace('/writer/', '').split('/')[0];
-      hash = `#writer?tab=${sub}`;
+    if (pathname.startsWith('/admin')) {
+      if (pathname === '/admin/login') {
+        hash = '#admin-login';
+      } else if (pathname === '/admin' || pathname === '/admin/dashboard') {
+        hash = '#admin';
+      } else {
+        const sub = pathname.replace('/admin/', '').split('/')[0];
+        const tabMap = {
+          novels: 'novels',
+          episodes: 'episodes',
+          editor: 'editor',
+          schedule: 'scheduler',
+          scheduler: 'scheduler',
+          settings: 'settings',
+          overview: 'overview',
+          media: 'media',
+          'writer-chats': 'writer-chats'
+        };
+        const tab = tabMap[sub] || 'overview';
+        hash = `#admin?tab=${tab}`;
+      }
+    } else if (pathname.startsWith('/writer')) {
+      if (pathname === '/writer' || pathname === '/writer/dashboard') {
+        hash = '#writer';
+      } else {
+        const sub = pathname.replace('/writer/', '').split('/')[0];
+        hash = `#writer?tab=${sub}`;
+      }
+    } else if (pathname === '/login' || pathname === '/member-login' || pathname === '/signin') {
+      hash = '#login' + (window.location.search || '');
+    } else if (pathname === '/register' || pathname === '/signup') {
+      hash = '#register' + (window.location.search || '');
+    } else if (pathname === '/forgot-password' || pathname === '/forgot') {
+      hash = '#forgot-password' + (window.location.search || '');
+    } else if (pathname === '/auth') {
+      hash = '#login' + (window.location.search || '');
+    } else if (pathname === '/forum' || pathname === '/forms') {
+      hash = '#forum';
+    } else if (pathname === '/novels' || pathname === '/library') {
+      hash = '#novels';
+    } else if (pathname === '/audio' || pathname === '/audio-novels') {
+      hash = '#audio';
+    } else if (pathname === '/members') {
+      hash = '#members';
+    } else if (pathname.startsWith('/thread/')) {
+      const threadId = pathname.replace('/thread/', '').split('/')[0];
+      hash = `#thread?id=${encodeURIComponent(threadId)}`;
     }
   }
 
@@ -257,11 +274,25 @@ export async function renderAppView() {
   try {
     if (hash.startsWith('#admin-login') || hash.startsWith('#writer-login')) {
       await renderAdminLoginView(main);
-    } else if (hash.startsWith('#login') || hash.startsWith('#member-login')) {
+    } else if (
+      hash.startsWith('#login') || 
+      hash.startsWith('#member-login') || 
+      hash.startsWith('#signin') || 
+      hash.startsWith('#auth') || 
+      hash.startsWith('#auth-login')
+    ) {
       await renderMemberLoginView(main);
-    } else if (hash.startsWith('#register')) {
+      if (hash.includes('register') || hash.includes('mode=register') || hash.includes('signup')) {
+        if (typeof window.switchAuthView === 'function') window.switchAuthView('register');
+      } else if (hash.includes('forgot') || hash.includes('mode=forgot')) {
+        if (typeof window.switchAuthView === 'function') window.switchAuthView('forgot');
+      }
+    } else if (hash.startsWith('#register') || hash.startsWith('#signup')) {
       await renderMemberLoginView(main);
       if (typeof window.switchAuthView === 'function') window.switchAuthView('register');
+    } else if (hash.startsWith('#forgot-password') || hash.startsWith('#forgot')) {
+      await renderMemberLoginView(main);
+      if (typeof window.switchAuthView === 'function') window.switchAuthView('forgot');
     } else if (hash.startsWith('#admin')) {
       const tabParam = hash.includes('tab=') ? new URLSearchParams(hash.split('?')[1]).get('tab') : 'overview';
       await renderAdminDashboard(main, tabParam);
@@ -306,6 +337,15 @@ export async function renderAppView() {
     } else if (hash.startsWith('#forum') || hash.startsWith('#forms')) {
       await renderForumView(main, hash);
     } else if (hash.startsWith('#thread-create') || hash.startsWith('#add-thread')) {
+      if (!window.IS_LOGGED_IN) {
+        if (typeof window.requireAuthOrRedirect === 'function') {
+          window.requireAuthOrRedirect('Please log in to start a new thread.', hash || '#forum?compose=true');
+        } else {
+          showToast('Please log in to start a new thread.');
+          window.location.hash = '#login';
+        }
+        return;
+      }
       const urlParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
       const subId = urlParams.get('sub') || '';
       const catId = urlParams.get('cat') || '';
@@ -383,6 +423,12 @@ export async function renderAppView() {
     );
     if (isNetwork) {
       renderNetworkError(main, () => renderAppView());
+    } else if (err && (err.status === 401 || err.isSessionExpired)) {
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to continue.', hash);
+      } else {
+        window.location.hash = '#login';
+      }
     } else if (err && err.status === 403) {
       renderAccessDenied(main, hash);
     } else {
@@ -553,8 +599,12 @@ async function renderNovelDetailView(container, hash) {
   // Real-Time Save Novel Handler
   window.toggleSaveNovel = async (targetNovelId) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to save novels.');
-      if (typeof openAuthModal === 'function') openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to save novels.', window.location.hash);
+      } else {
+        showToast('Please log in to save novels.');
+        if (typeof openAuthModal === 'function') openAuthModal('login');
+      }
       return;
     }
     const btn = document.getElementById('novel-save-btn');
@@ -594,8 +644,12 @@ async function renderNovelDetailView(container, hash) {
   // Author Follow / Unfollow Handler on Novel Page
   window.toggleAuthorFollow = async (authorId) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to follow the author.');
-      if (typeof openAuthModal === 'function') openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to follow the author.', window.location.hash);
+      } else {
+        showToast('Please log in to follow the author.');
+        if (typeof openAuthModal === 'function') openAuthModal('login');
+      }
       return;
     }
     try {
@@ -650,8 +704,12 @@ async function renderNovelDetailView(container, hash) {
 
   window.submitNovelRating = async (targetNovelId, ratingVal) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to rate this novel.');
-      if (typeof openAuthModal === 'function') openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to rate this novel.', window.location.hash);
+      } else {
+        showToast('Please log in to rate this novel.');
+        if (typeof openAuthModal === 'function') openAuthModal('login');
+      }
       return;
     }
     try {
@@ -2148,17 +2206,29 @@ function getSidebarSkeletonHtml(count = 4) {
 }
 
 function renderSidebarPostItems(posts, { isTrending = false } = {}) {
-  if (!Array.isArray(posts) || posts.length === 0) {
+  // Disconnect novels completely: Latest Posts is strictly for Forum posts & threads
+  const cleanPosts = (Array.isArray(posts) ? posts : []).filter(post => {
+    if (!post) return false;
+    const type = (post.itemType || post.contentType || '').toLowerCase();
+    if (type === 'novel' || type === 'audio_novel') return false;
+    const link = String(post.link || '');
+    if (link.startsWith('#novel?') || link.startsWith('#novel/') || link.startsWith('#reader?novel=')) return false;
+    const cat = String(post.category || '').toLowerCase();
+    if (cat.includes('tamil novel') || cat === 'novels' || cat === 'audio novels') return false;
+    return true;
+  });
+
+  if (cleanPosts.length === 0) {
     return `
       <div class="sidebar-empty-state" style="text-align:center; padding:24px 16px;">
         <div style="font-size:24px; margin-bottom:6px;">📭</div>
         <div style="font-weight:600; font-size:13px; color:var(--color-navy-deep); margin-bottom:2px;">No posts yet</div>
-        <div style="font-size:12px; color:var(--color-text-muted);">Activity will appear here as discussions and content are updated.</div>
+        <div style="font-size:12px; color:var(--color-text-muted);">Activity will appear here as discussions and forum threads are updated.</div>
       </div>
     `;
   }
 
-  return posts.map((post, index) => {
+  return cleanPosts.map((post, index) => {
     const avatarUrl = getAvatarUrl(post.avatar);
     const safeTitle = escapeHtml(post.title || 'Untitled');
     const safeLastAuthor = escapeHtml(post.lastAuthor || post.author || 'Member');
@@ -2954,8 +3024,12 @@ async function renderMemberProfileView(container, hash) {
   // Follow / Unfollow Toggle Handler
   window.handleProfileFollowToggle = async (targetId) => {
     if (!window.IS_LOGGED_IN) {
-      showToast('Please log in to follow members.');
-      if (typeof openAuthModal === 'function') openAuthModal('login');
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to follow members.', window.location.hash);
+      } else {
+        showToast('Please log in to follow members.');
+        if (typeof openAuthModal === 'function') openAuthModal('login');
+      }
       return;
     }
     try {
@@ -5009,8 +5083,12 @@ async function renderThreadCreateView(container, hash = '') {
   );
 
   if (!window.IS_LOGGED_IN) {
-    showToast('Please log in as Admin or Writer to post a thread.');
-    window.location.hash = '#auth?mode=login';
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in as Admin or Writer to post a thread.', hash || '#forum?compose=true');
+    } else {
+      showToast('Please log in as Admin or Writer to post a thread.');
+      window.location.hash = '#login';
+    }
     return;
   }
 
@@ -5480,11 +5558,11 @@ window.initInlineThreadComposer = function(subId, catId) {
   function expandComposer() {
     const token = localStorage.getItem('rp_auth_token');
     if (!token && !window.IS_LOGGED_IN) {
-      showToast('Please log in to start a new thread.');
-      if (typeof window.openLoginModal === 'function') {
-        window.openLoginModal();
+      if (typeof window.requireAuthOrRedirect === 'function') {
+        window.requireAuthOrRedirect('Please log in to start a new thread.', window.location.hash || '#forum?compose=true');
       } else {
-        window.location.hash = '#auth?mode=login';
+        showToast('Please log in to start a new thread.');
+        window.location.hash = '#login';
       }
       quickInput?.blur();
       return;

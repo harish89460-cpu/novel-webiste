@@ -221,8 +221,12 @@ function renderSingleProfilePostHtml(post) {
  */
 window.handleCreateProfilePost = async () => {
   if (!window.IS_LOGGED_IN || !window.CURRENT_USER) {
-    showToast('Please log in to share a profile post.');
-    if (typeof openAuthModal === 'function') openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to share a profile post.', window.location.hash);
+    } else {
+      showToast('Please log in to share a profile post.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+    }
     return;
   }
 
@@ -356,8 +360,12 @@ window.handleDeleteProfilePost = async (postId) => {
  */
 window.handleLikeProfilePost = async (postId) => {
   if (!window.IS_LOGGED_IN || !window.CURRENT_USER) {
-    showToast('Please log in to like posts.');
-    if (typeof openAuthModal === 'function') openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to like posts.', window.location.hash);
+    } else {
+      showToast('Please log in to like posts.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+    }
     return;
   }
 
@@ -453,8 +461,12 @@ async function loadProfilePostComments(postId) {
  */
 window.handleSubmitProfilePostComment = async (postId) => {
   if (!window.IS_LOGGED_IN || !window.CURRENT_USER) {
-    showToast('Please log in to reply.');
-    if (typeof openAuthModal === 'function') openAuthModal('login');
+    if (typeof window.requireAuthOrRedirect === 'function') {
+      window.requireAuthOrRedirect('Please log in to reply.', window.location.hash);
+    } else {
+      showToast('Please log in to reply.');
+      if (typeof openAuthModal === 'function') openAuthModal('login');
+    }
     return;
   }
 

@@ -16,12 +16,44 @@ try {
 }
 
 export function initAuth() {
+  window.requireAuthOrRedirect = (message = 'Please log in to continue.', targetRedirect = null) => {
+    const token = localStorage.getItem('rp_auth_token');
+    if (token && window.IS_LOGGED_IN) {
+      return true;
+    }
+
+    const displayMsg = message || 'Please log in to continue.';
+    try {
+      sessionStorage.setItem('rp_auth_msg', displayMsg);
+    } catch {}
+
+    if (typeof window.showToast === 'function') {
+      window.showToast(displayMsg);
+    }
+
+    const dest = targetRedirect || window.location.hash || '#forum';
+    try {
+      sessionStorage.setItem('rp_auth_redirect', dest);
+    } catch {}
+
+    const redirectParam = encodeURIComponent(dest);
+    window.location.hash = `#login?redirect=${redirectParam}`;
+    return false;
+  };
+
   window.openAuthModal = (view = 'login') => {
     const modal = document.getElementById('auth-modal');
     if (modal) {
       modal.classList.add('open');
-      switchAuthView(view);
+      const target = document.getElementById('auth-form-container') || document.getElementById('auth-modal-form-container');
+      switchAuthView(view, target);
+    } else {
+      window.location.hash = view === 'register' ? '#register' : '#login';
     }
+  };
+
+  window.openLoginModal = (view = 'login') => {
+    window.openAuthModal(view);
   };
 
   window.closeAuthModal = () => {
@@ -45,8 +77,18 @@ export function initAuth() {
     }
   };
 
-  window.switchAuthView = (view) => {
-    const container = document.getElementById('auth-form-container');
+  window.switchAuthView = (view, targetContainer = null) => {
+    let container = targetContainer;
+    if (!container) {
+      const pageContainer = document.getElementById('auth-page-form-container');
+      const modalContainer = document.getElementById('auth-form-container');
+      const modal = document.getElementById('auth-modal');
+      if (modal && modal.classList.contains('open')) {
+        container = modalContainer || pageContainer;
+      } else {
+        container = pageContainer || modalContainer;
+      }
+    }
     if (!container) return;
 
     if (view === 'login') {
@@ -363,11 +405,13 @@ export function initAuth() {
     }
   };
 
-window.handleLoginSubmit = async () => {
-    const usernameInput = document.getElementById('login-username');
-    const passwordInput = document.getElementById('login-password');
-    const submitBtn = document.getElementById('login-submit-btn');
-    const errorEl = document.getElementById('auth-error-msg');
+window.handleLoginSubmit = async (event) => {
+    const e = event || window.event;
+    const form = e?.target?.closest ? e.target.closest('form') : document.querySelector('.auth-modal-form');
+    const usernameInput = form ? form.querySelector('#login-username, input[type="text"]') : document.getElementById('login-username');
+    const passwordInput = form ? form.querySelector('#login-password, input[type="password"]') : document.getElementById('login-password');
+    const submitBtn = form ? form.querySelector('#login-submit-btn, button[type="submit"]') : document.getElementById('login-submit-btn');
+    const errorEl = form ? (form.querySelector('#auth-error-msg') || form.closest('.rp-auth-card')?.querySelector('#auth-error-msg')) : document.getElementById('auth-error-msg');
     if (errorEl) errorEl.style.display = 'none';
 
     const username = usernameInput?.value?.trim();
@@ -422,14 +466,19 @@ window.handleLoginSubmit = async () => {
       updateNotificationBadge();
       updateUnreadMessageBadge();
 
-      // Check redirect destination (e.g. from restricted chapter or audio)
-      const redirectHash = sessionStorage.getItem('rp_auth_redirect');
-      if (redirectHash) {
-        sessionStorage.removeItem('rp_auth_redirect');
+      // Check redirect destination (e.g. from restricted chapter, thread, or comment)
+      const urlParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      const redirectFromUrl = urlParams.get('redirect');
+      const redirectHash = sessionStorage.getItem('rp_auth_redirect') || (redirectFromUrl ? decodeURIComponent(redirectFromUrl) : null);
+      sessionStorage.removeItem('rp_auth_redirect');
+      sessionStorage.removeItem('rp_auth_msg');
+
+      if (redirectHash && !redirectHash.startsWith('#login') && !redirectHash.startsWith('#auth') && !redirectHash.startsWith('#register')) {
         window.location.hash = redirectHash;
         if (window.renderAppView) window.renderAppView();
-      } else if (window.renderAppView) {
-        window.renderAppView();
+      } else {
+        window.location.hash = '#forum';
+        if (window.renderAppView) window.renderAppView();
       }
     } catch (err) {
       console.error('Login error:', err);
@@ -1172,16 +1221,46 @@ export async function renderMemberLoginView(container) {
     return;
   }
 
+  const urlParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+  const redirectParam = urlParams.get('redirect');
+  if (redirectParam) {
+    try {
+      sessionStorage.setItem('rp_auth_redirect', decodeURIComponent(redirectParam));
+    } catch {}
+  }
+
+  const authMsg = sessionStorage.getItem('rp_auth_msg');
+  // Clear one-time message so it doesn't linger across unrelated pages
+  if (authMsg) {
+    sessionStorage.removeItem('rp_auth_msg');
+  }
+
+  const isRegister = window.location.hash.includes('register') || window.location.hash.includes('signup');
+  const isForgot = window.location.hash.includes('forgot');
+
   container.innerHTML = `
     <div class="auth-page-wrapper">
       <div class="auth-page-container">
         <div class="rp-auth-card">
           <div class="auth-card-accent-bar"></div>
-          <div id="auth-form-container"></div>
+          ${authMsg ? `
+            <div class="auth-restriction-banner" style="margin:20px 24px 0 24px; padding:12px 16px; background:#FEF3C7; border:1px solid #FCD34D; border-radius:10px; color:#92400E; font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🔒</span>
+              <span>${escapeHtml(authMsg)}</span>
+            </div>
+          ` : ''}
+          <div id="auth-page-form-container"></div>
         </div>
       </div>
     </div>
   `;
 
-  window.switchAuthView('login');
+  const targetFormContainer = document.getElementById('auth-page-form-container');
+  if (isForgot) {
+    window.switchAuthView('forgot', targetFormContainer);
+  } else if (isRegister) {
+    window.switchAuthView('register', targetFormContainer);
+  } else {
+    window.switchAuthView('login', targetFormContainer);
+  }
 }

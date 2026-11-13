@@ -1457,11 +1457,14 @@ export async function createContentArticle({
     details: `Created content article "${cleanTitle}" (ID: ${result.insertId}, ParentID: ${pId}, Slug: ${cleanSlug})`
   });
 
-  // Notify followers and members if published (Non-blocking background delivery)
-  if (isPublished) {
+  // CRITICAL REQUIREMENT: Novel creation and novel updates must NEVER generate member notifications or appear in Latest Posts
+  const isNovelContent = cType === 'novel' || String(mId || '').toLowerCase() === 'rudhra_prarthana_tamil_novels';
+
+  // Notify followers and members ONLY for genuine forum threads, NEVER for novel creations
+  if (isPublished && !isNovelContent) {
     const threadLink = `#thread?id=${encodeURIComponent(cleanSlug)}`;
 
-    // Live Activity Tracking for Update Panels
+    // Live Activity Tracking for Update Panels (strictly for forum threads)
     try {
       await recordPanelActivity({
         categoryId: String(mId),
@@ -1470,11 +1473,11 @@ export async function createContentArticle({
         userId: aId,
         userName: authorDisplayName,
         userAvatar: null,
-        activityType: cType === 'novel' ? 'novel_published' : 'thread_created',
+        activityType: 'thread_created',
         title: cleanTitle,
         preview: content ? content.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
         emoji: null,
-        targetType: cType === 'novel' ? 'novel' : 'thread',
+        targetType: 'thread',
         targetId: String(result.insertId),
         url: threadLink
       });
@@ -1634,7 +1637,10 @@ export async function updateContentArticle({
     details: `Updated content article "${art.title}" (ID: ${id})`
   });
 
-  if (content) {
+  // CRITICAL: Novel edits and updates must NEVER generate member notifications or appear in Latest Posts
+  const isNovelUpdate = (art.content_type || '').toLowerCase() === 'novel' || String(art.main_category_id || '').toLowerCase() === 'rudhra_prarthana_tamil_novels';
+
+  if (content && !isNovelUpdate) {
     const threadLink = `#thread?id=${encodeURIComponent(art.unique_slug || id)}`;
     await dispatchMentionNotifications({
       content,
@@ -1647,30 +1653,32 @@ export async function updateContentArticle({
     }).catch(() => {});
   }
 
-  // Live Activity Tracking for Update Panels
-  try {
-    const updatedSlug = (uniqueSlug !== undefined && uniqueSlug !== null && uniqueSlug.trim() !== '') ? uniqueSlug.trim() : art.unique_slug;
-    const finalTitle = title ? title.trim() : art.title;
-    const finalContent = content !== undefined ? content : art.content;
-    const finalCat = (mainCategoryId !== undefined && mainCategoryId !== null && mainCategoryId !== '') ? String(mainCategoryId) : String(art.main_category_id);
-    const finalSub = (subCategoryId !== undefined && subCategoryId !== null && subCategoryId !== '') ? String(subCategoryId) : (art.sub_category_id ? String(art.sub_category_id) : null);
-    await recordPanelActivity({
-      categoryId: finalCat,
-      subCategoryId: finalSub,
-      novelId: String(numericId),
-      userId: adminId,
-      userName: authorName || art.author_name,
-      userAvatar: null,
-      activityType: 'thread_updated',
-      title: finalTitle,
-      preview: finalContent ? finalContent.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
-      emoji: null,
-      targetType: 'thread',
-      targetId: String(numericId),
-      url: `#thread?id=${encodeURIComponent(updatedSlug || numericId)}`
-    });
-  } catch (actErr) {
-    console.warn('[Panel Activity Tracking Warning]:', actErr.message);
+  // Live Activity Tracking for Update Panels (strictly for forum threads, not novels)
+  if (!isNovelUpdate) {
+    try {
+      const updatedSlug = (uniqueSlug !== undefined && uniqueSlug !== null && uniqueSlug.trim() !== '') ? uniqueSlug.trim() : art.unique_slug;
+      const finalTitle = title ? title.trim() : art.title;
+      const finalContent = content !== undefined ? content : art.content;
+      const finalCat = (mainCategoryId !== undefined && mainCategoryId !== null && mainCategoryId !== '') ? String(mainCategoryId) : String(art.main_category_id);
+      const finalSub = (subCategoryId !== undefined && subCategoryId !== null && subCategoryId !== '') ? String(subCategoryId) : (art.sub_category_id ? String(art.sub_category_id) : null);
+      await recordPanelActivity({
+        categoryId: finalCat,
+        subCategoryId: finalSub,
+        novelId: String(numericId),
+        userId: adminId,
+        userName: authorName || art.author_name,
+        userAvatar: null,
+        activityType: 'thread_updated',
+        title: finalTitle,
+        preview: finalContent ? finalContent.replace(/<[^>]+>/g, '').trim().slice(0, 120) : '',
+        emoji: null,
+        targetType: 'thread',
+        targetId: String(numericId),
+        url: `#thread?id=${encodeURIComponent(updatedSlug || numericId)}`
+      });
+    } catch (actErr) {
+      console.warn('[Panel Activity Tracking Warning]:', actErr.message);
+    }
   }
 
   return { success: true, message: 'Content updated successfully!' };
