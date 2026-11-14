@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/content.php';
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -77,6 +78,25 @@ if ($path === '/api/auth/me' && $method === 'GET') {
 if ($path === '/api/auth/logout' && $method === 'POST') {
     logout_user($token);
     json_response(['success' => true]);
+}
+
+if ($path === '/api/content/hierarchy' && $method === 'GET') {
+    try {
+        json_response(public_content_hierarchy(user_from_token($token)));
+    } catch (Throwable $error) {
+        error_log('[PHP Content Hierarchy Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load content.'], 500);
+    }
+}
+
+if (preg_match('#^/api/content/articles/([^/]+)$#', $path, $matches) && $method === 'GET') {
+    try {
+        $result = public_content_article(rawurldecode($matches[1]));
+        json_response($result, $result['success'] ? 200 : 404);
+    } catch (Throwable $error) {
+        error_log('[PHP Content Article Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load the article.'], 500);
+    }
 }
 
 if ($path === '/' || $path === '/index.php') {
