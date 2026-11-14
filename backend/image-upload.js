@@ -43,7 +43,6 @@ export function parseBase64Image(dataUriOrBase64, fallbackFilename = 'image.jpg'
     if (ext === 'png') mimeType = 'image/png';
     else if (ext === 'webp') mimeType = 'image/webp';
     else if (ext === 'gif') mimeType = 'image/gif';
-    else if (ext === 'svg') mimeType = 'image/svg+xml';
     else mimeType = 'image/jpeg';
   }
 
@@ -69,10 +68,9 @@ export function parseBase64Image(dataUriOrBase64, fallbackFilename = 'image.jpg'
   if (mimeType.includes('png')) ext = 'png';
   else if (mimeType.includes('webp')) ext = 'webp';
   else if (mimeType.includes('gif')) ext = 'gif';
-  else if (mimeType.includes('svg')) ext = 'svg';
   else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
   else {
-    return { success: false, error: 'Only JPEG, PNG, WebP, GIF, and SVG images are allowed.' };
+    return { success: false, error: 'Only JPEG, PNG, WebP, and GIF images are allowed.' };
   }
 
   return {

@@ -334,12 +334,12 @@ function escapeHtml(str) {
 
 function escapeQuotes(str) {
   if (!str) return '';
-  return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function escapeQuote(str) {
   if (!str) return '';
-  return String(str).replace(/"/g, '&quot;');
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 if (typeof window !== 'undefined') {

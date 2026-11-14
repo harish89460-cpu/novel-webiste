@@ -42,11 +42,29 @@ export async function checkAndPublishDueArticles() {
   }
 }
 
+let lastCleanupTime = 0;
+const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // Run once every hour
+
+export async function cleanExpiredSessions() {
+  const now = Date.now();
+  if (now - lastCleanupTime < SESSION_CLEANUP_INTERVAL_MS) return;
+  lastCleanupTime = now;
+  try {
+    const res = await query('DELETE FROM sessions WHERE expires_at < NOW();');
+    if (res?.affectedRows > 0) {
+      console.log(`[Scheduler] Cleaned up ${res.affectedRows} expired session(s).`);
+    }
+  } catch (err) {
+    console.warn('[Scheduler Cleanup Note]:', err.message);
+  }
+}
+
 /**
  * Master Scheduler Function: Runs scheduled publishing tasks
  */
 export async function runAutomatedPublishingScheduler() {
   const articles = await checkAndPublishDueArticles().catch(e => ({ publishedCount: 0, error: e.message }));
+  await cleanExpiredSessions().catch(() => {});
 
   return {
     articlesCount: articles.publishedCount || 0,

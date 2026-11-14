@@ -16,7 +16,7 @@ if (typeof window !== 'undefined' && !window.showSavedContentLinkModal) {
       <div class="admin-modal-box" onclick="event.stopPropagation()" style="background:#FFFFFF; border-radius:16px; width:100%; max-width:540px; padding:28px; box-shadow:0 24px 48px rgba(0,0,0,0.25); text-align:center; border:1px solid #E8DCCB;">
         <div style="font-size:46px; line-height:1; margin-bottom:12px;">✅</div>
         <h3 style="font-family:'Playfair Display',serif; font-size:1.5rem; color:#0B1F33; margin:0 0 8px;">
-          ${title || 'Content'} Saved Successfully!
+          ${(typeof escapeHtml === 'function' ? escapeHtml(title || 'Content') : String(title || 'Content').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))} Saved Successfully!
         </h3>
         <p style="color:#64748B; font-size:13.5px; margin:0 0 20px; line-height:1.6;">
           Content has been saved in your dashboard. To publish this content to readers, copy the unique content link below and post it via <strong>Post thread</strong> on the frontend category page.
@@ -66,7 +66,10 @@ if (typeof window !== 'undefined' && !window.showSavedContentLinkModal) {
 
 export function escapeQuote(str) {
   if (!str) return '';
-  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
 }
 export const escapeQuotes = escapeQuote;
 

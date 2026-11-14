@@ -168,7 +168,7 @@ import {
   removeContentAccessRule
 } from './forms-content.js';
 
-function readJsonBody(req, maxBytes = 55 * 1024 * 1024) {
+function readJsonBody(req, maxBytes = 15 * 1024 * 1024) {
   return new Promise((resolve) => {
     if (req.body && typeof req.body === 'object') {
       return resolve(req.body);
@@ -181,25 +181,28 @@ function readJsonBody(req, maxBytes = 55 * 1024 * 1024) {
       return resolve({});
     }
 
-    let body = '';
+    const chunks = [];
+    let receivedBytes = 0;
     let settled = false;
 
     const done = () => {
       if (settled) return;
       settled = true;
       try {
-        resolve(body ? JSON.parse(body) : {});
+        const fullText = Buffer.concat(chunks, receivedBytes).toString('utf8');
+        resolve(fullText ? JSON.parse(fullText) : {});
       } catch {
         resolve({});
       }
     };
 
     req.on('data', chunk => {
-      body += chunk;
-      if (body.length > maxBytes) {
+      chunks.push(chunk);
+      receivedBytes += chunk.length;
+      if (receivedBytes > maxBytes) {
         req.destroy();
         done();
-      } else if (contentLength > 0 && Buffer.byteLength(body, 'utf8') >= contentLength) {
+      } else if (contentLength > 0 && receivedBytes >= contentLength) {
         done();
       }
     });
@@ -212,8 +215,8 @@ function readJsonBody(req, maxBytes = 55 * 1024 * 1024) {
       }
     });
 
-    // Fallback safety timeout (8 seconds)
-    setTimeout(done, 8000);
+    // Fallback safety timeout (10 seconds)
+    setTimeout(done, 10000);
   });
 }
 
@@ -330,18 +333,6 @@ export async function apiMiddleware(req, res, next) {
       if (!emailRegex.test(email)) {
         return sendJson(res, { success: false, error: 'Please enter a valid email address.' }, 400);
       }
-
-      // Ensure contact_submissions table exists in database
-      await query(`
-        CREATE TABLE IF NOT EXISTS contact_submissions (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          email VARCHAR(255) NOT NULL,
-          subject VARCHAR(255) NOT NULL,
-          message TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
 
       const insertResult = await query(
         'INSERT INTO contact_submissions (name, email, subject, message) VALUES (?, ?, ?, ?)',

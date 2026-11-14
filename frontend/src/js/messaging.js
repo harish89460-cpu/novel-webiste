@@ -1495,15 +1495,15 @@ export function handleDmRecipientsInput(query) {
           roleBadge = '<span class="role-badge-sm writer" style="margin-left:4px;">Writer</span>';
         }
 
-        const userJson = JSON.stringify({
+        const encodedUser = encodeURIComponent(JSON.stringify({
           id: u.id,
           username: u.username,
           display_name: u.display_name || u.username,
           role: u.role
-        }).replace(/"/g, '&quot;');
+        }));
 
         return `
-          <div class="dm-dropdown-item" onclick="addDmRecipient(${userJson})">
+          <div class="dm-dropdown-item" onclick="addDmRecipient(JSON.parse(decodeURIComponent('${encodedUser}')))">
             <img src="${avatar}" class="dm-dropdown-avatar" alt="${name}" onerror="this.src='/profile.png'">
             <div>
               <div class="dm-dropdown-name">${name} ${roleBadge}</div>

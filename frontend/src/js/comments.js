@@ -1,7 +1,18 @@
 
 export function escapeQuote(str) {
   if (!str) return '';
-  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
+}
+
+export function escapeQuotes(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
 }
 
 if (typeof window !== 'undefined') {
@@ -33,10 +44,6 @@ export const EMOJI_LABELS = {
 // In-memory cache for fast UI updates
 const reactionsCache = {};
 const commentsCache = {};
-
-function escapeQuotes(str) {
-  return String(str || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
-}
 
 export function escapeHtml(str) {
   if (!str) return '';

@@ -278,6 +278,26 @@ export async function getOrCreateConversation(userId, targetUserId) {
   try {
     await conn.beginTransaction();
 
+    // Re-verify inside transaction to prevent concurrent duplicate conversation creation
+    const [existingLocked] = await conn.query(`
+      SELECT cp1.conversation_id
+      FROM conversation_participants cp1
+      INNER JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id
+      WHERE cp1.user_id = ? AND cp2.user_id = ?
+      LIMIT 1;
+    `, [u1, u2]);
+
+    if (existingLocked && existingLocked.length > 0) {
+      await conn.commit();
+      return {
+        success: true,
+        id: existingLocked[0].conversation_id,
+        conversationId: existingLocked[0].conversation_id,
+        conversation: { id: existingLocked[0].conversation_id },
+        isNew: false
+      };
+    }
+
     const [convRes] = await conn.query('INSERT INTO conversations (last_message_at) VALUES (NOW());');
     const convId = convRes.insertId;
 

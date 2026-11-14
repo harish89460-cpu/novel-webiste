@@ -77,16 +77,14 @@ When moving to a **new production server and new MySQL database**:
 4. Enter the OTP code and supply a new strong password.
 
 ### Option B: Via Command Line (Direct Script on the New Server)
-Run the built-in password reset script that automatically reads `.env` configuration:
+Run the built-in password reset command that automatically reads `.env` configuration:
 ```bash
-node -e "
-const { query, hashPassword, getDbConfig } = require('./backend/db');
-(async () => {
-  const newPassword = process.argv[1] || 'YourNewStrongPassword';
-  const { hash, salt } = hashPassword(newPassword);
-  await query('UPDATE users SET password_hash = ?, salt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 2;', [hash, salt]);
-  console.log('✓ Administrator password updated successfully for rudhra_author (User ID: 2).');
-  process.exit(0);
-})();
+node --input-type=module -e "
+import { query, hashPassword } from './backend/db.js';
+const newPassword = process.argv[1] || 'YourNewStrongPassword';
+const { hash, salt } = hashPassword(newPassword);
+await query('UPDATE users SET password_hash = ?, salt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 2;', [hash, salt]);
+console.log('✓ Administrator password updated successfully for rudhra_author (User ID: 2).');
+process.exit(0);
 " "YourNewPassword"
 ```

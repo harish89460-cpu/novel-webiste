@@ -71,7 +71,7 @@ export function getTransporter() {
             pass: smtpPass
           },
           tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: process.env.SMTP_TLS_REJECT_UNAUTHORIZED === 'false' ? false : true
           }
         };
 

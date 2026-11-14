@@ -36,7 +36,7 @@ function escapeHtml(str) {
 
 function escapeQuote(str) {
   if (!str) return '';
-  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\\'");
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 // Global state for novel system

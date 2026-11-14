@@ -115,7 +115,10 @@ import { renderUpdatePanelsManagementTab, openUpdatePanelModal } from './admin-u
 
 export function escapeQuote(str) {
   if (!str) return '';
-  return String(str).replace(/"/g, '&quot;').replace(/'/g, "\'");
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
 }
 
 if (typeof window !== 'undefined') {

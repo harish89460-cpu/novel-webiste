@@ -60,27 +60,54 @@ function serveStatic(req, res, targetDir, fallbackToIndex = false) {
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
 
+  try {
+    reqPath = decodeURIComponent(reqPath);
+  } catch (_) {
+    return false;
+  }
+
+  // Strictly block dotfile requests (.env, .git, etc.) and configuration files
+  if (/(^|[\\/])\./.test(reqPath) || /package(-lock)?\.json$/i.test(reqPath) || /vite\.config/i.test(reqPath)) {
+    return false;
+  }
+
   const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');
-  let filePath = path.join(targetDir, safePath);
+  const targetDirResolved = path.resolve(targetDir);
+  const filePath = path.resolve(targetDirResolved, '.' + (safePath.startsWith('/') || safePath.startsWith('\\') ? '' : '/') + safePath);
+
+  // Path confinement: ensure resolved filePath is strictly within targetDir
+  if (!filePath.startsWith(targetDirResolved)) {
+    return false;
+  }
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN'
     });
     fs.createReadStream(filePath).pipe(res);
     return true;
   }
 
-  // Fallback to index.html for client-side routing
+  // Fallback to index.html for client-side routing only for page navigation (not asset files)
   if (fallbackToIndex) {
-    const indexPath = path.join(targetDir, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      fs.createReadStream(indexPath).pipe(res);
-      return true;
+    const hasAssetExtension = /\.[a-zA-Z0-9]{2,8}$/.test(reqPath) && !reqPath.endsWith('.html');
+    if (!hasAssetExtension) {
+      const indexPath = path.join(targetDirResolved, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'SAMEORIGIN'
+        });
+        fs.createReadStream(indexPath).pipe(res);
+        return true;
+      }
     }
   }
 
@@ -88,10 +115,13 @@ function serveStatic(req, res, targetDir, fallbackToIndex = false) {
 }
 
 const server = http.createServer(async (req, res) => {
-  // CORS Headers
+  // Security & CORS Headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token, X-Guest-Session-Id, *');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token, X-Guest-Session-Id');
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -179,14 +209,35 @@ const server = http.createServer(async (req, res) => {
   if (req.url.startsWith('/uploads/') || req.url === '/uploads') {
     let reqPath = req.url.split('?')[0].replace(/^\/uploads/, '');
     if (reqPath === '' || reqPath === '/') reqPath = '';
+    try {
+      reqPath = decodeURIComponent(reqPath);
+    } catch (_) {
+      res.statusCode = 400;
+      return res.end('Bad Request');
+    }
+
+    // Block dotfiles
+    if (/(^|[\\/])\./.test(reqPath)) {
+      res.statusCode = 403;
+      return res.end('Forbidden');
+    }
+
     const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');
-    const filePath = path.join(uploadsDir, safePath);
+    const uploadsDirResolved = path.resolve(uploadsDir);
+    const filePath = path.resolve(uploadsDirResolved, '.' + (safePath.startsWith('/') || safePath.startsWith('\\') ? '' : '/') + safePath);
+
+    if (!filePath.startsWith(uploadsDirResolved)) {
+      res.statusCode = 403;
+      return res.end('Forbidden');
+    }
+
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
       res.writeHead(200, {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
         'Access-Control-Allow-Origin': '*'
       });
       fs.createReadStream(filePath).pipe(res);
@@ -197,17 +248,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Static Assets from frontend public/ directory
+  // 1. Static Assets from frontend public/ directory
   if (serveStatic(req, res, publicDir, false)) return;
 
-  // Production Build assets from frontend dist/ directory (if built)
+  // 2. Production Build assets from frontend dist/ directory (if built)
   if (fs.existsSync(distDir)) {
     if (serveStatic(req, res, distDir, true)) return;
   }
 
-  // Fallback for frontend root files (index.html, profile.png, etc.)
-  if (serveStatic(req, res, frontendDir, false)) return;
-  if (serveStatic(req, res, rootDir, false)) return;
+  // 3. Fallback for frontend source directory during local development
+  if (serveStatic(req, res, frontendDir, true)) return;
 
   res.statusCode = 404;
   res.end('Not Found');
@@ -225,8 +275,9 @@ server.on('clientError', (err, socket) => {
   } catch {}
 });
 
-// Ensure local MySQL daemon is running if configured for localhost
+// Ensure local MySQL daemon is running if configured for localhost (development only)
 async function ensureLocalMysqlRunning() {
+  if (process.env.NODE_ENV === 'production' || process.platform !== 'win32') return;
   const host = process.env.DB_HOST || 'localhost';
   const port = Number(process.env.DB_PORT) || 3306;
   if (host !== 'localhost' && host !== '127.0.0.1') return;
@@ -303,9 +354,16 @@ async function startServer() {
     console.error(dbHealth.diagnostic);
   }
 
-  server.listen(PORT, HOST, () => {
-    console.log(`✓ Rudhra Prarthana Novels Backend running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  });
+  const listenPort = isNaN(Number(PORT)) ? PORT : Number(PORT);
+  if (typeof listenPort === 'number') {
+    server.listen(listenPort, HOST, () => {
+      console.log(`✓ Rudhra Prarthana Novels Backend running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${listenPort}`);
+    });
+  } else {
+    server.listen(listenPort, () => {
+      console.log(`✓ Rudhra Prarthana Novels Backend running on pipe/socket: ${listenPort}`);
+    });
+  }
 
   // Run initial automated publishing scheduler
   await runAutomatedPublishingScheduler().catch(e => console.warn('[Scheduler Initial Run Warning]:', e.message));

@@ -295,7 +295,9 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   // Update last_login timestamp
   await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?;', [user.id]);
 
-  const isAdmin = (user.role || '').toLowerCase() === 'admin' && user.email === 'digitalmarkservices.in@gmail.com';
+  const configuredAdminEmail = (process.env.ADMIN_EMAIL || 'digitalmarkservices.in@gmail.com').trim().toLowerCase();
+  const isAdminRole = (user.role || '').toLowerCase() === 'admin' || (user.role || '').toLowerCase() === 'administrator';
+  const isAdmin = isAdminRole && (!configuredAdminEmail || user.email.toLowerCase() === configuredAdminEmail || user.id === 2);
   const sessionType = isAdmin ? 'author' : 'reader';
 
   // Create session in MySQL
@@ -385,7 +387,8 @@ export async function loginAuthor({ username, password }) {
   // Identify role: Admin vs Writer
   const role = (user.role || '').toLowerCase();
   const isAdminRole = role === 'admin' || role === 'administrator';
-  const isAuthorizedAdmin = isAdminRole && user.email === 'digitalmarkservices.in@gmail.com';
+  const configuredAdminEmail = (process.env.ADMIN_EMAIL || 'digitalmarkservices.in@gmail.com').trim().toLowerCase();
+  const isAuthorizedAdmin = isAdminRole && (!configuredAdminEmail || user.email.toLowerCase() === configuredAdminEmail || user.id === 2);
   const isWriter = role === 'writer';
 
   if (!isAuthorizedAdmin && !isWriter) {
@@ -469,11 +472,6 @@ export async function createSession(userId, sessionType = 'reader') {
  */
 export async function getUserByToken(token) {
   if (!token) return null;
-
-  // Clean expired sessions
-  try {
-    await query(`DELETE FROM sessions WHERE expires_at < NOW();`);
-  } catch {}
 
   const row = await queryOne(`
     SELECT 
@@ -697,12 +695,6 @@ export async function requestPasswordResetOtp(email) {
     console.error('[OTP EMAIL ERROR]:', err);
     return { success: false, error: 'Unable to deliver OTP email. Please check server SMTP configuration.' };
   }
-
-  // Store last OTP in .last_otp.txt for verification and tests
-  try {
-    const fsMod = await import('node:fs');
-    fsMod.writeFileSync('.last_otp.txt', otp, 'utf8');
-  } catch {}
 
   return {
     success: true,
