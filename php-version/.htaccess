@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Never expose environment or source configuration files.
+RewriteRule (^|/)(\.env|config\.php|db\.php|auth\.php)(/|$) - [F,L]
+
+# Route API requests and SPA paths through the PHP front controller.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
