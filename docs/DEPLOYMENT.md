@@ -60,6 +60,43 @@ Or import the complete baseline schema directly:
 mysql -u rp_admin -p rp_novels_db < db/schema/full_schema.sql
 ```
 
+## 2.4 GoDaddy Node.js Hosting (cPanel)
+
+GoDaddy's Node.js application manager supplies the listening port through the
+`PORT` environment variable. Configure the application as follows:
+
+| Setting | Value |
+|---|---|
+| Node.js version | 18 or newer LTS |
+| Application mode | Production |
+| Application root | The repository root containing `package.json` |
+| Application URL | Your domain or subdomain |
+| Startup file | `backend/server.js` |
+| Environment variable | `NODE_ENV=production` |
+| Environment variable | `HOST=0.0.0.0` |
+
+Do not set a fixed `PORT`; GoDaddy assigns it. Add the database, email, JWT,
+and VAPID variables from your private production configuration in cPanel's
+environment-variable section. Do not commit those values to Git.
+
+After creating the application, open cPanel Terminal and run:
+
+```bash
+cd /home/CPANEL_USER/YOUR_APP_ROOT
+npm install --omit=optional
+npm run build
+npm run migrate
+```
+
+The `build` command installs the locked frontend dependencies and creates
+`frontend/dist/`, which `backend/server.js` serves. Restart the Node.js
+application from cPanel after the build and whenever environment variables
+change. Verify the deployment at `/api/health` before testing the website.
+
+GoDaddy's Node.js application proxy handles HTTPS and forwards requests to the
+assigned port, so PM2, Nginx, Cloudflare Tunnel, and a separate Vite server are
+not required on the hosting account.
+
 ---
 
 ## 3. Production Frontend Build
