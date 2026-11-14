@@ -38,6 +38,32 @@ $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 $authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 $token = str_starts_with($authorization, 'Bearer ') ? trim(substr($authorization, 7)) : null;
 
+// Serve the compiled frontend assets when PHP is run without Apache rewrite support.
+if ($method === 'GET' && $path !== '/' && !str_starts_with($path, '/api/')) {
+    $assetPath = realpath(__DIR__ . '/public' . $path);
+    $publicRoot = realpath(__DIR__ . '/public');
+    if ($assetPath && $publicRoot && str_starts_with($assetPath, $publicRoot) && is_file($assetPath)) {
+        $mimeTypes = [
+            'css' => 'text/css; charset=utf-8',
+            'js' => 'text/javascript; charset=utf-8',
+            'html' => 'text/html; charset=utf-8',
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'svg' => 'image/svg+xml',
+            'ico' => 'image/x-icon',
+            'json' => 'application/json; charset=utf-8',
+            'webmanifest' => 'application/manifest+json',
+        ];
+        $extension = strtolower(pathinfo($assetPath, PATHINFO_EXTENSION));
+        header('Content-Type: ' . ($mimeTypes[$extension] ?? 'application/octet-stream'));
+        readfile($assetPath);
+        exit;
+    }
+}
+
 if ($path === '/api/health' && $method === 'GET') {
     try {
         database();
