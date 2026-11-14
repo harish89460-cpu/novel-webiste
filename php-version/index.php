@@ -100,6 +100,12 @@ if (preg_match('#^/api/content/articles/([^/]+)$#', $path, $matches) && $method 
 }
 
 if ($path === '/' || $path === '/index.php') {
+    $frontendIndex = __DIR__ . '/public/index.html';
+    if (is_file($frontendIndex)) {
+        header('Content-Type: text/html; charset=utf-8');
+        readfile($frontendIndex);
+        exit;
+    }
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Rudhra Prarthana Novels</title></head><body><h1>PHP migration backend is ready</h1><p>API health: <a href="/api/health">/api/health</a></p></body></html>';
     exit;

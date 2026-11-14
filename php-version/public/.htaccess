@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Send API requests to the PHP front controller one directory above.
+RewriteRule ^api(?:/.*)?$ ../index.php [QSA,L]
+
+# Keep client-side hash routes on the built HTML entry point.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]

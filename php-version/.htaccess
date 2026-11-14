@@ -3,6 +3,11 @@ RewriteEngine On
 # Never expose environment or source configuration files.
 RewriteRule (^|/)(\.env|config\.php|db\.php|auth\.php)(/|$) - [F,L]
 
+# Serve the compiled frontend from the public directory.
+RewriteCond %{REQUEST_URI} !^/api(?:/|$)
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -f
+RewriteRule ^(.+)$ public/$1 [L]
+
 # Route API requests and SPA paths through the PHP front controller.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
