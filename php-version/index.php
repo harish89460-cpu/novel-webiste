@@ -5,6 +5,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/forum.php';
+require_once __DIR__ . '/comments.php';
+require_once __DIR__ . '/upload.php';
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -159,6 +161,59 @@ if ($path === '/api/likes' && $method === 'POST') {
     } catch (Throwable $error) {
         error_log('[PHP Like Error] ' . $error->getMessage());
         json_response(['success' => false, 'error' => 'Unable to update like.'], 500);
+    }
+}
+
+if ($path === '/api/comments' && $method === 'GET') {
+    $novelId = trim((string)($_GET['novel'] ?? $_GET['novelId'] ?? ''));
+    if ($novelId === '') json_response(['success' => false, 'error' => 'novel is required'], 400);
+    try {
+        $comments = list_comments($novelId, trim((string)($_GET['ch'] ?? $_GET['chapterNum'] ?? '0')), user_from_token($token)['id'] ?? null);
+        json_response(['success' => true, 'comments' => $comments, 'total' => count($comments)]);
+    } catch (Throwable $error) {
+        error_log('[PHP Comments List Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load comments.'], 500);
+    }
+}
+
+if ($path === '/api/comments' && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    try {
+        $result = add_comment(is_array($body) ? $body : [], user_from_token($token));
+        json_response($result, $result['success'] ? 201 : 400);
+    } catch (Throwable $error) {
+        error_log('[PHP Comment Create Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to add comment.'], 500);
+    }
+}
+
+if ($path === '/api/reactions' && $method === 'GET') {
+    $targetType = trim((string)($_GET['targetType'] ?? 'content'));
+    $targetId = trim((string)($_GET['targetId'] ?? ''));
+    if ($targetId === '') json_response(['success' => false, 'error' => 'targetId is required'], 400);
+    json_response(get_reactions($targetType, $targetId, user_from_token($token)['id'] ?? null));
+}
+
+if ($path === '/api/reactions' && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    $body = is_array($body) ? $body : [];
+    try {
+        $result = toggle_reaction((string)($body['targetType'] ?? 'content'), (string)($body['targetId'] ?? ''), (string)($body['emoji'] ?? ''), user_from_token($token));
+        json_response($result, $result['success'] ? 200 : 400);
+    } catch (Throwable $error) {
+        error_log('[PHP Reaction Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to update reaction.'], 500);
+    }
+}
+
+if (($path === '/api/upload/image' || $path === '/api/comments/upload-image') && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    try {
+        $result = save_base64_upload(is_array($body) ? $body : [], user_from_token($token));
+        json_response($result, $result['success'] ? 201 : 400);
+    } catch (Throwable $error) {
+        error_log('[PHP Upload Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to upload the file.'], 500);
     }
 }
 
