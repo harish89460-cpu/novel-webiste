@@ -7,6 +7,9 @@ require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/forum.php';
 require_once __DIR__ . '/comments.php';
 require_once __DIR__ . '/upload.php';
+require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/chat.php';
+require_once __DIR__ . '/admin.php';
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -215,6 +218,67 @@ if (($path === '/api/upload/image' || $path === '/api/comments/upload-image') &&
         error_log('[PHP Upload Error] ' . $error->getMessage());
         json_response(['success' => false, 'error' => 'Unable to upload the file.'], 500);
     }
+}
+
+$authenticatedUser = user_from_token($token);
+$authenticatedUserId = $authenticatedUser ? (int)$authenticatedUser['id'] : null;
+
+if ($path === '/api/notifications' && $method === 'GET') {
+    $items = $authenticatedUserId ? notifications_for_user($authenticatedUserId) : [];
+    json_response(['success' => true, 'notifications' => $items, 'unreadCount' => $authenticatedUserId ? unread_notifications_count($authenticatedUserId) : 0]);
+}
+if ($path === '/api/notifications/unread-count' && $method === 'GET') {
+    json_response(['success' => true, 'count' => $authenticatedUserId ? unread_notifications_count($authenticatedUserId) : 0]);
+}
+if (preg_match('#^/api/notifications/(\d+)/read$#', $path, $matches) && in_array($method, ['POST', 'PUT'], true)) {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    $query = database()->prepare('UPDATE notifications SET is_read = 1 WHERE id = :id AND user_id = :user');
+    $query->execute(['id' => (int)$matches[1], 'user' => $authenticatedUserId]);
+    json_response(['success' => true]);
+}
+if ($path === '/api/notifications/read-all' && in_array($method, ['POST', 'PUT'], true)) {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    database()->prepare('UPDATE notifications SET is_read = 1 WHERE user_id = :user')->execute(['user' => $authenticatedUserId]);
+    json_response(['success' => true]);
+}
+if ($path === '/api/notifications/preferences' && $method === 'GET') {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    json_response(['success' => true, 'preferences' => notification_preferences($authenticatedUserId)]);
+}
+if ($path === '/api/notifications/preferences' && in_array($method, ['POST', 'PUT'], true)) {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    json_response(['success' => true, 'preferences' => update_notification_preferences($authenticatedUserId, is_array($body) ? $body : [])]);
+}
+
+if ($path === '/api/chat/conversations' && $method === 'GET') {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    json_response(chat_conversations($authenticatedUserId));
+}
+if (preg_match('#^/api/chat/conversations/(\d+)/messages$#', $path, $matches) && $method === 'GET') {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    $result = chat_messages((int)$matches[1], $authenticatedUserId);
+    json_response($result, $result['success'] ? 200 : 403);
+}
+if ($path === '/api/chat/messages' && $method === 'POST') {
+    if (!$authenticatedUserId) json_response(['success' => false, 'error' => 'Authentication required.'], 401);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    $result = send_chat_message($authenticatedUserId, is_array($body) ? $body : []);
+    json_response($result, $result['success'] ? 201 : 400);
+}
+
+if ($path === '/api/admin/overview' && $method === 'GET') {
+    require_admin_user($authenticatedUser);
+    json_response(admin_overview());
+}
+if ($path === '/api/admin/settings' && $method === 'GET') {
+    require_admin_user($authenticatedUser);
+    json_response(site_settings());
+}
+if ($path === '/api/admin/settings' && in_array($method, ['POST', 'PUT'], true)) {
+    require_admin_user($authenticatedUser);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    json_response(update_site_settings(is_array($body) ? $body : []));
 }
 
 if ($path === '/' || $path === '/index.php') {
