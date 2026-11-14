@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/content.php';
+require_once __DIR__ . '/forum.php';
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -96,6 +97,68 @@ if (preg_match('#^/api/content/articles/([^/]+)$#', $path, $matches) && $method 
     } catch (Throwable $error) {
         error_log('[PHP Content Article Error] ' . $error->getMessage());
         json_response(['success' => false, 'error' => 'Unable to load the article.'], 500);
+    }
+}
+
+if ($path === '/api/forum/categories' && $method === 'GET') {
+    try {
+        json_response(forum_categories());
+    } catch (Throwable $error) {
+        error_log('[PHP Forum Categories Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load forum categories.'], 500);
+    }
+}
+
+if ($path === '/api/forum/topics' && $method === 'GET') {
+    try {
+        json_response(forum_topics($_GET['category'] ?? null));
+    } catch (Throwable $error) {
+        error_log('[PHP Forum Topics Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load forum topics.'], 500);
+    }
+}
+
+if (preg_match('#^/api/forum/topics/([^/]+)/reply$#', $path, $matches) && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    try {
+        $result = add_forum_reply(rawurldecode($matches[1]), is_array($body) ? $body : [], user_from_token($token));
+        json_response($result, $result['success'] ? 201 : 400);
+    } catch (Throwable $error) {
+        error_log('[PHP Forum Reply Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to add reply.'], 500);
+    }
+}
+
+if ($path === '/api/forum/topics' && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    try {
+        $result = create_forum_topic(is_array($body) ? $body : [], user_from_token($token));
+        json_response($result, $result['success'] ? 201 : 400);
+    } catch (Throwable $error) {
+        error_log('[PHP Forum Topic Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to create topic.'], 500);
+    }
+}
+
+if (preg_match('#^/api/forum/topics/([^/]+)$#', $path, $matches) && $method === 'GET') {
+    try {
+        $result = forum_topic(rawurldecode($matches[1]), user_from_token($token)['id'] ?? null);
+        json_response($result, $result['success'] ? 200 : 404);
+    } catch (Throwable $error) {
+        error_log('[PHP Forum Topic Detail Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to load the topic.'], 500);
+    }
+}
+
+if ($path === '/api/likes' && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    $targetType = trim((string)($body['targetType'] ?? ''));
+    $targetId = trim((string)($body['targetId'] ?? ''));
+    try {
+        json_response(toggle_forum_like($targetType, $targetId, user_from_token($token)));
+    } catch (Throwable $error) {
+        error_log('[PHP Like Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to update like.'], 500);
     }
 }
 
