@@ -10,6 +10,8 @@ require_once __DIR__ . '/upload.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
 require_once __DIR__ . '/admin.php';
+require_once __DIR__ . '/writers.php';
+require_once __DIR__ . '/scheduler.php';
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -279,6 +281,33 @@ if ($path === '/api/admin/settings' && in_array($method, ['POST', 'PUT'], true))
     require_admin_user($authenticatedUser);
     $body = json_decode(file_get_contents('php://input') ?: '{}', true);
     json_response(update_site_settings(is_array($body) ? $body : []));
+}
+
+if ($path === '/api/admin/writers' && $method === 'GET') {
+    require_admin_user($authenticatedUser);
+    json_response(writer_list($_GET['search'] ?? null, $_GET['status'] ?? null));
+}
+if ($path === '/api/admin/writers' && $method === 'POST') {
+    require_admin_user($authenticatedUser);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    $result = create_writer(is_array($body) ? $body : [], $authenticatedUserId);
+    json_response($result, $result['success'] ? 201 : 400);
+}
+if (preg_match('#^/api/admin/writers/(\d+)/status$#', $path, $matches) && in_array($method, ['POST', 'PUT'], true)) {
+    require_admin_user($authenticatedUser);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    $result = update_writer_status((int)$matches[1], (string)(is_array($body) ? ($body['status'] ?? '') : ''));
+    json_response($result, $result['success'] ? 200 : 400);
+}
+if (preg_match('#^/api/admin/writers/(\d+)/profile$#', $path, $matches) && in_array($method, ['POST', 'PUT'], true)) {
+    require_admin_user($authenticatedUser);
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    json_response(update_writer_profile((int)$matches[1], is_array($body) ? $body : []));
+}
+
+if ($path === '/api/scheduler/run' && $method === 'POST') {
+    require_admin_user($authenticatedUser);
+    json_response(publish_due_articles());
 }
 
 if ($path === '/' || $path === '/index.php') {
