@@ -75,6 +75,18 @@ GoDaddy's Node.js application manager supplies the listening port through the
 | Environment variable | `NODE_ENV=production` |
 | Environment variable | `HOST=0.0.0.0` |
 
+When uploading a ZIP archive, do not include `node_modules/`, `frontend/dist/`,
+or any `.env` files. GoDaddy installs dependencies during import. From a clean
+Git checkout, create an archive containing tracked files only:
+
+```powershell
+git archive --format=zip --output=godaddy-deploy.zip HEAD
+```
+
+Upload `godaddy-deploy.zip` instead of a ZIP made from the whole project
+folder. This prevents files such as `frontend/node_modules/.bin/esbuild.ps1`
+from being uploaded and blocked by GoDaddy.
+
 Do not set a fixed `PORT`; GoDaddy assigns it. Add the database, email, JWT,
 and VAPID variables from your private production configuration in cPanel's
 environment-variable section. Do not commit those values to Git.
