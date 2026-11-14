@@ -26,6 +26,8 @@ function json_response(array $payload, int $status = 200): never
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+$authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+$token = str_starts_with($authorization, 'Bearer ') ? trim(substr($authorization, 7)) : null;
 
 if ($path === '/api/health' && $method === 'GET') {
     try {
@@ -48,6 +50,33 @@ if ($path === '/api/auth/register' && $method === 'POST') {
         error_log('[PHP Registration Error] ' . $error->getMessage());
         json_response(['success' => false, 'error' => 'Unable to create the account.'], 500);
     }
+}
+
+if ($path === '/api/auth/login' && $method === 'POST') {
+    $body = json_decode(file_get_contents('php://input') ?: '{}', true);
+    if (!is_array($body)) {
+        json_response(['success' => false, 'error' => 'Invalid JSON body.'], 400);
+    }
+    try {
+        $result = login_user($body);
+        json_response($result, $result['success'] ? 200 : 401);
+    } catch (Throwable $error) {
+        error_log('[PHP Login Error] ' . $error->getMessage());
+        json_response(['success' => false, 'error' => 'Unable to log in.'], 500);
+    }
+}
+
+if ($path === '/api/auth/me' && $method === 'GET') {
+    $user = user_from_token($token);
+    json_response($user
+        ? ['authenticated' => true, 'isGuest' => false, 'user' => $user]
+        : ['authenticated' => false, 'isGuest' => true]
+    );
+}
+
+if ($path === '/api/auth/logout' && $method === 'POST') {
+    logout_user($token);
+    json_response(['success' => true]);
 }
 
 if ($path === '/' || $path === '/index.php') {
