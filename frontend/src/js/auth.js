@@ -8,6 +8,12 @@ import { updateUnreadMessageBadge } from './messaging.js';
 import { updateAuthorWriterHeader } from './author-header.js';
 
 window.IS_LOGGED_IN = Boolean(localStorage.getItem('rp_auth_token'));
+window.REGISTRATION_VERIFICATION_STATE = {
+  email: '',
+  username: '',
+  resendAfterSeconds: 0,
+  resendTimer: null
+};
 try {
   const cachedUser = localStorage.getItem('rp_user');
   window.CURRENT_USER = cachedUser ? JSON.parse(cachedUser) : null;
@@ -39,6 +45,146 @@ export function initAuth() {
     const redirectParam = encodeURIComponent(dest);
     window.location.hash = `#login?redirect=${redirectParam}`;
     return false;
+  };
+
+  function startRegistrationResendCooldown(seconds = 0) {
+    const state = window.REGISTRATION_VERIFICATION_STATE;
+    if (state.resendTimer) clearInterval(state.resendTimer);
+    state.resendTimer = null;
+    let remaining = Math.max(0, Math.ceil(Number(seconds) || 0));
+    const updateButton = () => {
+      const button = document.getElementById('registration-resend-btn');
+      if (!button) return;
+      button.disabled = remaining > 0;
+      button.textContent = remaining > 0 ? `Resend Code (${remaining}s)` : 'Resend Code';
+    };
+
+    updateButton();
+    if (remaining > 0) {
+      state.resendTimer = setInterval(() => {
+        remaining--;
+        updateButton();
+        if (remaining <= 0) {
+          clearInterval(state.resendTimer);
+          state.resendTimer = null;
+        }
+      }, 1000);
+    }
+  }
+
+  window.handleRegistrationOtpSubmit = async () => {
+    const otpInput = document.getElementById('registration-otp-input');
+    const submitBtn = document.getElementById('registration-verify-btn');
+    const errorEl = document.getElementById('auth-error-msg');
+    const otp = otpInput?.value?.trim() || '';
+    const email = window.REGISTRATION_VERIFICATION_STATE.email;
+    if (errorEl) errorEl.style.display = 'none';
+
+    if (!/^\d{6}$/.test(otp)) {
+      if (errorEl) {
+        errorEl.textContent = 'Enter the 6-digit verification code.';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.classList.add('btn-loading');
+    }
+
+    try {
+      const res = await apiFetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorText = data.error || 'Email verification failed. Please try again.';
+        if (errorEl) {
+          errorEl.textContent = errorText;
+          errorEl.style.display = 'block';
+        }
+        showToast(errorText);
+        return;
+      }
+
+      const verifiedEmail = window.REGISTRATION_VERIFICATION_STATE.email;
+      window.switchAuthView('login');
+      const loginInput = document.getElementById('login-username');
+      if (loginInput) loginInput.value = verifiedEmail;
+      showToast('Email verified. You can now log in with your password.');
+    } catch (err) {
+      console.error('Registration OTP verification error:', err);
+      const errorText = 'Unable to verify your email right now. Please try again.';
+      if (errorEl) {
+        errorEl.textContent = errorText;
+        errorEl.style.display = 'block';
+      }
+      showToast(errorText);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-loading');
+      }
+    }
+  };
+
+  window.handleRegistrationOtpResend = async () => {
+    const resendBtn = document.getElementById('registration-resend-btn');
+    const errorEl = document.getElementById('auth-error-msg');
+    const email = window.REGISTRATION_VERIFICATION_STATE.email;
+    if (errorEl) errorEl.style.display = 'none';
+    if (!email) return;
+
+    if (resendBtn) {
+      resendBtn.disabled = true;
+      resendBtn.classList.add('btn-loading');
+    }
+
+    try {
+      const res = await apiFetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorText = data.error || 'Unable to resend the verification code.';
+        if (errorEl) {
+          errorEl.textContent = errorText;
+          errorEl.style.display = 'block';
+        }
+        if (data.retryAfterSeconds) startRegistrationResendCooldown(data.retryAfterSeconds);
+        showToast(errorText);
+        return;
+      }
+
+      window.REGISTRATION_VERIFICATION_STATE.resendAfterSeconds = Number(data.resendAfterSeconds || 60);
+      startRegistrationResendCooldown(window.REGISTRATION_VERIFICATION_STATE.resendAfterSeconds);
+      const otpInput = document.getElementById('registration-otp-input');
+      if (otpInput) {
+        otpInput.value = '';
+        otpInput.focus();
+      }
+      showToast('A new verification code has been sent to your email.');
+    } catch (err) {
+      console.error('Registration OTP resend error:', err);
+      const errorText = 'Unable to resend the verification code. Please try again.';
+      if (errorEl) {
+        errorEl.textContent = errorText;
+        errorEl.style.display = 'block';
+      }
+      showToast(errorText);
+    } finally {
+      if (resendBtn && !window.REGISTRATION_VERIFICATION_STATE.resendTimer) {
+        resendBtn.disabled = false;
+        resendBtn.classList.remove('btn-loading');
+      } else if (resendBtn) {
+        resendBtn.classList.remove('btn-loading');
+      }
+    }
   };
 
   window.openAuthModal = (view = 'login') => {
@@ -78,6 +224,11 @@ export function initAuth() {
   };
 
   window.switchAuthView = (view, targetContainer = null) => {
+    if (view !== 'register-pending' && window.REGISTRATION_VERIFICATION_STATE.resendTimer) {
+      clearInterval(window.REGISTRATION_VERIFICATION_STATE.resendTimer);
+      window.REGISTRATION_VERIFICATION_STATE.resendTimer = null;
+    }
+
     let container = targetContainer;
     if (!container) {
       const pageContainer = document.getElementById('auth-page-form-container');
@@ -251,6 +402,41 @@ export function initAuth() {
           </div>
         </div>
       `;
+        } else if (view === 'register-pending') {
+          container.innerHTML = `
+            <div class="auth-card-body">
+              <div class="auth-center-logo">
+                <img src="/images/logo.png" alt="RP Novels" onerror="this.src='/profile.png'">
+              </div>
+              <h2 class="auth-center-title" id="auth-modal-title">Verify Your Email</h2>
+              <p class="auth-center-subtitle">Enter the 6-digit code sent to <strong id="registration-verification-email"></strong>. The code expires in 5 minutes.</p>
+
+              <div id="auth-error-msg" class="auth-error-alert" style="display:none;"></div>
+
+              <form onsubmit="event.preventDefault(); handleRegistrationOtpSubmit();" class="auth-modal-form">
+                <div class="auth-form-group">
+                  <label class="auth-field-label" for="registration-otp-input">Verification Code</label>
+                  <div class="auth-input-wrapper">
+                    <input type="text" id="registration-otp-input" class="auth-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+                  </div>
+                </div>
+                <button type="submit" id="registration-verify-btn" class="auth-btn-gold">
+                  <span>Verify Email</span>
+                </button>
+                <button type="button" id="registration-resend-btn" class="btn btn-outline" style="width:100%; border-radius:12px; height:44px; margin-top:10px;" onclick="handleRegistrationOtpResend()">
+                  Resend Code
+                </button>
+              </form>
+
+              <div class="auth-thin-divider"></div>
+              <div class="auth-admin-redirect-wrap">
+                <a href="javascript:void(0)" onclick="switchAuthView('login')" class="auth-admin-redirect-link">&larr; Back to Member Login</a>
+              </div>
+            </div>
+          `;
+          const emailLabel = container.querySelector('#registration-verification-email');
+          if (emailLabel) emailLabel.textContent = window.REGISTRATION_VERIFICATION_STATE.email;
+          startRegistrationResendCooldown(window.REGISTRATION_VERIFICATION_STATE.resendAfterSeconds);
     } else if (view === 'forgot' || view === 'forgot-email') {
       const currentEmail = window.FORGOT_STATE?.email || '';
       container.innerHTML = `
@@ -443,6 +629,17 @@ window.handleLoginSubmit = async (event) => {
       }
 
       if (!res.ok || !data.success) {
+        if (data.unverified) {
+          window.REGISTRATION_VERIFICATION_STATE = {
+            ...window.REGISTRATION_VERIFICATION_STATE,
+            email: data.email || '',
+            username: data.username || username,
+            resendAfterSeconds: Number(data.retryAfterSeconds || 0)
+          };
+          window.switchAuthView('register-pending');
+          showToast('Please verify your email before logging in.');
+          return;
+        }
         const errorText = data.error || (res.status === 401 ? 'Invalid email or password.' : 'Login failed. Please try again.');
         if (errorEl) {
           errorEl.textContent = errorText;
@@ -542,6 +739,21 @@ window.handleLoginSubmit = async (event) => {
         body: JSON.stringify({ username, displayName, email, password })
       });
       const data = await res.json();
+      if (data.requiresVerification) {
+        window.REGISTRATION_VERIFICATION_STATE = {
+          ...window.REGISTRATION_VERIFICATION_STATE,
+          email: data.email || email,
+          username: data.username || username,
+          resendAfterSeconds: Number(data.resendAfterSeconds || 0)
+        };
+        window.switchAuthView('register-pending');
+        if (!data.success) {
+          showToast(data.error || 'Your account is awaiting email verification.');
+        } else {
+          showToast('Verification code sent. Check your email.');
+        }
+        return;
+      }
       if (!res.ok || !data.success) {
         const errorText = data.error || 'Registration failed.';
         if (errorEl) {

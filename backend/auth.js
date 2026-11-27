@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query, queryOne, hashPassword, verifyPassword } from './db.js';
-import { sendOtpEmail } from './email.js';
+import { sendOtpEmail, sendRegistrationOtpEmail } from './email.js';
+import { createEmailOtp, hashEmailOtp, verifyEmailOtp } from './lib/email-otp.js';
 import { recordWriterAudit } from './writers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +37,7 @@ export function sanitizeAvatar(rawAvatar) {
 }
 
 /**
- * Register a new user
+ * Register a new user and require email verification before login
  */
 export async function registerUser({ username, email, password, displayName, avatar: customAvatar, bio: customBio }) {
   const cleanUsername = (username || '').trim().toLowerCase();
@@ -68,10 +69,19 @@ export async function registerUser({ username, email, password, displayName, ava
   // Cryptographically hash password
   const { hash, salt } = hashPassword(password);
 
+  const otp = createEmailOtp();
+  const verificationHash = hashEmailOtp(otp);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  const resendAfter = new Date(Date.now() + 60 * 1000);
+
   const res = await query(`
-    INSERT INTO users (username, email, password_hash, salt, role)
-    VALUES (?, ?, ?, ?, 'Member');
-  `, [cleanUsername, cleanEmail, hash, salt]);
+    INSERT INTO users (
+      username, email, password_hash, salt, role, is_verified,
+      verification_token, verification_token_expires_at,
+      verification_attempts, verification_resend_after
+    )
+    VALUES (?, ?, ?, ?, 'Member', 0, ?, ?, 0, ?);
+  `, [cleanUsername, cleanEmail, hash, salt, verificationHash, expiresAt, resendAfter]);
 
   const userId = res.insertId;
 
@@ -90,32 +100,162 @@ export async function registerUser({ username, email, password, displayName, ava
     VALUES (?, ?, ?, ?, ?, ?, 'Member', 'Member', ?, 0, 0, 0);
   `, [userId, cleanName, cleanName, avatar, initialBio, initialBio, joinedDate]);
 
-  // Initialize Activity Status
+  // Keep new accounts offline until their email is verified and they log in.
   await query(`
     INSERT INTO activity_status (user_id, is_enabled, is_online, last_seen)
-    VALUES (?, 1, 1, CURRENT_TIMESTAMP);
+    VALUES (?, 1, 0, CURRENT_TIMESTAMP);
   `, [userId]);
 
-  // Create Authenticated Session
-  const token = await createSession(userId);
+  let emailSent = false;
+  try {
+    const delivery = await sendRegistrationOtpEmail({ to: cleanEmail, otp });
+    emailSent = delivery.success;
+  } catch (mailErr) {
+    console.error('[AUTH REGISTER EMAIL ERROR]:', mailErr.message);
+  }
+
+  if (!emailSent) {
+    await query('UPDATE users SET verification_resend_after = NULL WHERE id = ? AND is_verified = 0;', [userId]);
+    return {
+      success: false,
+      accountCreated: true,
+      requiresVerification: true,
+      email: cleanEmail,
+      username: cleanUsername,
+      error: 'Your account was created, but the verification code could not be sent. Please request a new code.'
+    };
+  }
 
   return {
     success: true,
-    token,
-    user: {
-      id: userId,
-      username: cleanUsername,
-      email: cleanEmail,
-      displayName: cleanName,
-      avatar: sanitizeAvatar(avatar),
-      bio: initialBio,
-      role: 'Member',
-      activityStatusEnabled: true,
-      isOnline: true,
-      isAdmin: false,
-      isAuthorSession: false,
-      sessionType: 'reader'
-    }
+    requiresVerification: true,
+    email: cleanEmail,
+    username: cleanUsername,
+    message: 'Account created. Enter the verification code sent to your email before logging in.',
+    expiresInSeconds: 300,
+    resendAfterSeconds: 60
+  };
+}
+
+export async function verifyRegistrationOtp(email, otp) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanOtp = typeof otp === 'string' ? otp.trim() : '';
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
+
+  const user = await queryOne(`
+    SELECT id, is_verified, verification_token, verification_token_expires_at,
+           verification_attempts, (verification_token_expires_at > NOW()) AS otp_active
+    FROM users
+    WHERE LOWER(email) = ?;
+  `, [cleanEmail]);
+
+  if (!user) {
+    return { success: false, error: 'No account found with this email address.' };
+  }
+  if (Number(user.is_verified) === 1) {
+    return { success: true, verified: true, alreadyVerified: true, message: 'Your email is already verified. You can log in.' };
+  }
+  if (!user.verification_token || !user.otp_active) {
+    return { success: false, expired: true, email: cleanEmail, error: 'This code has expired. Request a new verification code.' };
+  }
+  if (Number(user.verification_attempts) >= 5) {
+    return { success: false, email: cleanEmail, error: 'Too many incorrect attempts. Request a new verification code.' };
+  }
+
+  if (!verifyEmailOtp(cleanOtp, user.verification_token)) {
+    await query(`
+      UPDATE users
+      SET verification_token = CASE WHEN verification_attempts >= 4 THEN NULL ELSE verification_token END,
+          verification_token_expires_at = CASE WHEN verification_attempts >= 4 THEN NULL ELSE verification_token_expires_at END,
+          verification_attempts = verification_attempts + 1
+      WHERE id = ? AND is_verified = 0 AND verification_attempts < 5
+        AND verification_token_expires_at > NOW();
+    `, [user.id]);
+    return { success: false, email: cleanEmail, error: 'The verification code is incorrect. Please try again or request a new code.' };
+  }
+
+  const updated = await query(`
+    UPDATE users
+    SET is_verified = 1, verification_token = NULL, verification_token_expires_at = NULL,
+        verification_attempts = 0, verification_resend_after = NULL, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND is_verified = 0 AND verification_token = ?
+      AND verification_token_expires_at > NOW() AND verification_attempts < 5;
+  `, [user.id, user.verification_token]);
+
+  if (!updated.affectedRows) {
+    return { success: false, email: cleanEmail, error: 'This code is no longer valid. Request a new verification code.' };
+  }
+
+  return { success: true, verified: true, email: cleanEmail, message: 'Email verified. You can now log in.' };
+}
+
+export async function resendRegistrationOtp(identifierOrEmail) {
+  const cleanIdentifier = (identifierOrEmail || '').trim();
+  if (!cleanIdentifier) {
+    return { success: false, error: 'Please enter your email address or username.' };
+  }
+
+  const user = await queryOne(`
+    SELECT id, username, email, is_verified,
+           (verification_resend_after > NOW()) AS resend_blocked,
+           GREATEST(TIMESTAMPDIFF(SECOND, NOW(), verification_resend_after), 0) AS retry_after_seconds
+    FROM users
+    WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?);
+  `, [cleanIdentifier, cleanIdentifier]);
+
+  if (!user) {
+    return { success: false, error: 'No account found with this email or username.' };
+  }
+  if (Number(user.is_verified) === 1) {
+    return { success: false, error: 'This account is already verified. You can log in directly.' };
+  }
+  if (user.resend_blocked) {
+    return {
+      success: false,
+      retryAfterSeconds: Number(user.retry_after_seconds || 1),
+      error: `Please wait ${Number(user.retry_after_seconds || 1)} seconds before requesting another code.`
+    };
+  }
+
+  const otp = createEmailOtp();
+  const verificationHash = hashEmailOtp(otp);
+  const updated = await query(`
+    UPDATE users
+    SET verification_token = ?, verification_token_expires_at = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+        verification_attempts = 0, verification_resend_after = DATE_ADD(NOW(), INTERVAL 60 SECOND)
+    WHERE id = ? AND is_verified = 0
+      AND (verification_resend_after IS NULL OR verification_resend_after <= NOW());
+  `, [verificationHash, user.id]);
+
+  if (!updated.affectedRows) {
+    return { success: false, error: 'A new code was requested recently. Please wait before trying again.' };
+  }
+
+  let emailSent = false;
+  try {
+    const delivery = await sendRegistrationOtpEmail({ to: user.email, otp });
+    emailSent = delivery.success;
+  } catch (mailErr) {
+    console.error('[AUTH RESEND EMAIL ERROR]:', mailErr.message);
+  }
+
+  if (!emailSent) {
+    await query(`
+      UPDATE users
+      SET verification_token = NULL, verification_token_expires_at = NULL, verification_resend_after = NULL
+      WHERE id = ? AND is_verified = 0;
+    `, [user.id]);
+    return { success: false, email: user.email, error: 'Unable to send the verification code. Please try again later.' };
+  }
+
+  return {
+    success: true,
+    email: user.email,
+    message: 'A new verification code has been sent to your email.',
+    expiresInSeconds: 300,
+    resendAfterSeconds: 60
   };
 }
 
@@ -225,7 +365,9 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   }
 
   const user = await queryOne(`
-    SELECT id, username, email, password_hash, salt, role, status, blocked_until, block_reason
+    SELECT id, username, email, password_hash, salt, role, status, blocked_until, block_reason,
+           COALESCE(is_verified, 1) AS is_verified,
+           GREATEST(TIMESTAMPDIFF(SECOND, NOW(), verification_resend_after), 0) AS retry_after_seconds
     FROM users
     WHERE LOWER(username) = ? OR LOWER(email) = ?;
   `, [cleanIdentifier, cleanIdentifier]);
@@ -237,6 +379,17 @@ export async function loginUser({ username, email, identifier, password } = {}) 
   const valid = verifyPassword(password, user.password_hash, user.salt);
   if (!valid) {
     return { success: false, error: 'Invalid username/email or password.' };
+  }
+
+  if (Number(user.is_verified) === 0) {
+    return {
+      success: false,
+      unverified: true,
+      email: user.email,
+      username: user.username,
+      error: 'Please verify your email address before logging in.',
+      retryAfterSeconds: Number(user.retry_after_seconds || 0)
+    };
   }
 
   // Account status validation & Automatic block expiration check

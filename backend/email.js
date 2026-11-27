@@ -238,3 +238,32 @@ Sender: ${senderEmail}
     };
   }
 }
+
+export async function sendRegistrationOtpEmail({ to, otp }) {
+  const { transporter, smtpUser, smtpPass } = getTransporter();
+  if (!smtpPass) {
+    console.warn('[REGISTRATION OTP EMAIL] SMTP credentials are not configured.');
+    return { success: false, delivered: false };
+  }
+
+  const senderEmail = smtpUser || 'trendup089@gmail.com';
+  const fromAddress = `"Rudhra Prarthana Novels" <${senderEmail}>`;
+  const subject = 'Verify your Rudhra Prarthana Novels account';
+  const text = `Your account verification code is ${otp}. It expires in 5 minutes. Do not share this code with anyone.`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0B1F33;">
+      <h2>Verify your email address</h2>
+      <p>Enter this code to verify your Rudhra Prarthana Novels account:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:8px;">${otp}</p>
+      <p>This code expires in 5 minutes. Do not share it with anyone.</p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({ from: fromAddress, to, subject, text, html });
+    return { success: true, delivered: true };
+  } catch (err) {
+    console.error('[REGISTRATION OTP EMAIL] Delivery failed:', err.message);
+    return { success: false, delivered: false };
+  }
+}

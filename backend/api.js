@@ -15,6 +15,8 @@ import {
   registerUser,
   loginUser,
   loginAuthor,
+  verifyRegistrationOtp,
+  resendRegistrationOtp,
   getUserByToken,
   logoutUser,
   setActivityStatus,
@@ -389,9 +391,27 @@ export async function apiMiddleware(req, res, next) {
     const body = await readJsonBody(req);
     const result = await registerUser(body);
     if (!result.success) {
-      return sendJson(res, result, 400);
+      return sendJson(res, result, result.accountCreated ? 503 : 400);
     }
     return sendJson(res, result, 201);
+  }
+
+  if ((pathname === '/auth/verify-email' || pathname === '/auth/verify-email/') && method === 'POST') {
+    const body = await readJsonBody(req);
+    const result = await verifyRegistrationOtp(body.email, body.otp);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
+  }
+
+  if ((pathname === '/auth/resend-verification' || pathname === '/auth/resend-verification/') && method === 'POST') {
+    const body = await readJsonBody(req);
+    const result = await resendRegistrationOtp(body.email || body.username);
+    if (!result.success) {
+      return sendJson(res, result, 400);
+    }
+    return sendJson(res, result, 200);
   }
 
   // 3. Authentication: Normal Reader Login (strictly non-admin reader session)
