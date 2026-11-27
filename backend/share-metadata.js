@@ -4,7 +4,7 @@
 
 import { queryOne } from './db.js';
 
-const PRIMARY_PUBLIC_DOMAIN = 'https://frontend-snowy-five-81.vercel.app';
+const PRIMARY_PUBLIC_DOMAIN = 'https://rudhraprarthananovels.com';
 const SITE_NAME = 'Rudhra Prarthana Novels';
 const SITE_BRAND_DOMAIN = 'rudhraprarthananovels.com';
 const DEFAULT_LOGO_RELATIVE = '/images/logo.png';
@@ -72,17 +72,7 @@ function toAbsoluteUrl(urlStr, baseUrl = PRIMARY_PUBLIC_DOMAIN) {
 /**
  * Determine caller host to preserve canonical public URL
  */
-function resolveBaseUrl(req) {
-  if (!req) return PRIMARY_PUBLIC_DOMAIN;
-  const host = req.headers?.['x-forwarded-host'] || req.headers?.host || '';
-  const proto = req.headers?.['x-forwarded-proto'] || 'https';
-  
-  if (host.includes('rudhraprarthananovels.com')) {
-    return 'https://rudhraprarthananovels.com';
-  }
-  if (host.includes('vercel.app')) {
-    return `https://${host}`;
-  }
+function resolveBaseUrl() {
   return PRIMARY_PUBLIC_DOMAIN;
 }
 

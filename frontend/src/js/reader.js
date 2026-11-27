@@ -1,4 +1,5 @@
 import { startReadingSession, heartbeatReadingSession, pauseOrStopReadingSession } from './content-service.js';
+import { buildPublicShareUrl, PUBLIC_SITE_ORIGIN } from './share-url.js';
 
 // Reader Functionality: Font scaling, Light/Sepia/Dark modes, Scroll progress, Bookmarks, Reactions, Share Modal
 
@@ -190,20 +191,18 @@ export function initReader() {
       window.openReaderShareModal(meta);
     } else {
       const contentId = meta.id || meta.slug || extractCurrentContentId();
-      const origin = window.location.origin;
-      const shareUrl = meta.url || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
+      const shareUrl = meta.url || buildPublicShareUrl(contentId);
       window.executeReaderShare(type, meta.title || title, shareUrl);
     }
   };
 
   window.openReaderShareModal = (options = {}) => {
     const contentId = options.id || options.slug || extractCurrentContentId();
-    const origin = window.location.origin;
-    const shareUrl = options.url || options.shareUrl || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
+    const shareUrl = options.url || options.shareUrl || buildPublicShareUrl(contentId);
     const title = options.title || document.title || 'Rudhra Prarthana Novels';
     const description = options.description || 'Explore captivating novels, audio releases, and community discussions by author Rudhra Prarthana.';
     const image = options.image || '/images/logo.png';
-    const domain = origin.replace(/^https?:\/\//i, '').split('/')[0] || 'rudhraprarthananovels.com';
+    const domain = new URL(PUBLIC_SITE_ORIGIN).host;
 
     let modal = document.getElementById('reader-share-modal');
     if (!modal) {
@@ -333,8 +332,7 @@ export function initReader() {
 
   window.executeReaderShare = async (platform, title, url) => {
     const contentId = extractCurrentContentId();
-    const origin = window.location.origin;
-    const shareUrl = url || (contentId ? `${origin}/share?id=${encodeURIComponent(contentId)}` : `${origin}/share`);
+    const shareUrl = url || buildPublicShareUrl(contentId);
     const shareText = title ? `${title}\n${shareUrl}` : shareUrl;
 
     if (platform === 'whatsapp') {
