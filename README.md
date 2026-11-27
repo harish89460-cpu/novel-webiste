@@ -15,6 +15,8 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 
 ### 💬 Reader Engagement & Emoji Reactions
 - **Dynamic Comments:** Registered users can post and edit comments on novels and individual chapters; guests can browse freely.
+- Comment authors and replies display profile photos and links to the member profile.
+- Social share links and Open Graph canonical URLs always use `https://rudhraprarthananovels.com`, not a deployment-preview hostname.
 - **Interactive Emoji Reactions:** Real-time reactions (❤️, 👍, 😂, 😢, 😍, 🔥) with personal reaction toggling and duplicate prevention.
 - **SQL Database Backed:** All comments, reactions, likes, reading progress, and topics are persisted in a relational MySQL database.
 
@@ -31,6 +33,7 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 - Parameterized SQL queries preventing SQL injection across all endpoints.
 - Role-based authorization (`admin`, `author`, `writer`, `reader`, `guest`).
 - Password recovery via automated 6-digit OTP email verification with resend cooldowns and countdown timers.
+- New member registrations require a one-time email OTP before the first login; existing accounts remain verified, and later logins use the normal username/email and password.
 
 ### 📱 Responsive Design & Visual Excellence
 - White-and-gold aesthetic (`#FFFFFF`, `#FFFDF8`, `#0B1F33`, `#C89B3C`).
@@ -44,7 +47,7 @@ A premium, elegant Tamil literary novel community and digital reading platform d
 - **Frontend:** Vanilla JavaScript (ES Modules), Modern CSS3 (Variables, Flexbox, CSS Grid), HTML5, Vite 6
 - **Backend Application Server:** Node.js standalone HTTP server with modular REST API routing
 - **Database Backend:** Relational MySQL 8.0+ (`mysql2/promise`) with versioned migrations
-- **Email Service:** Nodemailer SMTP Integration for OTP Password Reset
+- **Email Service:** Nodemailer SMTP Integration for Registration Verification and Password Reset OTPs
 - **Audio Service:** Direct audio uploads and streaming player
 
 ---
@@ -80,7 +83,7 @@ rudhra-prarthana-novels/
 │   ├── notifications.js      # In-app notifications & Web Push engine
 │   ├── email.js              # Nodemailer SMTP & OTP delivery
 │   ├── migrate.js            # Database migration runner
-│   ├── migrations/           # 26 Versioned SQL migrations
+│   ├── migrations/           # Versioned SQL migrations
 │   ├── uploads/              # Uploaded user avatars, audio files, and media
 │   └── package.json          # Node server dependencies
 │
