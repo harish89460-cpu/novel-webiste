@@ -6699,11 +6699,13 @@ window.loadArticleComments = async (articleId) => {
     container.innerHTML = comments.map(c => `
       <div class="comment-item" style="border-bottom:1px solid #F1ECE4; padding:16px 0;" id="comment-item-${c.id}">
         <div style="display:flex; gap:12px; align-items:flex-start;">
-          <img src="${c.avatar || '/profile.png'}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png'" alt="">
+          <a href="#member?id=${encodeURIComponent(c.username || c.userId)}" title="${escapeHtml(c.author)}">
+            <img src="${getAvatarUrl(c.avatar)}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png'" alt="${escapeHtml(c.author)}">
+          </a>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
               <div>
-                <strong style="color:#1A0B2E; font-size:13.5px;">${escapeHtml(c.author)}</strong>
+                <a href="#member?id=${encodeURIComponent(c.username || c.userId)}" style="color:#1A0B2E; font-size:13.5px; font-weight:700; text-decoration:none;">${escapeHtml(c.author)}</a>
                 ${c.role === 'author' || c.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
               </div>
               <span style="font-size:11.5px; color:#64748B;">${new Date(c.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
@@ -6743,19 +6745,24 @@ window.loadArticleComments = async (articleId) => {
             ${(c.replies && c.replies.length > 0) ? `
               <div style="margin-top:12px; margin-left:14px; border-left:2px solid #E9D5FF; padding-left:12px;">
                 ${c.replies.map(rep => `
-                  <div style="margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <div>
-                        <strong style="color:#1A0B2E; font-size:12.5px;">${escapeHtml(rep.author)}</strong>
-                        ${rep.role === 'author' || rep.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
+                  <div style="display:flex; gap:8px; align-items:flex-start; margin-bottom:10px;">
+                    <a href="#member?id=${encodeURIComponent(rep.username || rep.userId)}" title="${escapeHtml(rep.author)}">
+                      <img src="${getAvatarUrl(rep.avatar)}" style="width:28px; height:28px; border-radius:50%; object-fit:cover;" onerror="this.src='/profile.png'" alt="${escapeHtml(rep.author)}">
+                    </a>
+                    <div style="flex:1; min-width:0;">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                          <a href="#member?id=${encodeURIComponent(rep.username || rep.userId)}" style="color:#1A0B2E; font-size:12.5px; font-weight:700; text-decoration:none;">${escapeHtml(rep.author)}</a>
+                          ${rep.role === 'author' || rep.role === 'admin' ? '<span class="forms-role-badge" style="margin-left:4px;">Author</span>' : ''}
+                        </div>
+                        <span style="font-size:11px; color:#64748B;">${new Date(rep.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
                       </div>
-                      <span style="font-size:11px; color:#64748B;">${new Date(rep.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-                    </div>
-                    <div style="font-size:12.5px; color:#2D3748; line-height:1.5;">
-                      ${(function() {
-                        const raw = rep.content || '';
-                        return typeof window.formatRichContent === 'function' ? window.formatRichContent(raw.includes('<') ? raw : escapeHtml(raw).replace(/\n/g, '<br>')) : escapeHtml(raw);
-                      })()}
+                      <div style="font-size:12.5px; color:#2D3748; line-height:1.5;">
+                        ${(function() {
+                          const raw = rep.content || '';
+                          return typeof window.formatRichContent === 'function' ? window.formatRichContent(raw.includes('<') ? raw : escapeHtml(raw).replace(/\n/g, '<br>')) : escapeHtml(raw);
+                        })()}
+                      </div>
                     </div>
                   </div>
                 `).join('')}
