@@ -111,7 +111,7 @@ export async function registerUser({ username, email, password, displayName, ava
     const delivery = await sendRegistrationOtpEmail({ to: cleanEmail, otp });
     emailSent = delivery.success;
   } catch (mailErr) {
-    console.error('[AUTH REGISTER EMAIL ERROR]:', mailErr.message);
+    console.error('[AUTH REGISTER EMAIL ERROR]:', mailErr.code || mailErr.name || 'SMTP_ERROR');
   }
 
   if (!emailSent) {
@@ -238,7 +238,7 @@ export async function resendRegistrationOtp(identifierOrEmail) {
     const delivery = await sendRegistrationOtpEmail({ to: user.email, otp });
     emailSent = delivery.success;
   } catch (mailErr) {
-    console.error('[AUTH RESEND EMAIL ERROR]:', mailErr.message);
+    console.error('[AUTH RESEND EMAIL ERROR]:', mailErr.code || mailErr.name || 'SMTP_ERROR');
   }
 
   if (!emailSent) {

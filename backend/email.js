@@ -263,7 +263,7 @@ export async function sendRegistrationOtpEmail({ to, otp }) {
     await transporter.sendMail({ from: fromAddress, to, subject, text, html });
     return { success: true, delivered: true };
   } catch (err) {
-    console.error('[REGISTRATION OTP EMAIL] Delivery failed:', err.message);
+    console.error('[REGISTRATION OTP EMAIL] Delivery failed:', err.code || err.name || 'SMTP_ERROR');
     return { success: false, delivered: false };
   }
 }
